@@ -75,6 +75,8 @@ Examples:
   %(prog)s                           # Start with default settings
   %(prog)s --port 8080               # Start on port 8080
   %(prog)s --host 0.0.0.0            # Listen on all interfaces
+  %(prog)s --provider deepseek       # Use DeepSeek provider
+  %(prog)s --provider openai --model gpt-4  # Use OpenAI with GPT-4
   %(prog)s --init-config             # Create sample config file
         """
     )
@@ -113,6 +115,20 @@ Examples:
         help="Logging level (default: INFO)"
     )
     
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default=None,
+        help="AI model provider (deepseek, openai, alibaba, etc.)"
+    )
+    
+    parser.add_argument(
+        "--model",
+        type=str,
+        default=None,
+        help="AI model name (e.g., deepseek-chat, gpt-4, gpt-3.5-turbo)"
+    )
+    
     args = parser.parse_args()
     
     # Setup logging
@@ -142,7 +158,9 @@ Examples:
     gateway_config = GatewayConfig(
         port=args.port,
         host=args.host,
-        control_ui_enabled=True
+        control_ui_enabled=True,
+        provider=args.provider,
+        model=args.model
     )
     
     # Override from config file if available

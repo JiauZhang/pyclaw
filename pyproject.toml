@@ -29,6 +29,7 @@ dependencies = [
     "python-multipart>=0.0.6",
     "click>=8.1.0",
     "rich>=13.7.0",
+    "chatchat>=0.3.2",
 ]
 
 [project.urls]

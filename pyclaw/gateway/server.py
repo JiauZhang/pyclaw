@@ -29,6 +29,8 @@ class GatewayConfig:
     host: str = "127.0.0.1"
     control_ui_enabled: bool = True
     cors_origins: List[str] = field(default_factory=list)
+    provider: Optional[str] = None
+    model: Optional[str] = None
 
 
 class GatewayServer:
@@ -175,15 +177,22 @@ class GatewayServer:
             # Define gateway handler for processing messages
             async def gateway_handler(message: str, session_id: str, client_id: str, channel: str):
                 """Process message through OpenClaw gateway."""
-                from ..agents.simple_agent import SimpleAgent
+                from ..agents import Agent
                 from ..gateway.runtime import SessionState
                 
                 # Get or create session
                 session = self.runtime.get_or_create_session(session_id, "default")
                 
                 # Create agent and run
-                agent = SimpleAgent()
-                response = await agent.run(message, session)
+                try:
+                    agent = Agent(
+                        provider=self.config.provider,
+                        model=self.config.model
+                    )
+                    response = await agent.run(message, session)
+                except Exception as e:
+                    logger.error(f"Agent error in WebSocket handler: {e}")
+                    response = f"Error: {str(e)}"
                 
                 # Update session
                 self.runtime.update_session_activity(session_id)
