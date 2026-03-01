@@ -33,7 +33,7 @@ def _get_or_create_agent(
     if agent_config and hasattr(agent_config, 'workspace'):
         workspace_dir = agent_config.workspace
     if not workspace_dir:
-        workspace_dir = os.path.expanduser("~/.openclaw/workspace")
+        workspace_dir = os.path.expanduser("~/.pyclaw/workspace")
     
     # Determine provider and model
     if not provider:

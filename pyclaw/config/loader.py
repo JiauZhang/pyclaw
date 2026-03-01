@@ -6,22 +6,22 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 import logging
 
-from .schema import OpenClawConfig, ConfigSnapshot
+from .schema import PyClawConfig, ConfigSnapshot
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigLoader:
-    """Loads and manages OpenClaw configuration."""
+    """Loads and manages PyClaw configuration."""
     
-    DEFAULT_CONFIG_PATH = Path.home() / ".openclaw" / "config.json"
+    DEFAULT_CONFIG_PATH = Path.home() / ".pyclaw" / "config.json"
     
     def __init__(self, config_path: Optional[Path] = None):
         self.config_path = config_path or self.DEFAULT_CONFIG_PATH
-        self._cache: Optional[OpenClawConfig] = None
+        self._cache: Optional[PyClawConfig] = None
         self._snapshot: Optional[ConfigSnapshot] = None
     
-    def load(self, force_reload: bool = False) -> OpenClawConfig:
+    def load(self, force_reload: bool = False) -> PyClawConfig:
         """Load configuration from all sources."""
         if self._cache is not None and not force_reload:
             return self._cache
@@ -48,13 +48,13 @@ class ConfigLoader:
         
         # 4. Validate and create config object
         try:
-            config = OpenClawConfig.model_validate(config_dict)
+            config = PyClawConfig.model_validate(config_dict)
         except Exception as e:
             file_valid = False
             file_issues.append(f"Config validation error: {e}")
             logger.error(f"Config validation failed: {e}")
             # Fall back to defaults
-            config = OpenClawConfig.model_validate(self._get_defaults())
+            config = PyClawConfig.model_validate(self._get_defaults())
         
         # Create snapshot
         self._snapshot = ConfigSnapshot(
@@ -75,13 +75,13 @@ class ConfigLoader:
             self.load()
         return self._snapshot
     
-    def reload(self) -> OpenClawConfig:
+    def reload(self) -> PyClawConfig:
         """Reload configuration from disk."""
         self._cache = None
         self._snapshot = None
         return self.load(force_reload=True)
     
-    def save(self, config: OpenClawConfig) -> None:
+    def save(self, config: PyClawConfig) -> None:
         """Save configuration to file."""
         # Ensure directory exists
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,7 +122,7 @@ class ConfigLoader:
             "agents": {
                 "default": {
                     "name": "Default Agent",
-                    "description": "Default OpenClaw agent",
+                    "description": "Default PyClaw agent",
                     "model": None,
                     "system_prompt": "You are a helpful AI assistant.",
                     "tools": ["echo", "time"],
@@ -142,7 +142,7 @@ class ConfigLoader:
                 }
             },
             "sessions": {
-                "store_path": "~/.openclaw/sessions",
+                "store_path": "~/.pyclaw/sessions",
                 "max_history": 100,
                 "ttl_hours": None
             },
@@ -242,11 +242,11 @@ def get_config_loader() -> ConfigLoader:
     return _config_loader
 
 
-def load_config() -> OpenClawConfig:
+def load_config() -> PyClawConfig:
     """Convenience function to load configuration."""
     return get_config_loader().load()
 
 
-def reload_config() -> OpenClawConfig:
+def reload_config() -> PyClawConfig:
     """Convenience function to reload configuration."""
     return get_config_loader().reload()

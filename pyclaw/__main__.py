@@ -16,7 +16,7 @@ def setup_logging(level: str = "INFO"):
 
 def create_sample_config():
     """Create a sample configuration file."""
-    config_path = Path.home() / ".openclaw" / "config.json"
+    config_path = Path.home() / ".pyclaw" / "config.json"
     
     if config_path.exists():
         print(f"Config file already exists at {config_path}")
@@ -53,7 +53,7 @@ def create_sample_config():
   },
   "channels": {},
   "sessions": {
-    "store_path": "~/.openclaw/sessions",
+    "store_path": "~/.pyclaw/sessions",
     "max_history": 100
   }
 }"""
@@ -68,7 +68,7 @@ def create_sample_config():
 async def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(
-        description="OpenClaw Python Gateway",
+        description="PyClaw Python Gateway",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

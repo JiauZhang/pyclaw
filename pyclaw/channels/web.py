@@ -15,7 +15,7 @@ class WebChannelAdapter(ChannelAdapter):
     """
     WebSocket-based channel adapter for browser interaction.
     
-    This adapter allows direct communication between the browser and OpenClaw
+    This adapter allows direct communication between the browser and PyClaw
     without requiring any external messaging platform.
     """
     
@@ -227,7 +227,7 @@ class WebChannelManager:
     Manager for web channel connections.
     
     Handles multiple browser clients and routes messages between them
-    and the OpenClaw gateway.
+    and the PyClaw gateway.
     """
     
     def __init__(self):
@@ -311,7 +311,7 @@ class WebChannelManager:
         data: Dict[str, Any],
         gateway_handler: Callable
     ):
-        """Process a message through the OpenClaw gateway."""
+        """Process a message through the PyClaw gateway with streaming support."""
         try:
             # Get or create session for this client
             session_id = self._client_sessions.get(client_id, f"web_{client_id}")
@@ -325,8 +325,52 @@ class WebChannelManager:
                 channel="web"
             )
             
-            # Send response back to client
-            if result:
+            # Check if this is an error response
+            if "response" in result and result["response"].startswith("Error:"):
+                await self.adapter.send_response(
+                    client_id,
+                    result.get("response", ""),
+                    message_type="error"
+                )
+                return
+            
+            # Check if we have agent for streaming
+            if "agent" in result and "context" in result:
+                agent = result["agent"]
+                session = result["session"]
+                context = result["context"]
+                message = data.get("text", "")
+                
+                # Send streaming response
+                full_response = ""
+                async for chunk in agent.chat_stream(message, session, context):
+                    if chunk:
+                        full_response += chunk
+                        await self.adapter.send_response(
+                            client_id,
+                            chunk,
+                            message_type="stream_chunk",
+                            extra_data={
+                                "session_id": session_id,
+                                "agent_id": "default",
+                                "is_final": False
+                            }
+                        )
+                
+                # Send final message to indicate stream is complete
+                await self.adapter.send_response(
+                    client_id,
+                    "",
+                    message_type="stream_complete",
+                    extra_data={
+                        "session_id": session_id,
+                        "agent_id": "default",
+                        "is_final": True,
+                        "full_response": full_response
+                    }
+                )
+            # Fallback to non-streaming response
+            elif result:
                 await self.adapter.send_response(
                     client_id,
                     result.get("response", ""),

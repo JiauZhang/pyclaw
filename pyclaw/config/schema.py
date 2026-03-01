@@ -85,7 +85,7 @@ class GatewayConfig(BaseModel):
 
 class SessionConfig(BaseModel):
     """Session management configuration."""
-    store_path: str = Field("~/.openclaw/sessions", description="Session storage path")
+    store_path: str = Field("~/.pyclaw/sessions", description="Session storage path")
     max_history: int = Field(100, description="Maximum messages per session")
     ttl_hours: Optional[int] = Field(None, description="Session TTL in hours")
 
@@ -97,8 +97,8 @@ class SkillConfig(BaseModel):
     paths: List[str] = Field(default_factory=list, description="Skill search paths")
 
 
-class OpenClawConfig(BaseModel):
-    """Main OpenClaw configuration."""
+class PyClawConfig(BaseModel):
+    """Main PyClaw configuration."""
     version: str = Field("1.0", description="Config version")
     
     # Gateway configuration
@@ -157,7 +157,7 @@ class OpenClawConfig(BaseModel):
 @dataclass
 class ConfigSnapshot:
     """Configuration snapshot with metadata."""
-    config: OpenClawConfig
+    config: PyClawConfig
     path: Path
     exists: bool
     valid: bool

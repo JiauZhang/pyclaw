@@ -34,7 +34,7 @@ class ChannelAdapter(ABC):
     """
     Abstract base class for channel adapters.
     
-    Channel adapters connect OpenClaw to messaging platforms
+    Channel adapters connect PyClaw to messaging platforms
     like Telegram, WhatsApp, Discord, etc.
     """
     

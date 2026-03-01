@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from ..config import OpenClawConfig, load_config
+from ..config import PyClawConfig, load_config
 from ..channels.web import WebChannelManager
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
@@ -35,7 +35,7 @@ class GatewayConfig:
 
 class GatewayServer:
     """
-    OpenClaw Gateway Server - Core control plane.
+    PyClaw Gateway Server - Core control plane.
     
     Manages WebSocket connections, HTTP API, sessions, channels, and agents.
     """
@@ -43,7 +43,7 @@ class GatewayServer:
     def __init__(self, config: Optional[GatewayConfig] = None):
         self.config = config or GatewayConfig()
         self.app = FastAPI(
-            title="OpenClaw Gateway",
+            title="PyClaw Gateway",
             description="Personal AI Assistant Gateway",
             version="0.1.0"
         )
@@ -76,7 +76,7 @@ class GatewayServer:
         async def root():
             """Root endpoint - Gateway info."""
             return {
-                "name": "OpenClaw Gateway",
+                "name": "PyClaw Gateway",
                 "version": "0.1.0",
                 "status": "running",
                 "timestamp": datetime.now().isoformat()
@@ -176,30 +176,44 @@ class GatewayServer:
             
             # Define gateway handler for processing messages
             async def gateway_handler(message: str, session_id: str, client_id: str, channel: str):
-                """Process message through OpenClaw gateway."""
+                """Process message through PyClaw gateway with streaming support."""
                 from ..agents import Agent
                 from ..gateway.runtime import SessionState
                 
                 # Get or create session
                 session = self.runtime.get_or_create_session(session_id, "default")
                 
-                # Create agent and run
+                # Create agent
                 try:
                     agent = Agent(
                         provider=self.config.provider,
                         model=self.config.model
                     )
-                    response = await agent.run(message, session)
                 except Exception as e:
                     logger.error(f"Agent error in WebSocket handler: {e}")
-                    response = f"Error: {str(e)}"
+                    return {
+                        "response": f"Error: {str(e)}",
+                        "agent_id": "default",
+                        "session_id": session_id
+                    }
+                
+                # Create agent context
+                from ..agents import AgentContext
+                agent_context = AgentContext(
+                    session_id=session_id,
+                    agent_id="default",
+                    user_id=client_id,
+                    channel_id=channel
+                )
                 
                 # Update session
                 self.runtime.update_session_activity(session_id)
                 
+                # Return agent and context for streaming
                 return {
-                    "response": response,
-                    "agent_id": "default",
+                    "agent": agent,
+                    "session": session,
+                    "context": agent_context,
                     "session_id": session_id
                 }
             
@@ -235,9 +249,9 @@ class GatewayServer:
             return HTMLResponse("""
             <!DOCTYPE html>
             <html>
-            <head><title>OpenClaw Control</title></head>
+            <head><title>PyClaw Control</title></head>
             <body>
-                <h1>OpenClaw Control Panel</h1>
+                <h1>PyClaw Control Panel</h1>
                 <p>Gateway is running.</p>
                 <a href="/chat">Open WebChat</a>
             </body>
@@ -334,7 +348,7 @@ class GatewayServer:
         
         server = uvicorn.Server(config)
         
-        logger.info(f"🦞 OpenClaw Gateway starting on http://{self.config.host}:{self.config.port}")
+        logger.info(f"🦞 PyClaw Gateway starting on http://{self.config.host}:{self.config.port}")
         logger.info(f"WebChat available at http://{self.config.host}:{self.config.port}/chat")
         
         self.runtime.mark_started()
@@ -379,7 +393,7 @@ class GatewayServer:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OpenClaw WebChat - Direct Browser Channel</title>
+    <title>PyClaw WebChat - Direct Browser Channel</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -538,6 +552,23 @@ class GatewayServer:
             color: #1f2937;
             border-bottom-left-radius: 0.25rem;
         }
+        .message.assistant.streaming {
+            background: #f3f4f6;
+            color: #1f2937;
+            border-bottom-left-radius: 0.25rem;
+        }
+        .message.assistant.streaming .stream-content {
+            min-height: 1.5rem;
+        }
+        .message.assistant.streaming::after {
+            content: '▋';
+            animation: blink 1s infinite;
+            margin-left: 2px;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
         .message.system {
             align-self: center;
             background: #fef3c7;
@@ -632,7 +663,7 @@ class GatewayServer:
 <body>
     <div class="header">
         <span>🦞</span>
-        <h1>OpenClaw WebChat</h1>
+        <h1>PyClaw WebChat</h1>
         <span class="subtitle">Direct Browser Channel - No Social Apps Needed</span>
         <div class="status">
             <span class="status-dot" id="status-dot"></span>
@@ -652,7 +683,7 @@ class GatewayServer:
         <div class="chat-area">
             <div class="messages" id="messages">
                 <div class="welcome-message">
-                    <h2>👋 Welcome to OpenClaw!</h2>
+                    <h2>👋 Welcome to PyClaw!</h2>
                     <p>This is a direct browser channel - no social apps or messaging platforms needed.</p>
                     <p>Your conversation happens right here in the browser via WebSocket.</p>
                     <p style="margin-top: 1rem; font-size: 0.875rem;">
@@ -694,6 +725,7 @@ class GatewayServer:
         let currentSession = 'default';
         let sessions = { default: [] };
         let clientId = null;
+        let currentStreamingMessage = null;
         
         ws.onopen = () => {
             statusDot.classList.remove('disconnected');
@@ -701,7 +733,7 @@ class GatewayServer:
             inputEl.disabled = false;
             sendBtn.disabled = false;
             inputEl.focus();
-            addMessage('system', '✅ Connected to OpenClaw Gateway via Web Channel');
+            addMessage('system', '✅ Connected to PyClaw Gateway via Web Channel');
         };
         
         ws.onclose = () => {
@@ -727,6 +759,32 @@ class GatewayServer:
             }
             
             if (data.type === 'pong') {
+                return;
+            }
+            
+            if (data.type === 'stream_chunk') {
+                // Handle streaming chunk
+                if (!currentStreamingMessage) {
+                    // Create new message element for streaming
+                    currentStreamingMessage = createStreamingMessage();
+                    messagesEl.appendChild(currentStreamingMessage);
+                    messagesEl.scrollTop = messagesEl.scrollHeight;
+                }
+                // Append chunk to current streaming message
+                appendToStreamingMessage(currentStreamingMessage, data.text);
+                return;
+            }
+            
+            if (data.type === 'stream_complete') {
+                // Streaming complete
+                if (currentStreamingMessage) {
+                    finalizeStreamingMessage(currentStreamingMessage, data.full_response);
+                    // Save to session history
+                    if (!sessions[currentSession]) sessions[currentSession] = [];
+                    sessions[currentSession].push({ role: 'assistant', text: data.full_response });
+                    currentStreamingMessage = null;
+                }
+                typingEl.classList.remove('show');
                 return;
             }
             
@@ -764,6 +822,34 @@ class GatewayServer:
             div.innerHTML = `${formattedText}<div class="time">${time}</div>`;
             messagesEl.appendChild(div);
             messagesEl.scrollTop = messagesEl.scrollHeight;
+        }
+        
+        function createStreamingMessage() {
+            // Remove welcome message if it exists
+            if (messagesEl.querySelector('.welcome-message')) {
+                messagesEl.innerHTML = '';
+            }
+            
+            const div = document.createElement('div');
+            div.className = 'message assistant streaming';
+            div.innerHTML = '<div class="stream-content"></div>';
+            return div;
+        }
+        
+        function appendToStreamingMessage(messageEl, text) {
+            const contentEl = messageEl.querySelector('.stream-content');
+            if (contentEl) {
+                // Escape HTML and append
+                const escapedText = escapeHtml(text);
+                contentEl.innerHTML += escapedText.replace(/\\n/g, '<br>');
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+            }
+        }
+        
+        function finalizeStreamingMessage(messageEl, fullText) {
+            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            messageEl.classList.remove('streaming');
+            messageEl.innerHTML = `${escapeHtml(fullText).replace(/\\n/g, '<br>')}<div class="time">${time}</div>`;
         }
         
         function escapeHtml(text) {
