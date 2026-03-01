@@ -32,6 +32,9 @@ dependencies = [
     "chatchat>=0.3.2",
 ]
 
+[project.scripts]
+pyclaw = "pyclaw.__main__:cli"
+
 [project.urls]
 Homepage = "https://github.com/jiauzhang/pyclaw"
 

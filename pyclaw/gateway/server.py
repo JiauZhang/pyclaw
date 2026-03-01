@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class GatewayConfig:
     """Gateway server configuration."""
-    port: int = 18789
+    port: int = 12321
     host: str = "127.0.0.1"
     control_ui_enabled: bool = True
     cors_origins: List[str] = field(default_factory=list)

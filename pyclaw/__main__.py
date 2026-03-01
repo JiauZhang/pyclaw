@@ -28,7 +28,7 @@ def create_sample_config():
   "version": "1.0",
   "gateway": {
     "http": {
-      "port": 18789,
+      "port": 12321,
       "host": "127.0.0.1"
     },
     "control_ui": {
@@ -73,10 +73,10 @@ async def main():
         epilog="""
 Examples:
   %(prog)s                           # Start with default settings
-  %(prog)s --port 8080               # Start on port 8080
+  %(prog)s --port 12321              # Start on port 12321
   %(prog)s --host 0.0.0.0            # Listen on all interfaces
-  %(prog)s --provider deepseek       # Use DeepSeek provider
-  %(prog)s --provider openai --model gpt-4  # Use OpenAI with GPT-4
+  %(prog)s --provider tencent        # Use Tencent provider
+  %(prog)s --provider tencent --model hunyuan-lite  # Use Tencent with Hunyuan Lite
   %(prog)s --init-config             # Create sample config file
         """
     )
@@ -84,8 +84,8 @@ Examples:
     parser.add_argument(
         "--port",
         type=int,
-        default=18789,
-        help="Gateway port (default: 18789)"
+        default=12321,
+        help="Gateway port (default: 12321)"
     )
     
     parser.add_argument(
@@ -118,14 +118,14 @@ Examples:
     parser.add_argument(
         "--provider",
         type=str,
-        default=None,
+        default='tencent',
         help="AI model provider (deepseek, openai, alibaba, etc.)"
     )
     
     parser.add_argument(
         "--model",
         type=str,
-        default=None,
+        default='hunyuan-lite',
         help="AI model name (e.g., deepseek-chat, gpt-4, gpt-3.5-turbo)"
     )
     
@@ -186,9 +186,14 @@ Examples:
         raise
 
 
-if __name__ == "__main__":
+def cli():
+    """Synchronous entry point for CLI."""
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nShutdown complete")
         sys.exit(0)
+
+
+if __name__ == "__main__":
+    cli()

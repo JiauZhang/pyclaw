@@ -63,7 +63,7 @@ class AgentConfig(BaseModel):
 class GatewayHttpConfig(BaseModel):
     """Gateway HTTP server configuration."""
     enabled: bool = Field(True)
-    port: int = Field(18789)
+    port: int = Field(12321)
     host: str = Field("127.0.0.1")
     cors_origins: List[str] = Field(default_factory=list)
 

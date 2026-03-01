@@ -102,7 +102,7 @@ class ConfigLoader:
             "gateway": {
                 "http": {
                     "enabled": True,
-                    "port": 18789,
+                    "port": 12321,
                     "host": "127.0.0.1",
                     "cors_origins": []
                 },
