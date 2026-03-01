@@ -7,6 +7,7 @@ from .exec import ExecTool
 from .file import ReadFileTool, WriteFileTool
 from .list_dir import ListDirTool
 from .python import PythonTool
+from .weather import WeatherTool
 
 __all__ = [
     "BashTool",
@@ -17,4 +18,5 @@ __all__ = [
     "PythonTool",
     "ReadFileTool",
     "WriteFileTool",
+    "WeatherTool",
 ]

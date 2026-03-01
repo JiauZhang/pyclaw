@@ -13,6 +13,7 @@ from .builtin import (
     PythonTool,
     ReadFileTool,
     WriteFileTool,
+    WeatherTool,
 )
 from .registry import create_default_tool_registry
 
@@ -28,5 +29,6 @@ __all__ = [
     "PythonTool",
     "ReadFileTool",
     "WriteFileTool",
+    "WeatherTool",
     "create_default_tool_registry",
 ]

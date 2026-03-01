@@ -109,7 +109,9 @@ When you need to use a tool, respond with a JSON object in this format:
 Or use this format:
 TOOL_CALL: {{"tool": "tool_name", "args": {{"param": "value"}}}}
 
-The system will execute the tool and return the result. You can then use that result to provide a helpful response.
+The system will execute the tool and return the result as a message in the conversation history.
+You MUST use this tool result to provide your final response to the user.
+Never make up or hardcode tool results - always use the actual result provided by the system.
 
 If no tool is needed, simply respond naturally to the user's message.
 
@@ -210,6 +212,7 @@ Remember to be helpful, accurate, and concise in your responses."""
             
             # Get AI response
             try:
+                # Send complete message history to model
                 response = self.client.chat(
                     text=last_user_msg,
                     stream=False
@@ -246,6 +249,35 @@ Remember to be helpful, accurate, and concise in your responses."""
                 "role": "user",
                 "content": f"Tool '{tool_name}' result: {tool_result_text}"
             })
+            
+            # Now get AI response based on tool result
+            try:
+                # Build updated messages with tool result
+                messages = self._build_messages(history)
+                
+                # Get last user message (which is the tool result)
+                last_user_msg = None
+                for msg in reversed(messages):
+                    if msg.get("role") == "user":
+                        last_user_msg = msg.get("content", "")
+                        break
+                
+                if not last_user_msg:
+                    return "No user message found."
+                
+                # Get AI response
+                response = self.client.chat(
+                    text=last_user_msg,
+                    stream=False
+                )
+                final_response = response.text if hasattr(response, 'text') else str(response)
+                
+                # Add final response to history
+                history.append({"role": "assistant", "content": final_response})
+                return final_response
+            except Exception as e:
+                logger.error(f"AI error after tool execution: {e}")
+                return f"AI Error: {str(e)}"
         
         return "Maximum tool iterations reached."
 
@@ -347,14 +379,110 @@ Just type your message to chat!"""
         session: SessionState,
         context: Optional[AgentContext] = None
     ) -> AsyncIterator[str]:
-        """Stream chat response."""
+        """Stream chat response with tool support."""
+        # Handle slash commands
+        if message.startswith("/"):
+            result = await self._handle_command(message, session)
+            yield result
+            return
+        
+        # Get or create conversation history
+        history = self._get_session_history(session.id)
+        
+        # Add user message
+        history.append({"role": "user", "content": message})
+        
         try:
-            stream = self.client.chat(text=message, stream=True)
+            # Run the conversation with potential tool calls
+            for iteration in range(self.max_iterations):
+                # Build messages for this turn
+                messages = self._build_messages(history)
+                
+                # Get last user message
+                last_user_msg = None
+                for msg in reversed(messages):
+                    if msg.get("role") == "user":
+                        last_user_msg = msg.get("content", "")
+                        break
+                
+                if not last_user_msg:
+                    yield "No user message found."
+                    return
+                
+                # Get AI response
+                try:
+                    response = self.client.chat(
+                        text=last_user_msg,
+                        stream=False
+                    )
+                    response_text = response.text if hasattr(response, 'text') else str(response)
+                except Exception as e:
+                    logger.error(f"AI error: {e}")
+                    yield f"AI Error: {str(e)}"
+                    return
+                
+                # Check for tool call
+                tool_call = self._parse_tool_call(response_text)
+                
+                if not tool_call:
+                    # No tool call, stream the response
+                    history.append({"role": "assistant", "content": response_text})
+                    yield response_text
+                    return
+                
+                # Execute tool
+                tool_name = tool_call.get("tool")
+                tool_args = tool_call.get("args", {})
+                
+                logger.info(f"Tool call: {tool_name}({tool_args})")
+                
+                result = await self.tool_registry.execute(tool_name, tool_args, context)
+                
+                # Add tool interaction to history
+                history.append({"role": "assistant", "content": response_text})
+                
+                tool_result_text = result.output
+                if result.error:
+                    tool_result_text += f"\nError: {result.error}"
+                
+                history.append({
+                    "role": "user",
+                    "content": f"Tool '{tool_name}' result: {tool_result_text}"
+                })
+                
+                # Now get AI response based on tool result
+                try:
+                    # Build updated messages with tool result
+                    messages = self._build_messages(history)
+                    
+                    # Get last user message (which is the tool result)
+                    last_user_msg = None
+                    for msg in reversed(messages):
+                        if msg.get("role") == "user":
+                            last_user_msg = msg.get("content", "")
+                            break
+                    
+                    if not last_user_msg:
+                        yield "No user message found."
+                        return
+                    
+                    # Get AI response
+                    response = self.client.chat(
+                        text=last_user_msg,
+                        stream=False
+                    )
+                    final_response = response.text if hasattr(response, 'text') else str(response)
+                    
+                    # Add final response to history
+                    history.append({"role": "assistant", "content": final_response})
+                    yield final_response
+                    return
+                except Exception as e:
+                    logger.error(f"AI error after tool execution: {e}")
+                    yield f"AI Error: {str(e)}"
+                    return
             
-            for chunk in stream:
-                text = chunk.text if hasattr(chunk, 'text') else str(chunk)
-                if text:
-                    yield text
+            yield "Maximum tool iterations reached."
                     
         except Exception as e:
             logger.error(f"Stream error: {e}")

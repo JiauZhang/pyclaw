@@ -14,6 +14,7 @@ from .builtin import (
     PythonTool,
     ReadFileTool,
     WriteFileTool,
+    WeatherTool,
 )
 
 
@@ -44,6 +45,7 @@ def create_default_tool_registry(
     # Always available: basic info tools
     registry.register(EchoTool())
     registry.register(DateTimeTool())
+    registry.register(WeatherTool())
 
     # File operations (with workspace sandbox)
     if enable_file_ops:
