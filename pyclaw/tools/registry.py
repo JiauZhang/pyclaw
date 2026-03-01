@@ -6,15 +6,14 @@ from typing import Optional
 
 from .base import ToolRegistry
 from .builtin import (
+    BashTool,
+    DateTimeTool,
     EchoTool,
-    TimeTool,
-    DateTool,
     ExecTool,
-    ReadFileTool,
-    WriteFileTool,
     ListDirTool,
     PythonTool,
-    BashTool,
+    ReadFileTool,
+    WriteFileTool,
 )
 
 
@@ -44,8 +43,7 @@ def create_default_tool_registry(
 
     # Always available: basic info tools
     registry.register(EchoTool())
-    registry.register(TimeTool())
-    registry.register(DateTool())
+    registry.register(DateTimeTool())
 
     # File operations (with workspace sandbox)
     if enable_file_ops:
