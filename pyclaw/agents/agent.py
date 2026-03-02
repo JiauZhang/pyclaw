@@ -409,13 +409,28 @@ Just type your message to chat!"""
                     yield "No user message found."
                     return
                 
-                # Get AI response
+                # Get AI response with streaming
                 try:
                     response = self.client.chat(
                         text=last_user_msg,
-                        stream=False
+                        stream=True
                     )
-                    response_text = response.text if hasattr(response, 'text') else str(response)
+                    
+                    # Stream the response chunks
+                    response_text = ""
+                    for chunk in response:
+                        if hasattr(chunk, 'text'):
+                            chunk_text = chunk.text
+                        elif hasattr(chunk, 'content'):
+                            chunk_text = chunk.content
+                        elif isinstance(chunk, str):
+                            chunk_text = chunk
+                        else:
+                            chunk_text = str(chunk)
+                        
+                        if chunk_text:
+                            response_text += chunk_text
+                            yield chunk_text
                 except Exception as e:
                     logger.error(f"AI error: {e}")
                     yield f"AI Error: {str(e)}"
@@ -466,12 +481,27 @@ Just type your message to chat!"""
                         yield "No user message found."
                         return
                     
-                    # Get AI response
+                    # Get AI response with streaming
                     response = self.client.chat(
                         text=last_user_msg,
-                        stream=False
+                        stream=True
                     )
-                    final_response = response.text if hasattr(response, 'text') else str(response)
+                    
+                    # Stream the response chunks
+                    final_response = ""
+                    for chunk in response:
+                        if hasattr(chunk, 'text'):
+                            chunk_text = chunk.text
+                        elif hasattr(chunk, 'content'):
+                            chunk_text = chunk.content
+                        elif isinstance(chunk, str):
+                            chunk_text = chunk
+                        else:
+                            chunk_text = str(chunk)
+                        
+                        if chunk_text:
+                            final_response += chunk_text
+                            yield chunk_text
                     
                     # Add final response to history
                     history.append({"role": "assistant", "content": final_response})

@@ -8,9 +8,7 @@ from .base import ToolRegistry
 from .builtin import (
     BashTool,
     DateTimeTool,
-    EchoTool,
     ExecTool,
-    ListDirTool,
     PythonTool,
     ReadFileTool,
     WriteFileTool,
@@ -43,7 +41,6 @@ def create_default_tool_registry(
     registry = ToolRegistry()
 
     # Always available: basic info tools
-    registry.register(EchoTool())
     registry.register(DateTimeTool())
     registry.register(WeatherTool())
 
@@ -52,7 +49,6 @@ def create_default_tool_registry(
         base_dir = workspace_dir or os.getcwd()
         registry.register(ReadFileTool(base_dir=base_dir))
         registry.register(WriteFileTool(base_dir=base_dir))
-        registry.register(ListDirTool(base_dir=base_dir))
 
     # Python execution
     if enable_python:
