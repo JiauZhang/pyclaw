@@ -81,6 +81,24 @@ class ConversationRunner:
         """
         return self.client_manager.chat(text=text, stream=stream)
 
+    @staticmethod
+    def _extract_text(obj) -> str:
+        """Extract text from an object.
+
+        Args:
+            obj: Object with text content
+
+        Returns:
+            Extracted text
+        """
+        if hasattr(obj, 'text'):
+            return obj.text
+        elif hasattr(obj, 'content'):
+            return obj.content
+        elif isinstance(obj, str):
+            return obj
+        return str(obj)
+
     def get_response_text(self, response) -> str:
         """Extract text from AI response.
 
@@ -90,7 +108,7 @@ class ConversationRunner:
         Returns:
             Response text
         """
-        return response.text if hasattr(response, 'text') else str(response)
+        return self._extract_text(response)
 
     def get_chunk_text(self, chunk) -> str:
         """Get text from response chunk.
@@ -101,11 +119,4 @@ class ConversationRunner:
         Returns:
             Chunk text
         """
-        if hasattr(chunk, 'text'):
-            return chunk.text
-        elif hasattr(chunk, 'content'):
-            return chunk.content
-        elif isinstance(chunk, str):
-            return chunk
-        else:
-            return str(chunk)
+        return self._extract_text(chunk)

@@ -9,34 +9,44 @@ class ToolCallParser:
     """Parse tool calls from AI responses."""
 
     @staticmethod
-    def parse(text: str) -> Optional[Dict[str, Any]]:
-        """Parse tool call from response.
-
-        Args:
-            text: AI response text
-
-        Returns:
-            Tool call dictionary or None
-        """
-        # Pattern: TOOL_CALL: {"tool": "...", "args": {...}}
-        pattern = r'TOOL_CALL:\s*(\{[^}]+\})'
-        match = re.search(pattern, text)
+    def _extract_json(text: str) -> Optional[str]:
+        """Extract JSON object from text."""
+        # Find the first { and match balanced braces
+        start = text.find('{')
+        if start == -1:
+            return None
         
-        if match:
-            try:
-                data = json.loads(match.group(1))
-                if "tool" in data:
-                    return data
-            except json.JSONDecodeError:
-                pass
+        count = 0
+        for i, char in enumerate(text[start:]):
+            if char == '{':
+                count += 1
+            elif char == '}':
+                count -= 1
+                if count == 0:
+                    return text[start:start+i+1]
+        return None
+
+    @staticmethod
+    def parse(text: str) -> Optional[Dict[str, Any]]:
+        """Parse tool call from response."""
+        # Pattern: TOOL_CALL: {"tool": "...", "args": {...}}
+        if 'TOOL_CALL:' in text:
+            idx = text.find('TOOL_CALL:')
+            json_str = ToolCallParser._extract_json(text[idx:])
+            if json_str:
+                try:
+                    data = json.loads(json_str)
+                    if "tool" in data:
+                        return data
+                except json.JSONDecodeError:
+                    pass
         
         # Try JSON block
-        json_pattern = r'```json\s*(\{[\s\S]*?\})\s*```'
-        match = re.search(json_pattern, text)
-        
+        match = re.search(r'```json\s*(.+?)\s*```', text, re.DOTALL)
         if match:
+            json_str = match.group(1).strip()
             try:
-                data = json.loads(match.group(1))
+                data = json.loads(json_str)
                 if "tool" in data:
                     return data
             except json.JSONDecodeError:

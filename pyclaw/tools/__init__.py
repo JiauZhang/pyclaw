@@ -7,7 +7,6 @@ from .base import Tool, ToolResult, ToolRegistry
 from .builtin import (
     BashTool,
     DateTimeTool,
-    ExecTool,
     PythonTool,
     ReadFileTool,
     WriteFileTool,
@@ -21,7 +20,6 @@ __all__ = [
     "ToolRegistry",
     "BashTool",
     "DateTimeTool",
-    "ExecTool",
     "PythonTool",
     "ReadFileTool",
     "WriteFileTool",

@@ -8,7 +8,6 @@ from .base import ToolRegistry
 from .builtin import (
     BashTool,
     DateTimeTool,
-    ExecTool,
     PythonTool,
     ReadFileTool,
     WriteFileTool,
@@ -29,10 +28,10 @@ def create_default_tool_registry(
 
     Args:
         workspace_dir: Base directory for file operations (security sandbox)
-        enable_exec: Whether to enable exec/bash tools
+        enable_exec: Whether to enable bash tool
         enable_file_ops: Whether to enable file read/write tools
         enable_python: Whether to enable Python execution tool
-        exec_timeout: Default timeout for exec commands
+        exec_timeout: Default timeout for bash commands
         exec_allowed_commands: List of allowed commands (None = all allowed)
 
     Returns:
@@ -54,13 +53,8 @@ def create_default_tool_registry(
     if enable_python:
         registry.register(PythonTool())
 
-    # Exec/Bash tools (with security restrictions)
+    # Bash tool (with security restrictions)
     if enable_exec:
-        registry.register(ExecTool(
-            allowed_commands=exec_allowed_commands,
-            timeout=exec_timeout,
-            workdir=workspace_dir
-        ))
         registry.register(BashTool(
             allowed_commands=exec_allowed_commands,
             timeout=exec_timeout,

@@ -12,29 +12,28 @@ class ClientManager:
     """Manage chatchat AI client."""
 
     def __init__(self, provider: str, model_name: Optional[str], instruction: str, api_key: Optional[str] = None):
-        """Initialize client manager.
-
-        Args:
-            provider: Model provider (deepseek, openai, alibaba, etc.)
-            model_name: Model name
-            instruction: System prompt
-            api_key: API key
-        """
         self.provider = provider
         self.model_name = model_name
         self.instruction = instruction
-        self.api_key = api_key
+        self._api_key = api_key
         self.ai = None
         self.client = None
-        
         self._init_client()
+
+    def _get_api_key(self) -> Optional[str]:
+        """Get API key from instance or environment."""
+        if self._api_key:
+            return self._api_key
+        return os.environ.get(f"{self.provider.upper()}_API_KEY")
 
     def _init_client(self):
         """Initialize the chatchat client."""
         try:
-            if self.api_key:
-                env_var = f"{self.provider.upper()}_API_KEY"
-                os.environ[env_var] = self.api_key
+            api_key = self._get_api_key()
+            
+            if api_key:
+                os.environ[f"{self.provider.upper()}_API_KEY"] = api_key
+                logger.debug(f"API key set for provider: {self.provider}")
 
             self.ai = AI(
                 provider=self.provider,
