@@ -18,6 +18,7 @@ import uvicorn
 from ..config import PyClawConfig, load_config
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
+from .handlers.agent import _get_or_create_agent, create_agent_context
 from ..version import __version__
 
 logger = logging.getLogger(__name__)
@@ -203,15 +204,14 @@ class GatewayServer:
                                 continue
 
                             # Process message through agent
-                            from ..agents import Agent, AgentContext
-
                             try:
-                                agent = Agent(
-                                    provider=self.config.provider,
-                                    model=self.config.model
+                                config = load_config()
+                                agent = _get_or_create_agent(
+                                    "default", config,
+                                    self.config.provider,
+                                    self.config.model
                                 )
-
-                                agent_context = AgentContext(
+                                agent_context = create_agent_context(
                                     session_id=session_id,
                                     agent_id="default",
                                     user_id=client_id,

@@ -26,18 +26,20 @@ async def handle_chat_history(params: Dict[str, Any], context: Dict[str, Any]) -
     """Get chat history for a session."""
     session_key = params.get("sessionKey") or params.get("session_id") or "default"
     limit = params.get("limit", 50)
-    
+
     runtime = context.get("runtime")
     session = runtime.get_session(session_key)
-    
+
     if not session:
         return {"messages": [], "count": 0}
-    
-    # For now, return empty - in real implementation, this would
-    # retrieve from persistent storage
+
+    history = session.get_history()
+    if limit and limit < len(history):
+        history = history[-limit:]
+
     return {
         "session_key": session_key,
-        "messages": [],
-        "count": 0,
+        "messages": history,
+        "count": len(history),
         "total_messages": session.message_count
     }

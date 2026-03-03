@@ -13,6 +13,23 @@ logger = logging.getLogger(__name__)
 _agent_cache: Dict[str, Any] = {}
 
 
+def create_agent_context(
+    session_id: str,
+    agent_id: str,
+    user_id: str,
+    channel_id: str = "web",
+    instruction: Optional[str] = None
+) -> AgentContext:
+    """Create an AgentContext instance."""
+    return AgentContext(
+        session_id=session_id,
+        agent_id=agent_id,
+        user_id=user_id,
+        channel_id=channel_id,
+        system_prompt=instruction
+    )
+
+
 def _get_or_create_agent(
     agent_id: str,
     config: Any,
@@ -104,12 +121,12 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
         return {"error": f"Failed to initialize agent: {str(e)}"}
     
     # Create agent context
-    agent_context = AgentContext(
+    agent_context = create_agent_context(
         session_id=session_key,
         agent_id=agent_id or "default",
         user_id=context.get("client_id", "anonymous"),
         channel_id="web",
-        system_prompt=getattr(agent, 'instruction', None)
+        instruction=getattr(agent, 'instruction', None)
     )
     
     # Run agent
@@ -175,13 +192,13 @@ async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]):
         yield {"error": f"Failed to initialize agent: {str(e)}"}
         return
     
-    agent_context = AgentContext(
+    agent_context = create_agent_context(
         session_id=session_key,
         agent_id=agent_id or "default",
         user_id=context.get("client_id", "anonymous"),
         channel_id="web"
     )
-    
+
     try:
         async for chunk in agent.chat_stream(message, session, agent_context):
             yield {"chunk": chunk}
@@ -250,13 +267,13 @@ async def handle_tool_call(params: Dict[str, Any], context: Dict[str, Any]) -> D
     try:
         agent = _get_or_create_agent(agent_id or "default", config, provider, model)
         
-        agent_context = AgentContext(
+        agent_context = create_agent_context(
             session_id=params.get("sessionKey", "tool_call"),
             agent_id=agent_id or "default",
             user_id=context.get("client_id", "anonymous"),
             channel_id="web"
         )
-        
+
         result = await agent.tool_registry.execute(tool_name, tool_args, agent_context)
         
         return {
@@ -327,13 +344,13 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
             yield {"error": error_msg}
             return
         
-        agent_context = AgentContext(
+        agent_context = create_agent_context(
             session_id=session_key,
             agent_id=agent_id or "default",
             user_id=context.get("client_id", "anonymous"),
             channel_id="web"
         )
-        
+
         if stream:
             # Streaming response
             full_response = ""
