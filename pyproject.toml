@@ -36,3 +36,13 @@ path = "pyclaw/version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["pyclaw"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-asyncio>=1.3.0",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra -q"
+testpaths = ["tests"]

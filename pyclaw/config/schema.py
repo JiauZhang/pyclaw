@@ -2,12 +2,14 @@
 
 from typing import Optional, List, Dict, Any, Literal
 from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 from pathlib import Path
 
 
 class ModelConfig(BaseModel):
     """AI Model configuration."""
+    model_config = ConfigDict(extra="allow")
+    
     provider: str = Field(..., description="Model provider (openai, anthropic, etc.)")
     model: str = Field(..., description="Model ID")
     api_key: Optional[str] = Field(None, description="API key for the provider")
@@ -15,13 +17,12 @@ class ModelConfig(BaseModel):
     temperature: float = Field(0.7, ge=0, le=2, description="Sampling temperature")
     max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
     timeout: int = Field(60, description="Request timeout in seconds")
-    
-    class Config:
-        extra = "allow"
 
 
 class ChannelConfig(BaseModel):
     """Channel (messaging platform) configuration."""
+    model_config = ConfigDict(extra="allow")
+    
     enabled: bool = Field(True, description="Whether the channel is enabled")
     credentials: Dict[str, str] = Field(default_factory=dict, description="Channel credentials")
     allow_from: List[str] = Field(default_factory=list, description="Allowed sender IDs")
@@ -30,23 +31,21 @@ class ChannelConfig(BaseModel):
         description="Direct message policy"
     )
     webhook_url: Optional[str] = Field(None, description="Webhook URL for incoming messages")
-    
-    class Config:
-        extra = "allow"
 
 
 class ToolConfig(BaseModel):
     """Tool configuration."""
+    model_config = ConfigDict(extra="allow")
+    
     enabled: bool = Field(True, description="Whether the tool is enabled")
     ask: bool = Field(True, description="Whether to ask for confirmation")
     timeout: int = Field(60, description="Tool execution timeout")
-    
-    class Config:
-        extra = "allow"
 
 
 class AgentConfig(BaseModel):
     """Agent (AI assistant) configuration."""
+    model_config = ConfigDict(extra="allow")
+    
     name: str = Field(..., description="Agent display name")
     description: Optional[str] = Field(None, description="Agent description")
     model: Optional[str] = Field(None, description="Model reference")
@@ -55,9 +54,6 @@ class AgentConfig(BaseModel):
     sandbox: Optional[Dict[str, Any]] = Field(None, description="Sandbox configuration")
     memory: bool = Field(True, description="Whether to use memory")
     max_iterations: int = Field(10, description="Maximum tool call iterations")
-    
-    class Config:
-        extra = "allow"
 
 
 class GatewayHttpConfig(BaseModel):
