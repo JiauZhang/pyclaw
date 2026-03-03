@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, AsyncIterator
 from .context import AgentContext
 from ..gateway.runtime import SessionState
 from ..tools import ToolRegistry
-from .core.orchestrator import AgentOrchestrator
+from .orchestrator import AgentOrchestrator
 
 logger = logging.getLogger(__name__)
 
@@ -86,15 +86,12 @@ class Agent:
         if message.startswith("/"):
             return await self.orchestrator.command_handler.handle(message, session)
 
-        # Get or create conversation history
-        history = self.orchestrator.session_manager.get_session_history(session.id)
-        
         # Add user message
-        history.append({"role": "user", "content": message})
+        session.append_message("user", message)
 
         try:
-            # Run the conversation with potential tool calls
-            response = await self.orchestrator.run_conversation(history, context)
+            # Run the conversation
+            response = await self.orchestrator.run_conversation(session, context)
             return response
 
         except Exception as e:

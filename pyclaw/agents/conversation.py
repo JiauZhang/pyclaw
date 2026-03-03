@@ -2,26 +2,76 @@
 
 import logging
 from typing import Dict, List, Any, Optional
+from ..gateway.runtime import SessionState
 
 logger = logging.getLogger(__name__)
+
+
+class MessageProcessor:
+    """Process messages for AI interaction."""
+
+    @staticmethod
+    def build_messages(session: SessionState, instruction: str) -> List[Dict[str, Any]]:
+        """Build messages for API call.
+        
+        Args:
+            session: Session state
+            instruction: System instruction
+            
+        Returns:
+            List of messages ready for API call
+        """
+        return session.build_messages(instruction)
+
+    @staticmethod
+    def get_last_user_message(messages: List[Dict[str, Any]]) -> Optional[str]:
+        """Get last user message from messages.
+        
+        Args:
+            messages: List of messages
+            
+        Returns:
+            Last user message content or None
+        """
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                return msg.get("content", "")
+        return None
+
+    @staticmethod
+    def append_assistant_message(session: SessionState, content: str) -> None:
+        """Append assistant message to session.
+
+        Args:
+            session: Session state
+            content: Assistant message content
+        """
+        session.append_message("assistant", content)
+
+    @staticmethod
+    def append_tool_result(session: SessionState, tool_name: str, result: str) -> None:
+        """Append tool result to session as a user message.
+
+        Args:
+            session: Session state
+            tool_name: Name of the tool that was executed
+            result: Tool execution result
+        """
+        session.append_message("user", f"Tool '{tool_name}' returned: {result}\n\nPlease use this result to answer the user's question. Do not call any more tools.")
 
 
 class ConversationRunner:
     """Handle conversation logic with tool support."""
 
-    def __init__(self, client_manager, tool_registry_adapter, session_manager, tool_parser):
+    def __init__(self, client_manager, tool_registry_adapter):
         """Initialize conversation runner.
 
         Args:
             client_manager: Client manager
             tool_registry_adapter: Tool registry adapter
-            session_manager: Session manager
-            tool_parser: Tool call parser
         """
         self.client_manager = client_manager
         self.tool_registry_adapter = tool_registry_adapter
-        self.session_manager = session_manager
-        self.tool_parser = tool_parser
 
     def get_last_user_message(self, messages: List[Dict[str, Any]]) -> Optional[str]:
         """Get last user message from messages.

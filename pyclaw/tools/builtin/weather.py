@@ -1,7 +1,6 @@
 """Weather tool."""
 
 import asyncio
-import ssl
 from typing import Any, Dict
 
 import httpx
@@ -98,31 +97,26 @@ class WeatherTool(Tool):
     async def _get_public_ip_and_location(self) -> tuple[float, float, str] | None:
         """Get public IP address and location in one call using ipapi.co."""
         try:
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0, connect=5.0),
-                verify=ssl_context
+                timeout=httpx.Timeout(10.0, connect=5.0)
             ) as client:
                 response = await client.get("https://ipapi.co/json/")
                 if response.status_code != 200:
                     return None
-                
+
                 data = response.json()
-                
+
                 lat = data.get("latitude")
                 lon = data.get("longitude")
                 city = data.get("city", "")
                 country = data.get("country_name", "")
-                
+
                 if lat is None or lon is None:
                     return None
-                
+
                 display_name = f"{city}, {country}" if city and country else (city or country or "未知位置")
                 return (lat, lon, display_name)
-                
+
         except Exception:
             pass
         return None
@@ -130,13 +124,8 @@ class WeatherTool(Tool):
     async def _search_location(self, location: str) -> tuple[float, float, str] | None:
         """Search for a single location."""
         try:
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0, connect=5.0),
-                verify=ssl_context
+                timeout=httpx.Timeout(10.0, connect=5.0)
             ) as client:
                 url = "https://geocoding-api.open-meteo.com/v1/search"
                 params = {
@@ -146,54 +135,49 @@ class WeatherTool(Tool):
                     "format": "json"
                 }
                 response = await client.get(url, params=params)
-                
+
                 if response.status_code != 200:
                     return None
-                
+
                 data = response.json()
                 results = data.get("results", [])
-                
+
                 if not results:
                     return None
-                
+
                 result = results[0]
                 lat = result.get("latitude")
                 lon = result.get("longitude")
                 name = result.get("name", location)
                 country = result.get("country", "")
-                
+
                 display_name = f"{name}, {country}" if country else name
                 return (lat, lon, display_name)
-                
+
         except Exception:
             return None
 
     async def _get_weather(self, lat: float, lon: float) -> dict | None:
         """Get weather data from coordinates."""
         try:
-            ssl_context = ssl.create_default_context()
-            ssl_context.check_hostname = False
-            ssl_context.verify_mode = ssl.CERT_NONE
-            
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(15.0, connect=5.0, read=10.0),
-                verify=ssl_context
+                timeout=httpx.Timeout(15.0, connect=5.0, read=10.0)
             ) as client:
                 url = "https://api.open-meteo.com/v1/forecast"
                 params = {
                     "latitude": lat,
                     "longitude": lon,
-                    "current": ["temperature_2m", "relative_humidity_2m", "apparent_temperature", 
+                    "current": ["temperature_2m", "relative_humidity_2m", "apparent_temperature",
                                "weather_code", "wind_speed_10m", "wind_direction_10m"],
                     "timezone": "auto"
                 }
                 response = await client.get(url, params=params)
-                
+
                 if response.status_code != 200:
                     return None
-                
+
                 return response.json()
-                
+
         except Exception:
             return None
 

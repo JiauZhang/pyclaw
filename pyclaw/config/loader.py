@@ -161,17 +161,11 @@ class ConfigLoader:
         """Load configuration from file."""
         with open(self.config_path, 'r') as f:
             content = f.read()
-        
-        # Try JSON first, then JSON5
+
         try:
             return json.loads(content)
         except json.JSONDecodeError:
-            # Try with json5 if available
-            try:
-                import json5
-                return json5.loads(content)
-            except ImportError:
-                raise ValueError("Config file is not valid JSON and json5 is not installed")
+            raise ValueError("Config file is not valid JSON format.")
     
     def _deep_merge(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
         """Deep merge two dictionaries."""

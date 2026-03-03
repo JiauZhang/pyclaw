@@ -15,6 +15,29 @@ class SessionState:
     last_activity: datetime = field(default_factory=datetime.now)
     message_count: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
+    history: List[Dict[str, Any]] = field(default_factory=list)
+
+    def get_history(self) -> List[Dict[str, Any]]:
+        """Get conversation history."""
+        return self.history
+
+    def append_message(self, role: str, content: str) -> None:
+        """Append a message to history."""
+        self.history.append({"role": role, "content": content})
+        self.message_count = len(self.history)
+
+    def clear_history(self) -> None:
+        """Clear conversation history."""
+        self.history.clear()
+        self.message_count = 0
+
+    def build_messages(self, instruction: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Build message list for API call."""
+        messages = []
+        if instruction:
+            messages.append({"role": "system", "content": instruction})
+        messages.extend(self.history)
+        return messages
 
 
 @dataclass

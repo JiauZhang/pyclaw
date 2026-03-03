@@ -35,6 +35,10 @@ def create_sample_config():
       "enabled": true
     }
   },
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
   "models": {
     "openai": {
       "provider": "openai",
@@ -110,9 +114,9 @@ Examples:
     parser.add_argument(
         "--log-level",
         type=str,
-        default="INFO",
+        default=None,
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level (default: INFO)"
+        help="Logging level"
     )
     
     parser.add_argument(
@@ -131,10 +135,6 @@ Examples:
     
     args = parser.parse_args()
     
-    # Setup logging
-    setup_logging(args.log_level)
-    logger = logging.getLogger(__name__)
-    
     # Handle init-config
     if args.init_config:
         create_sample_config()
@@ -148,8 +148,20 @@ Examples:
     
     try:
         config = config_loader.load()
+        
+        # Setup logging
+        if args.log_level:
+            log_level = args.log_level
+        else:
+            log_level = config.logging.get("level", "INFO")
+        setup_logging(log_level)
+        logger = logging.getLogger(__name__)
+        
         logger.info(f"Loaded configuration from {config_loader.config_path}")
     except Exception as e:
+        # Use default log level if config load fails
+        setup_logging(args.log_level or "INFO")
+        logger = logging.getLogger(__name__)
         logger.warning(f"Could not load config: {e}")
         logger.info("Using default configuration")
         config = None

@@ -1,9 +1,9 @@
 """Command handler for agent."""
 
 from typing import Optional
-from ..client import ClientManager
-from ..tools.registry import ToolRegistryAdapter
-from ..sessions.session_manager import SessionManager
+from ..gateway.runtime import SessionState
+from .client import ClientManager
+from .tool_adapter import ToolRegistryAdapter
 
 
 class CommandHandler:
@@ -12,14 +12,12 @@ class CommandHandler:
     def __init__(
         self,
         client_manager: ClientManager,
-        tool_registry_adapter: ToolRegistryAdapter,
-        session_manager: SessionManager
+        tool_registry_adapter: ToolRegistryAdapter
     ):
         self.client_manager = client_manager
         self.tool_registry_adapter = tool_registry_adapter
-        self.session_manager = session_manager
 
-    async def handle(self, command: str, session) -> str:
+    async def handle(self, command: str, session: SessionState) -> str:
         """Handle command."""
         parts = command.split(maxsplit=1)
         cmd = parts[0].lower()
@@ -30,7 +28,6 @@ class CommandHandler:
             "/tools": self._handle_tools,
             "/clear": self._handle_clear,
             "/status": self._handle_status,
-            "/stream": self._handle_stream,
         }
 
         handler = handlers.get(cmd)
@@ -50,8 +47,6 @@ Commands:
 /tools - List tools
 /clear - Clear history
 /status - Show status
-/stream <msg> - Stream response
-
 Just type your message to chat!"""
 
     async def _handle_tools(self, session=None) -> str:
@@ -59,26 +54,18 @@ Just type your message to chat!"""
         tools = self.tool_registry_adapter.list_tools()
         return f"Available tools ({len(tools)}):\n" + "\n".join(f"• {t}" for t in tools)
 
-    async def _handle_clear(self, session) -> str:
+    async def _handle_clear(self, session: SessionState) -> str:
         """Handle /clear command."""
-        if hasattr(session, 'id'):
-            self.session_manager.clear_session(session.id)
+        session.clear_history()
         self.client_manager.clear()
         return "History cleared!"
 
-    async def _handle_status(self, session=None) -> str:
+    async def _handle_status(self, session: SessionState) -> str:
         """Handle /status command."""
         tools = self.tool_registry_adapter.list_tools()
-        history_len = 0
-        if hasattr(session, 'id'):
-            history = self.session_manager.get_session_history(session.id)
-            history_len = len(history)
+        history_len = len(session.get_history())
         return f"""Status:
 • Provider: {self.client_manager.provider}
 • Model: {self.client_manager.model_name or 'default'}
 • Tools: {len(tools)}
 • History: {history_len} messages"""
-
-    async def _handle_stream(self, session=None, args: str = "") -> str:
-        """Handle /stream command."""
-        return "Use the /v1/chat/completions endpoint with stream=true for streaming."

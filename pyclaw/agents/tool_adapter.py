@@ -1,7 +1,7 @@
 """Tool registry adapter."""
 
 from typing import Optional, Dict, Any
-from ...tools import ToolRegistry, create_default_tool_registry, ToolResult
+from ..tools import ToolRegistry, create_default_tool_registry, ToolResult
 
 
 class ToolRegistryAdapter:

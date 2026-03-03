@@ -16,9 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from ..config import PyClawConfig, load_config
-from ..channels.web import WebChannelManager
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
+from ..version import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +45,14 @@ class GatewayServer:
         self.config = config or GatewayConfig()
         self.app = FastAPI(
             title="PyClaw Gateway",
-            description="Personal AI Assistant Gateway",
-            version="0.1.0"
+            description="Personal AI Assistant",
+            version=__version__
         )
         self.runtime = GatewayRuntimeState()
         self.websocket_clients: Dict[str, WebSocket] = {}
         self.handlers: Dict[str, Callable] = {}
         self._shutdown_event = asyncio.Event()
-        
-        # Web Channel for browser interaction
-        self.web_channel = WebChannelManager()
-        
+
         self._setup_middleware()
         self._setup_routes()
     
@@ -78,7 +75,7 @@ class GatewayServer:
             """Root endpoint - Gateway info."""
             return {
                 "name": "PyClaw Gateway",
-                "version": "0.1.0",
+                "version": __version__,
                 "status": "running",
                 "timestamp": datetime.now().isoformat()
             }
@@ -98,7 +95,7 @@ class GatewayServer:
             """Detailed status endpoint."""
             return {
                 "gateway": {
-                    "version": "0.1.0",
+                    "version": __version__,
                     "started_at": self.runtime.started_at.isoformat(),
                     "uptime_seconds": self.runtime.uptime_seconds
                 },
@@ -172,58 +169,86 @@ class GatewayServer:
             """WebSocket endpoint for WebChat - direct browser interaction."""
             await websocket.accept()
             client_id = f"chat_{uuid.uuid4().hex[:8]}"
-            
+            session_id = client_id
+
             logger.info(f"WebChat client {client_id} connected")
-            
-            # Define gateway handler for processing messages
-            async def gateway_handler(message: str, session_id: str, client_id: str, channel: str):
-                """Process message through PyClaw gateway with streaming support."""
-                from ..agents import Agent
-                from ..gateway.runtime import SessionState
-                
-                # Get or create session
-                session = self.runtime.get_or_create_session(session_id, "default")
-                
-                # Create agent
-                try:
-                    agent = Agent(
-                        provider=self.config.provider,
-                        model=self.config.model
-                    )
-                except Exception as e:
-                    logger.error(f"Agent error in WebSocket handler: {e}")
-                    return {
-                        "response": f"Error: {str(e)}",
-                        "agent_id": "default",
-                        "session_id": session_id
-                    }
-                
-                # Create agent context
-                from ..agents import AgentContext
-                agent_context = AgentContext(
-                    session_id=session_id,
-                    agent_id="default",
-                    user_id=client_id,
-                    channel_id=channel
-                )
-                
-                # Update session
-                self.runtime.update_session_activity(session_id)
-                
-                # Return agent and context for streaming
-                return {
-                    "agent": agent,
-                    "session": session,
-                    "context": agent_context,
-                    "session_id": session_id
-                }
-            
-            # Handle WebSocket through web channel manager
-            await self.web_channel.handle_websocket(
-                websocket,
-                client_id,
-                gateway_handler
-            )
+
+            # Send connected message
+            await websocket.send_json({
+                "type": "connected",
+                "client_id": client_id,
+                "timestamp": datetime.now().isoformat()
+            })
+
+            # Get or create session
+            session = self.runtime.get_or_create_session(session_id, "default")
+
+            try:
+                while not self._shutdown_event.is_set():
+                    try:
+                        data = await asyncio.wait_for(
+                            websocket.receive_json(),
+                            timeout=30.0
+                        )
+
+                        msg_type = data.get("type", "message")
+
+                        if msg_type == "ping":
+                            await websocket.send_json({"type": "pong"})
+                            continue
+
+                        if msg_type == "message":
+                            message = data.get("text", "").strip()
+                            if not message:
+                                continue
+
+                            # Process message through agent
+                            from ..agents import Agent, AgentContext
+
+                            try:
+                                agent = Agent(
+                                    provider=self.config.provider,
+                                    model=self.config.model
+                                )
+
+                                agent_context = AgentContext(
+                                    session_id=session_id,
+                                    agent_id="default",
+                                    user_id=client_id,
+                                    channel_id="web"
+                                )
+
+                                # Run agent
+                                response = await agent.run(message, session, agent_context)
+                                self.runtime.update_session_activity(session_id)
+
+                                await websocket.send_json({
+                                    "type": "assistant_message",
+                                    "text": response,
+                                    "timestamp": datetime.now().isoformat()
+                                })
+
+                            except Exception as e:
+                                logger.error(f"Agent error: {e}")
+                                await websocket.send_json({
+                                    "type": "error",
+                                    "error": str(e)
+                                })
+
+                    except asyncio.TimeoutError:
+                        # Send ping to keep connection alive
+                        try:
+                            await websocket.send_json({"type": "ping"})
+                        except:
+                            break
+                    except WebSocketDisconnect:
+                        break
+                    except Exception as e:
+                        logger.error(f"WebSocket error: {e}")
+                        break
+
+            finally:
+                logger.info(f"WebChat client {client_id} disconnected")
         
         @self.app.post("/v1/{method}")
         async def rpc_endpoint(method: str, request: Request):
