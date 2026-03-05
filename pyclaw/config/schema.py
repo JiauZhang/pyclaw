@@ -1,135 +1,231 @@
-"""Configuration schema definitions using Pydantic."""
+"""Configuration schema definitions using dataclasses."""
 
-from typing import Optional, List, Dict, Any, Literal
-from dataclasses import dataclass, field
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from typing import Optional, List, Dict, Any, Literal, TypeVar, Type, cast
+from dataclasses import dataclass, field, asdict
 from pathlib import Path
 
+# Field replacement - using dataclass field directly
 
-class ModelConfig(BaseModel):
+T = TypeVar('T')
+
+
+def validate_sessions(v: Any) -> Dict[str, Any]:
+    """Validate and convert session config."""
+    if isinstance(v, str):
+        return {"store_path": v}
+    return v
+
+
+@dataclass
+class ModelConfig:
     """AI Model configuration."""
-    model_config = ConfigDict(extra="allow")
+    provider: str
+    model: str
+    api_key: Optional[str] = None
+    base_url: Optional[str] = None
+    temperature: float = 0.7
+    max_tokens: Optional[int] = None
+    timeout: int = 60
     
-    provider: str = Field(..., description="Model provider (openai, anthropic, etc.)")
-    model: str = Field(..., description="Model ID")
-    api_key: Optional[str] = Field(None, description="API key for the provider")
-    base_url: Optional[str] = Field(None, description="Custom API base URL")
-    temperature: float = Field(0.7, ge=0, le=2, description="Sampling temperature")
-    max_tokens: Optional[int] = Field(None, description="Maximum tokens to generate")
-    timeout: int = Field(60, description="Request timeout in seconds")
+    def __post_init__(self):
+        # Basic validation
+        if not self.provider:
+            raise ValueError("provider is required")
+        if not self.model:
+            raise ValueError("model is required")
+        if not 0 <= self.temperature <= 2:
+            raise ValueError("temperature must be between 0 and 2")
 
 
-class ChannelConfig(BaseModel):
+@dataclass
+class ChannelConfig:
     """Channel (messaging platform) configuration."""
-    model_config = ConfigDict(extra="allow")
-    
-    enabled: bool = Field(True, description="Whether the channel is enabled")
-    credentials: Dict[str, str] = Field(default_factory=dict, description="Channel credentials")
-    allow_from: List[str] = Field(default_factory=list, description="Allowed sender IDs")
-    dm_policy: Literal["pairing", "open", "closed"] = Field(
-        "pairing", 
-        description="Direct message policy"
-    )
-    webhook_url: Optional[str] = Field(None, description="Webhook URL for incoming messages")
+    enabled: bool = True
+    credentials: Dict[str, str] = field(default_factory=dict)
+    allow_from: List[str] = field(default_factory=list)
+    dm_policy: Literal["pairing", "open", "closed"] = "pairing"
+    webhook_url: Optional[str] = None
 
 
-class ToolConfig(BaseModel):
+@dataclass
+class ToolConfig:
     """Tool configuration."""
-    model_config = ConfigDict(extra="allow")
-    
-    enabled: bool = Field(True, description="Whether the tool is enabled")
-    ask: bool = Field(True, description="Whether to ask for confirmation")
-    timeout: int = Field(60, description="Tool execution timeout")
+    enabled: bool = True
+    ask: bool = True
+    timeout: int = 60
 
 
-class AgentConfig(BaseModel):
+@dataclass
+class AgentConfig:
     """Agent (AI assistant) configuration."""
-    model_config = ConfigDict(extra="allow")
+    name: str
+    description: Optional[str] = None
+    model: Optional[str] = None
+    system_prompt: Optional[str] = None
+    tools: List[str] = field(default_factory=list)
+    sandbox: Optional[Dict[str, Any]] = None
+    memory: bool = True
+    max_iterations: int = 10
     
-    name: str = Field(..., description="Agent display name")
-    description: Optional[str] = Field(None, description="Agent description")
-    model: Optional[str] = Field(None, description="Model reference")
-    system_prompt: Optional[str] = Field(None, description="System prompt")
-    tools: List[str] = Field(default_factory=list, description="Enabled tools")
-    sandbox: Optional[Dict[str, Any]] = Field(None, description="Sandbox configuration")
-    memory: bool = Field(True, description="Whether to use memory")
-    max_iterations: int = Field(10, description="Maximum tool call iterations")
+    def __post_init__(self):
+        if not self.name:
+            raise ValueError("name is required")
 
 
-class GatewayHttpConfig(BaseModel):
+@dataclass
+class GatewayHttpConfig:
     """Gateway HTTP server configuration."""
-    enabled: bool = Field(True)
-    port: int = Field(12321)
-    host: str = Field("127.0.0.1")
-    cors_origins: List[str] = Field(default_factory=list)
+    enabled: bool = True
+    port: int = 12321
+    host: str = "127.0.0.1"
+    cors_origins: List[str] = field(default_factory=list)
 
 
-class GatewayWsConfig(BaseModel):
+@dataclass
+class GatewayWsConfig:
     """Gateway WebSocket configuration."""
-    enabled: bool = Field(True)
-    ping_interval: int = Field(30)
-    ping_timeout: int = Field(10)
+    enabled: bool = True
+    ping_interval: int = 30
+    ping_timeout: int = 10
 
 
-class GatewayConfig(BaseModel):
+@dataclass
+class GatewayConfig:
     """Gateway server configuration."""
-    http: GatewayHttpConfig = Field(default_factory=GatewayHttpConfig)
-    websocket: GatewayWsConfig = Field(default_factory=GatewayWsConfig)
-    control_ui: Dict[str, Any] = Field(default_factory=lambda: {"enabled": True})
-    auth: Dict[str, Any] = Field(default_factory=dict)
-    
+    http: GatewayHttpConfig = field(default_factory=GatewayHttpConfig)
+    websocket: GatewayWsConfig = field(default_factory=GatewayWsConfig)
+    control_ui: Dict[str, Any] = field(default_factory=lambda: {"enabled": True})
+    auth: Dict[str, Any] = field(default_factory=dict)
 
-class SessionConfig(BaseModel):
+
+@dataclass
+class SessionConfig:
     """Session management configuration."""
-    store_path: str = Field("~/.pyclaw/sessions", description="Session storage path")
-    max_history: int = Field(100, description="Maximum messages per session")
-    ttl_hours: Optional[int] = Field(None, description="Session TTL in hours")
+    store_path: str = "~/.pyclaw/sessions"
+    max_history: int = 100
+    ttl_hours: Optional[int] = None
 
 
-class SkillConfig(BaseModel):
+@dataclass
+class SkillConfig:
     """Skill (plugin) configuration."""
-    enabled: bool = Field(True)
-    auto_enable: bool = Field(False, description="Auto-enable new skills")
-    paths: List[str] = Field(default_factory=list, description="Skill search paths")
+    enabled: bool = True
+    auto_enable: bool = False
+    paths: List[str] = field(default_factory=list)
 
 
-class PyClawConfig(BaseModel):
+@dataclass
+class PyClawConfig:
     """Main PyClaw configuration."""
-    version: str = Field("1.0", description="Config version")
+    version: str = "1.0"
     
     # Gateway configuration
-    gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    gateway: GatewayConfig = field(default_factory=GatewayConfig)
     
     # Model configurations
-    models: Dict[str, ModelConfig] = Field(default_factory=dict)
-    default_model: Optional[str] = Field(None, description="Default model reference")
+    models: Dict[str, ModelConfig] = field(default_factory=dict)
+    default_model: Optional[str] = None
     
     # Channel configurations
-    channels: Dict[str, ChannelConfig] = Field(default_factory=dict)
+    channels: Dict[str, ChannelConfig] = field(default_factory=dict)
     
     # Agent configurations
-    agents: Dict[str, AgentConfig] = Field(default_factory=dict)
-    default_agent: Optional[str] = Field("default", description="Default agent ID")
+    agents: Dict[str, AgentConfig] = field(default_factory=dict)
+    default_agent: Optional[str] = "default"
     
     # Tool configurations
-    tools: Dict[str, ToolConfig] = Field(default_factory=dict)
+    tools: Dict[str, ToolConfig] = field(default_factory=dict)
     
     # Session configuration
-    sessions: SessionConfig = Field(default_factory=SessionConfig)
+    sessions: SessionConfig = field(default_factory=SessionConfig)
     
     # Skill configuration
-    skills: SkillConfig = Field(default_factory=SkillConfig)
+    skills: SkillConfig = field(default_factory=SkillConfig)
     
     # Logging
-    logging: Dict[str, Any] = Field(default_factory=dict)
+    logging: Dict[str, Any] = field(default_factory=dict)
     
-    @field_validator("sessions", mode="before")
-    @classmethod
-    def validate_sessions(cls, v):
-        """Validate and convert session config."""
-        if isinstance(v, str):
-            return {"store_path": v}
-        return v
+    def __init__(self, **kwargs):
+        # Handle gateway configuration
+        if 'gateway' in kwargs:
+            gateway_data = kwargs['gateway']
+            if isinstance(gateway_data, dict):
+                # Handle nested http and websocket configs
+                if 'http' in gateway_data and isinstance(gateway_data['http'], dict):
+                    gateway_data['http'] = GatewayHttpConfig(**gateway_data['http'])
+                if 'websocket' in gateway_data and isinstance(gateway_data['websocket'], dict):
+                    gateway_data['websocket'] = GatewayWsConfig(**gateway_data['websocket'])
+                kwargs['gateway'] = GatewayConfig(**gateway_data)
+        
+        # Handle sessions validation
+        if 'sessions' in kwargs:
+            sessions_data = validate_sessions(kwargs['sessions'])
+            if isinstance(sessions_data, dict):
+                kwargs['sessions'] = SessionConfig(**sessions_data)
+        
+        # Handle skills configuration
+        if 'skills' in kwargs and isinstance(kwargs['skills'], dict):
+            kwargs['skills'] = SkillConfig(**kwargs['skills'])
+        
+        # Handle models configuration
+        if 'models' in kwargs and isinstance(kwargs['models'], dict):
+            models_dict = {}
+            for model_name, model_data in kwargs['models'].items():
+                if isinstance(model_data, dict):
+                    models_dict[model_name] = ModelConfig(**model_data)
+            kwargs['models'] = models_dict
+        
+        # Handle channels configuration
+        if 'channels' in kwargs and isinstance(kwargs['channels'], dict):
+            channels_dict = {}
+            for channel_name, channel_data in kwargs['channels'].items():
+                if isinstance(channel_data, dict):
+                    channels_dict[channel_name] = ChannelConfig(**channel_data)
+            kwargs['channels'] = channels_dict
+        
+        # Handle agents configuration
+        if 'agents' in kwargs and isinstance(kwargs['agents'], dict):
+            agents_dict = {}
+            for agent_name, agent_data in kwargs['agents'].items():
+                if isinstance(agent_data, dict):
+                    agents_dict[agent_name] = AgentConfig(**agent_data)
+            kwargs['agents'] = agents_dict
+        
+        # Handle tools configuration
+        if 'tools' in kwargs and isinstance(kwargs['tools'], dict):
+            tools_dict = {}
+            for tool_name, tool_data in kwargs['tools'].items():
+                if isinstance(tool_data, dict):
+                    tools_dict[tool_name] = ToolConfig(**tool_data)
+            kwargs['tools'] = tools_dict
+        
+        # Initialize all fields
+        for field_name, field_value in kwargs.items():
+            setattr(self, field_name, field_value)
+        
+        # Set default values for missing fields
+        if not hasattr(self, 'version'):
+            self.version = "1.0"
+        if not hasattr(self, 'gateway'):
+            self.gateway = GatewayConfig()
+        if not hasattr(self, 'models'):
+            self.models = {}
+        if not hasattr(self, 'default_model'):
+            self.default_model = None
+        if not hasattr(self, 'channels'):
+            self.channels = {}
+        if not hasattr(self, 'agents'):
+            self.agents = {}
+        if not hasattr(self, 'default_agent'):
+            self.default_agent = "default"
+        if not hasattr(self, 'tools'):
+            self.tools = {}
+        if not hasattr(self, 'sessions'):
+            self.sessions = SessionConfig()
+        if not hasattr(self, 'skills'):
+            self.skills = SkillConfig()
+        if not hasattr(self, 'logging'):
+            self.logging = {}
     
     def get_model_config(self, model_ref: Optional[str] = None) -> Optional[ModelConfig]:
         """Get model configuration by reference."""
@@ -148,6 +244,15 @@ class PyClawConfig(BaseModel):
     def get_channel_config(self, channel_id: str) -> Optional[ChannelConfig]:
         """Get channel configuration by ID."""
         return self.channels.get(channel_id)
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
+        return asdict(self)
+    
+    @classmethod
+    def model_validate(cls, data: Dict[str, Any]) -> 'PyClawConfig':
+        """Validate and create config from dictionary."""
+        return cls(**data)
 
 
 @dataclass
