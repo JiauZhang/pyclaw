@@ -1,30 +1,15 @@
-"""Tools system for pyclaw.
+from .system import bash_tool, exec_tool, python_tool
+from .file import read_file_tool, write_file_tool
+from .info import datetime_tool, geocode_tool, location_tool, weather_tool
 
-Provides extensible tool framework for agent capabilities.
-"""
-
-from .base import Tool, ToolResult, ToolRegistry
-from .builtin import (
-    BashTool,
-    DateTimeTool,
-    ExecTool,
-    PythonTool,
-    ReadFileTool,
-    WriteFileTool,
-    WeatherTool,
-)
-from .registry import create_default_tool_registry
-
-__all__ = [
-    "Tool",
-    "ToolResult",
-    "ToolRegistry",
-    "BashTool",
-    "DateTimeTool",
-    "ExecTool",
-    "PythonTool",
-    "ReadFileTool",
-    "WriteFileTool",
-    "WeatherTool",
-    "create_default_tool_registry",
+tools = [
+    bash_tool,
+    exec_tool,
+    python_tool,
+    read_file_tool,
+    write_file_tool,
+    datetime_tool,
+    geocode_tool,
+    location_tool,
+    weather_tool,
 ]

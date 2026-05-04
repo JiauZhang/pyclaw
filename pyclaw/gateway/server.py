@@ -15,7 +15,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-from ..config import PyClawConfig, load_config
+from ..config import load as load_config
 from ..channels.web import WebChannelManager
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
@@ -172,57 +172,30 @@ class GatewayServer:
             """WebSocket endpoint for WebChat - direct browser interaction."""
             await websocket.accept()
             client_id = f"chat_{uuid.uuid4().hex[:8]}"
-            
+
             logger.info(f"WebChat client {client_id} connected")
-            
-            # Define gateway handler for processing messages
-            async def gateway_handler(message: str, session_id: str, client_id: str, channel: str):
-                """Process message through PyClaw gateway with streaming support."""
-                from ..agents import Agent
-                from ..gateway.runtime import SessionState
-                
-                # Get or create session
-                session = self.runtime.get_or_create_session(session_id, "default")
-                
-                # Create agent
-                try:
-                    agent = Agent(
-                        provider=self.config.provider,
-                        model=self.config.model
-                    )
-                except Exception as e:
-                    logger.error(f"Agent error in WebSocket handler: {e}")
-                    return {
-                        "response": f"Error: {str(e)}",
-                        "agent_id": "default",
-                        "session_id": session_id
-                    }
-                
-                # Create agent context
-                from ..agents import AgentContext
-                agent_context = AgentContext(
-                    session_id=session_id,
-                    agent_id="default",
-                    user_id=client_id,
-                    channel_id=channel
+
+            # Create agent
+            from ..agents import Agent
+            try:
+                agent = Agent(
+                    provider=self.config.provider,
+                    model=self.config.model
                 )
-                
-                # Update session
-                self.runtime.update_session_activity(session_id)
-                
-                # Return agent and context for streaming
-                return {
-                    "agent": agent,
-                    "session": session,
-                    "context": agent_context,
-                    "session_id": session_id
-                }
-            
+            except Exception as e:
+                logger.error(f"Agent error in WebSocket handler: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "error": f"Failed to initialize agent: {str(e)}"
+                })
+                return
+
             # Handle WebSocket through web channel manager
             await self.web_channel.handle_websocket(
                 websocket,
                 client_id,
-                gateway_handler
+                agent,
+                self.runtime
             )
         
         @self.app.post("/v1/{method}")
@@ -336,8 +309,8 @@ class GatewayServer:
         register_handlers(self)
         
         # Load configuration
-        config = load_config()
-        logger.info(f"Loaded configuration from {config}")
+        load_config()
+        logger.info("Configuration loaded")
         
         # Start server
         config = uvicorn.Config(

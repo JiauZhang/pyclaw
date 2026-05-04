@@ -1,6 +1,6 @@
 import argparse, asyncio, logging, sys
 from pathlib import Path
-from pyclaw import GatewayServer, GatewayConfig, ConfigLoader
+from pyclaw import GatewayServer, GatewayConfig, load as load_config
 
 
 def setup_logging(level: str = "INFO"):
@@ -141,14 +141,9 @@ Examples:
         return
     
     # Load configuration
-    if args.config:
-        config_loader = ConfigLoader(Path(args.config))
-    else:
-        config_loader = ConfigLoader()
-    
     try:
-        config = config_loader.load()
-        logger.info(f"Loaded configuration from {config_loader.config_path}")
+        config = load_config(Path(args.config) if args.config else None)
+        logger.info("Configuration loaded")
     except Exception as e:
         logger.warning(f"Could not load config: {e}")
         logger.info("Using default configuration")
@@ -164,10 +159,13 @@ Examples:
     )
     
     # Override from config file if available
-    if config and config.gateway:
-        gateway_config.port = config.gateway.http.port
-        gateway_config.host = config.gateway.http.host
-        gateway_config.control_ui_enabled = config.gateway.control_ui.get("enabled", True)
+    if config and config.get("gateway"):
+        gw = config["gateway"]
+        if gw.get("http"):
+            gateway_config.port = gw["http"].get("port", gateway_config.port)
+            gateway_config.host = gw["http"].get("host", gateway_config.host)
+        if gw.get("control_ui"):
+            gateway_config.control_ui_enabled = gw["control_ui"].get("enabled", gateway_config.control_ui_enabled)
     
     # Override from command line
     gateway_config.port = args.port
