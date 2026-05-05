@@ -1,7 +1,7 @@
 import argparse, asyncio, logging, sys
 from pathlib import Path
 from conippets import json
-from pyclaw import GatewayServer, GatewayConfig, load as load_config, __secret_file__
+from pyclaw import GatewayServer, GatewayConfig, load as load_config, __secret_file__, __version__
 from chatchat.cli.config import parse_config, cli_config
 
 
@@ -38,6 +38,7 @@ async def start_server(args):
         gateway_config.control_ui_enabled = gw.get("control_ui", {}).get("enabled", True)
 
     gateway = GatewayServer(gateway_config)
+    logger.info(f"Using provider={gateway_config.provider}, model={gateway_config.model}")
 
     try:
         await gateway.start()
@@ -50,6 +51,7 @@ async def start_server(args):
 
 def main():
     parser = argparse.ArgumentParser(description="PyClaw Python Gateway")
+    parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve", help="Start the gateway server")
@@ -57,12 +59,16 @@ def main():
     serve_parser.add_argument("--host", type=str, default="127.0.0.1", help="Gateway host")
     serve_parser.add_argument("--config", type=str, help="Path to config file")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    serve_parser.add_argument("--provider", type=str, default="tencent", help="AI model provider")
-    serve_parser.add_argument("--model", type=str, default="hunyuan-lite", help="AI model name")
+    serve_parser.add_argument("--provider", type=str, default="openrouter", help="AI model provider")
+    serve_parser.add_argument("--model", type=str, default="tencent/hy3-preview:free", help="AI model name")
 
     cli_config(subparsers)
 
     args = parser.parse_args()
+
+    if args.version:
+        print(__version__)
+        return
 
     if args.command == "config":
         if not Path(__secret_file__).exists():

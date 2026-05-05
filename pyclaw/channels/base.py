@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Dict, Any, AsyncIterator
+from typing import Optional, Dict, Any, AsyncIterator, Callable
 from datetime import datetime
 
 
@@ -41,87 +41,55 @@ class ChannelAdapter(ABC):
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self._connected = False
-        self._message_handler: Optional[callable] = None
-    
+        self._message_handler: Optional[Callable] = None
+
     @property
     @abstractmethod
     def channel_id(self) -> str:
         """Return the unique channel identifier."""
         pass
-    
+
     @property
     def connected(self) -> bool:
         """Check if the adapter is connected."""
         return self._connected
-    
+
     @abstractmethod
     async def connect(self) -> bool:
-        """
-        Connect to the channel.
-        
-        Returns:
-            True if connection successful
-        """
+        """Connect to the channel."""
         pass
-    
+
     @abstractmethod
     async def disconnect(self):
         """Disconnect from the channel."""
         pass
-    
+
     @abstractmethod
     async def send_message(self, to: str, message: OutboundMessage) -> bool:
-        """
-        Send a message to a recipient.
-        
-        Args:
-            to: Recipient identifier
-            message: Message to send
-            
-        Returns:
-            True if sent successfully
-        """
+        """Send a message to a recipient."""
         pass
-    
+
     @abstractmethod
     async def receive_messages(self) -> AsyncIterator[InboundMessage]:
-        """
-        Receive messages from the channel.
-        
-        Yields:
-            Incoming messages
-        """
+        """Receive messages from the channel."""
         pass
-    
-    def set_message_handler(self, handler: callable):
+
+    def set_message_handler(self, handler: Callable):
         """Set a handler for incoming messages."""
         self._message_handler = handler
-    
+
     async def handle_incoming(self, message: InboundMessage):
         """Handle an incoming message."""
         if self._message_handler:
             await self._message_handler(message, self.channel_id)
-    
+
     @abstractmethod
     async def get_user_info(self, user_id: str) -> Dict[str, Any]:
-        """
-        Get information about a user.
-        
-        Args:
-            user_id: User identifier
-            
-        Returns:
-            User information dictionary
-        """
+        """Get information about a user."""
         pass
-    
+
     async def health_check(self) -> Dict[str, Any]:
-        """
-        Perform a health check.
-        
-        Returns:
-            Health status dictionary
-        """
+        """Perform a health check."""
         return {
             "channel_id": self.channel_id,
             "connected": self._connected,

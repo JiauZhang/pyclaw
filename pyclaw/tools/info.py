@@ -124,15 +124,6 @@ def _get_weather_data(lat: float, lon: float):
         return resp.json()
 
 
-@tool(
-    name='location',
-    description='Get the current geographic location (city, country, latitude, longitude) based on IP address.',
-    parameters={
-        'type': 'object',
-        'properties': {},
-        'required': [],
-    }
-)
 def _get_ip_location():
     with httpx.Client(timeout=10) as client:
         resp = client.get('https://ipapi.co/json/')

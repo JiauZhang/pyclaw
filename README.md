@@ -1,6 +1,6 @@
 # PyClaw
 
-PyClaw is a personal AI assistant that provides a unified interface for interacting with various AI models and tools.
+PyClaw is a personal AI assistant built on [chatchat](https://github.com/jiauzhang/chatchat).
 
 ## Installation
 
@@ -10,34 +10,43 @@ pip install pyclaw
 
 ## Quick Start
 
-### 1. Start the PyClaw
+Start the server:
 
 ```shell
-pyclaw
+pyclaw serve
 ```
-
-### 2. Access the Web Interface
 
 Open your browser and navigate to:
 
 ```
-http://127.0.0.1:12321
+http://127.0.0.1:12321/chat
 ```
 
 ## Command Line Options
 
-### Use a Specific AI Provider
-
 ```shell
-pyclaw --provider tencent --model hunyuan-lite --port 12321 --host 0.0.0.0
+pyclaw serve --provider openrouter --model "tencent/hy3-preview:free" --port 12321 --host 0.0.0.0
 ```
 
-## Built-in Tools
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--provider` | `openrouter` | AI model provider |
+| `--model` | `tencent/hy3-preview:free` | Model name |
+| `--port` | `12321` | HTTP server port |
+| `--host` | `127.0.0.1` | Bind address |
+| `--log-level` | `INFO` | Logging level |
 
-PyClaw comes with several built-in tools:
+## API Endpoints
 
-- **time**: Get current date and time
-- **weather**: Check weather information
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Server info |
+| `/health` | GET | Health check |
+| `/v1/status` | GET | Detailed runtime status |
+| `/v1/{method}` | POST | RPC endpoint |
+| `/ws` | WebSocket | General WebSocket connection |
+| `/chat/ws` | WebSocket | WebChat streaming connection |
+| `/chat` | GET | WebChat UI |
 
 ## Sponsor
 
