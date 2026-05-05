@@ -1,197 +1,82 @@
 import argparse, asyncio, logging, sys
 from pathlib import Path
-from pyclaw import GatewayServer, GatewayConfig, load as load_config
+from conippets import json
+from pyclaw import GatewayServer, GatewayConfig, load as load_config, __secret_file__
+from chatchat.cli.config import parse_config, cli_config
 
 
 def setup_logging(level: str = "INFO"):
-    """Setup logging configuration."""
     logging.basicConfig(
         level=getattr(logging, level.upper()),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.StreamHandler(sys.stdout)
-        ]
+        handlers=[logging.StreamHandler(sys.stdout)]
     )
 
 
-def create_sample_config():
-    """Create a sample configuration file."""
-    config_path = Path.home() / ".pyclaw" / "config.json"
-    
-    if config_path.exists():
-        print(f"Config file already exists at {config_path}")
-        return
-    
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    sample_config = """{
-  "version": "1.0",
-  "gateway": {
-    "http": {
-      "port": 12321,
-      "host": "127.0.0.1"
-    },
-    "control_ui": {
-      "enabled": true
-    }
-  },
-  "models": {
-    "openai": {
-      "provider": "openai",
-      "model": "gpt-4",
-      "api_key": null
-    }
-  },
-  "default_model": "openai",
-  "agents": {
-    "default": {
-      "name": "Default Agent",
-      "system_prompt": "You are a helpful AI assistant.",
-      "tools": ["echo", "time"],
-      "memory": true
-    }
-  },
-  "channels": {},
-  "sessions": {
-    "store_path": "~/.pyclaw/sessions",
-    "max_history": 100
-  }
-}"""
-    
-    with open(config_path, 'w') as f:
-        f.write(sample_config)
-    
-    print(f"Sample config created at {config_path}")
-    print("Please edit it to add your API keys and preferences.")
-
-
-async def main():
-    """Main entry point."""
-    parser = argparse.ArgumentParser(
-        description="PyClaw Python Gateway",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  %(prog)s                           # Start with default settings
-  %(prog)s --port 12321              # Start on port 12321
-  %(prog)s --host 0.0.0.0            # Listen on all interfaces
-  %(prog)s --provider tencent        # Use Tencent provider
-  %(prog)s --provider tencent --model hunyuan-lite  # Use Tencent with Hunyuan Lite
-  %(prog)s --init-config             # Create sample config file
-        """
-    )
-    
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=12321,
-        help="Gateway port (default: 12321)"
-    )
-    
-    parser.add_argument(
-        "--host",
-        type=str,
-        default="127.0.0.1",
-        help="Gateway host (default: 127.0.0.1)"
-    )
-    
-    parser.add_argument(
-        "--config",
-        type=str,
-        help="Path to config file"
-    )
-    
-    parser.add_argument(
-        "--init-config",
-        action="store_true",
-        help="Create a sample configuration file"
-    )
-    
-    parser.add_argument(
-        "--log-level",
-        type=str,
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging level (default: INFO)"
-    )
-    
-    parser.add_argument(
-        "--provider",
-        type=str,
-        default='tencent',
-        help="AI model provider (deepseek, openai, alibaba, etc.)"
-    )
-    
-    parser.add_argument(
-        "--model",
-        type=str,
-        default='hunyuan-lite',
-        help="AI model name (e.g., deepseek-chat, gpt-4, gpt-3.5-turbo)"
-    )
-    
-    args = parser.parse_args()
-    
-    # Setup logging
+async def start_server(args):
     setup_logging(args.log_level)
     logger = logging.getLogger(__name__)
-    
-    # Handle init-config
-    if args.init_config:
-        create_sample_config()
-        return
-    
-    # Load configuration
+
     try:
         config = load_config(Path(args.config) if args.config else None)
         logger.info("Configuration loaded")
     except Exception as e:
         logger.warning(f"Could not load config: {e}")
-        logger.info("Using default configuration")
         config = None
-    
-    # Create gateway config
+
     gateway_config = GatewayConfig(
         port=args.port,
         host=args.host,
-        control_ui_enabled=True,
         provider=args.provider,
         model=args.model
     )
-    
-    # Override from config file if available
+
     if config and config.get("gateway"):
         gw = config["gateway"]
-        if gw.get("http"):
-            gateway_config.port = gw["http"].get("port", gateway_config.port)
-            gateway_config.host = gw["http"].get("host", gateway_config.host)
-        if gw.get("control_ui"):
-            gateway_config.control_ui_enabled = gw["control_ui"].get("enabled", gateway_config.control_ui_enabled)
-    
-    # Override from command line
-    gateway_config.port = args.port
-    gateway_config.host = args.host
-    
-    # Create and start gateway
+        gateway_config.port = gw.get("http", {}).get("port", gateway_config.port)
+        gateway_config.host = gw.get("http", {}).get("host", gateway_config.host)
+        gateway_config.control_ui_enabled = gw.get("control_ui", {}).get("enabled", True)
+
     gateway = GatewayServer(gateway_config)
-    
+
     try:
         await gateway.start()
     except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
         await gateway.shutdown()
     except Exception as e:
         logger.error(f"Gateway error: {e}")
         raise
 
 
-def cli():
-    """Synchronous entry point for CLI."""
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nShutdown complete")
-        sys.exit(0)
+def main():
+    parser = argparse.ArgumentParser(description="PyClaw Python Gateway")
+    subparsers = parser.add_subparsers(dest="command")
+
+    serve_parser = subparsers.add_parser("serve", help="Start the gateway server")
+    serve_parser.add_argument("--port", type=int, default=12321, help="Gateway port")
+    serve_parser.add_argument("--host", type=str, default="127.0.0.1", help="Gateway host")
+    serve_parser.add_argument("--config", type=str, help="Path to config file")
+    serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    serve_parser.add_argument("--provider", type=str, default="tencent", help="AI model provider")
+    serve_parser.add_argument("--model", type=str, default="hunyuan-lite", help="AI model name")
+
+    cli_config(subparsers)
+
+    args = parser.parse_args()
+
+    if args.command == "config":
+        if not Path(__secret_file__).exists():
+            Path(__secret_file__).parent.mkdir(parents=True, exist_ok=True)
+            json.write(__secret_file__, {})
+        parse_config(args, secret_file=__secret_file__)
+        return
+
+    if args.command is None or args.command == "serve":
+        asyncio.run(start_server(args))
 
 
 if __name__ == "__main__":
-    cli()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\nShutdown complete")
