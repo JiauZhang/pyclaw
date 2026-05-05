@@ -45,9 +45,7 @@ Use the tool results to provide accurate and helpful responses to the user.
 Be helpful, accurate, and concise.'''
 
     def chat(self, message: str) -> str:
-        """Send a message and get a response (non-streaming)."""
-        response = self._agent.client.chat(message, generation_options=self._agent.generation_options, tools=self._agent.tools)
-        return ''.join(response)
+        return self._agent.client.chat(message, generation_options=self._agent.generation_options, tools=self._agent.tools)
 
     def chat_stream(self, message: str):
         """Send a message and get a streaming response."""
