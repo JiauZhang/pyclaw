@@ -88,6 +88,10 @@ class ChannelAdapter(ABC):
         """Get information about a user."""
         pass
 
+    async def wait_until_ready(self, timeout: float = 30.0) -> bool:
+        """Wait until the adapter is fully ready to send messages."""
+        return self._connected
+
     async def health_check(self) -> Dict[str, Any]:
         """Perform a health check."""
         return {

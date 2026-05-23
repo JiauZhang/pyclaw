@@ -3,9 +3,10 @@ from .version import __version__
 import os
 from pathlib import Path
 
-_pyclaw_home = os.environ.get("PYCLAW_HOME", str(Path.home() / ".pyclaw"))
-os.environ["CHATCHAT_SECRET_FILE"] = os.path.join(_pyclaw_home, "chatchat.json")
-os.environ["IMCHAT_HOME"] = _pyclaw_home
+__pyclaw_home__ = os.environ.get("PYCLAW_HOME", str(Path.home() / ".pyclaw"))
+os.environ["PYCLAW_HOME"] = __pyclaw_home__
+os.environ["CHATCHAT_SECRET_FILE"] = os.path.join(__pyclaw_home__, "chatchat.json")
+os.environ["IMCHAT_HOME"] = __pyclaw_home__
 
 from chatchat.client import __secret_file__
 
@@ -20,4 +21,5 @@ __all__ = [
     "load",
     "Agent",
     "IMChannelAdapter",
+    "__pyclaw_home__",
 ]

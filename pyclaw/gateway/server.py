@@ -13,6 +13,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from pyclaw.version import __version__
+
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelManager
 from .runtime import GatewayRuntimeState
@@ -25,7 +27,6 @@ logger = logging.getLogger(__name__)
 class GatewayConfig:
     port: int = 12321
     host: str = "127.0.0.1"
-    control_ui_enabled: bool = True
     cors_origins: List[str] = field(default_factory=list)
     provider: Optional[str] = None
     model: Optional[str] = None
@@ -65,25 +66,16 @@ class GatewayServer:
         async def root():
             return {
                 "name": "PyClaw Gateway",
-                "version": "0.1.0",
+                "version": __version__,
                 "status": "running",
                 "timestamp": datetime.now().isoformat()
-            }
-
-        @self.app.get("/health")
-        async def health():
-            return {
-                "status": "healthy",
-                "sessions": len(self.runtime.sessions),
-                "clients": len(self.websocket_clients),
-                "uptime": self.runtime.uptime_seconds
             }
 
         @self.app.get("/v1/status")
         async def status():
             return {
                 "gateway": {
-                    "version": "0.1.0",
+                    "version": __version__,
                     "started_at": self.runtime.started_at.isoformat(),
                     "uptime_seconds": self.runtime.uptime_seconds
                 },
@@ -332,6 +324,10 @@ class GatewayServer:
 
             adapter = IMChannelAdapter({"platform": platform, **(cfg.get("options") or {})})
 
+            # Inherit root-level greeting_text if not already set per-channel
+            if "greeting_text" not in adapter.config and "greeting_text" in self._app_config:
+                adapter.config["greeting_text"] = self._app_config["greeting_text"]
+
             # Agent for this channel
             from ..agents import Agent
 
@@ -344,6 +340,9 @@ class GatewayServer:
                     _agent=agent,
                     _platform=platform,
             ):
+                # Remember this sender so future startups can send proactively
+                await _adapter.save_known_contact(msg.sender_id)
+
                 session_id = f"im_{_platform}_{msg.sender_id}"
                 self.runtime.get_or_create_session(session_id)
                 try:
@@ -371,6 +370,15 @@ class GatewayServer:
             if ok:
                 self.channels[platform] = adapter
                 logger.info("IM channel '%s' connected", platform)
+
+                # Wait for the adapter to be fully ready, then try proactive greeting
+                ready = await adapter.wait_until_ready()
+                if ready:
+                    await adapter.send_greeting_on_startup()
+                else:
+                    logger.warning(
+                        "Channel '%s' not ready after connect, greeting skipped", platform
+                    )
             else:
                 logger.warning("IM channel '%s' failed to connect", platform)
                 self.runtime.set_channel_error(adapter.channel_id, "connect failed")

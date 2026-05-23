@@ -90,6 +90,78 @@ class IMChannelAdapter(ChannelAdapter):
             except asyncio.TimeoutError:
                 continue
 
+    async def wait_until_ready(self, timeout: float = 30.0) -> bool:
+        """Wait until the adapter is fully ready to send messages.
+
+        QQ connects asynchronously — the client may not be ready immediately
+        after connect() returns.  We poll ``_connected`` until it becomes
+        ``True`` or the timeout expires.
+        """
+        if self._connected:
+            return True
+        if self.platform != "qq":
+            return self._connected
+        for _ in range(int(timeout)):
+            if self._connected:
+                return True
+            await asyncio.sleep(1)
+        return self._connected
+
+    async def send_greeting_on_startup(self) -> bool:
+        """Proactively send the greeting to a known contact from keystore.
+
+        QQ: sends via ``send_c2c_message`` using ``user_openid`` from
+        ``~/.pyclaw/qq.json`` (same pattern as ``qq_echo_bot.py``).
+
+        WeChat: sends via ``send_text`` using ``user_id`` from
+        ``~/.pyclaw/wechat.json``.
+
+        If no saved contact exists yet, logs a hint so the user knows to
+        send a message first.
+        """
+        greeting_text = self.config.get("greeting_text", "")
+        if not greeting_text:
+            return False
+
+        from imchat.keystore import load_keys
+        keys = load_keys(self.platform)
+
+        contact_id = keys.get("user_openid") or keys.get("user_id")
+        if not contact_id:
+            logger.info(
+                "No saved contact for '%s' — greeting will be sent on next startup "
+                "after someone messages the bot",
+                self.platform,
+            )
+            return False
+
+        ok = await self.send_message(
+            contact_id, OutboundMessage(text=greeting_text)
+        )
+        if ok:
+            logger.info(
+                "Greeting sent proactively to %s on '%s'", contact_id, self.platform
+            )
+            return True
+
+        logger.warning(
+            "Failed to send greeting to %s on '%s'", contact_id, self.platform
+        )
+        return False
+
+    async def save_known_contact(self, sender_id: str):
+        """Persist the sender ID so future startups can proactively greet them."""
+        from imchat.keystore import load_keys, save_keys
+        keys = load_keys(self.platform)
+        if self.platform == "qq":
+            if keys.get("user_openid") == sender_id:
+                return
+            save_keys(self.platform, {**keys, "user_openid": sender_id})
+        else:
+            if keys.get("user_id") == sender_id:
+                return
+            save_keys(self.platform, {**keys, "user_id": sender_id})
+
     async def get_user_info(self, user_id: str) -> Dict[str, Any]:
         return {"id": user_id, "name": user_id, "channel": self.platform}
 

@@ -1,70 +1,36 @@
-"""Configuration loader."""
-
+from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from conippets import json
+from pyclaw import __pyclaw_home__
 
-DEFAULT_PATH = Path.home() / ".pyclaw" / "config.json"
-
-_cache: Optional[dict] = None
+__config_file__ = Path(__pyclaw_home__) / "config.json"
 
 
-def _defaults():
-    return {
-        "version": "1.0",
+@lru_cache(maxsize=1)
+def load() -> dict:
+    config = {
         "gateway": {
-            "http": {"enabled": True, "port": 12321, "host": "127.0.0.1", "cors_origins": []},
-            "websocket": {"enabled": True, "ping_interval": 30, "ping_timeout": 10},
-            "control_ui": {"enabled": True},
-            "auth": {},
+            "http": {"port": 12321, "host": "127.0.0.1"},
         },
-        "models": {},
-        "default_model": None,
-        "channels": {},
-        "agents": {
-            "default": {
-                "name": "Default Agent",
-                "description": "Default PyClaw agent",
-                "model": None,
-                "system_prompt": "You are a helpful AI assistant.",
-                "tools": ["echo", "time"],
-                "memory": True,
-                "max_iterations": 10,
-            }
-        },
-        "default_agent": "default",
-        "tools": {
-            "exec": {"enabled": True, "ask": True, "timeout": 60},
-            "browser": {"enabled": False},
-        },
-        "sessions": {"store_path": "~/.pyclaw/sessions", "max_history": 100, "ttl_hours": None},
-        "skills": {"enabled": True, "auto_enable": False, "paths": []},
-        "logging": {"level": "INFO", "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"},
+        "provider": "openrouter",
+        "model": "tencent/hy3-preview:free",
+        "enabled_channels": ["web"],
+        "greeting_text": "PyClaw 已上线，随时为您服务！",
     }
-
-
-def load(path: Optional[Path] = None) -> dict:
-    global _cache
-    if _cache is not None:
-        return _cache
-
-    config_path = path or DEFAULT_PATH
-    config = _defaults()
-
-    if config_path.exists():
+    if __config_file__.exists():
         try:
-            file_config = json.read(config_path)
-            if isinstance(file_config, dict):
-                config.update(file_config)
+            config |= json.read(__config_file__)
         except Exception:
             pass
-
-    _cache = config
-    return _cache
+    return config
 
 
-def reload(path: Optional[Path] = None) -> dict:
-    global _cache
-    _cache = None
-    return load(path)
+def save(config: dict) -> None:
+    __config_file__.parent.mkdir(parents=True, exist_ok=True)
+    json.write(__config_file__, config)
+
+
+def reload() -> dict:
+    load.cache_clear()
+    return load()

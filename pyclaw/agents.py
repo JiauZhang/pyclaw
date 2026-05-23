@@ -64,7 +64,3 @@ Be helpful, accurate, and concise.'''
     def get_available_tools(self) -> List[str]:
         """Get list of available tool names."""
         return [t.name for t in self.tools]
-
-    def get_tool_schemas(self) -> List[Dict[str, Any]]:
-        """Get tool schemas."""
-        return [t.to_dict() for t in self.tools]
