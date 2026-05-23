@@ -21,7 +21,9 @@ dependencies = [
     "uvicorn>=0.24.0",
     "httpx>=0.25.0",
     "chatchat>=0.4.9",
-    "conippets>=0.1.14",
+    "conippets>=0.1.16",
+    "chatool>=0.0.2",
+    "imchat>=0.0.1",
 ]
 
 [project.scripts]

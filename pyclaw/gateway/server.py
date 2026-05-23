@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelManager
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
@@ -28,11 +29,13 @@ class GatewayConfig:
     cors_origins: List[str] = field(default_factory=list)
     provider: Optional[str] = None
     model: Optional[str] = None
+    enabled_channels: List[str] = field(default_factory=lambda: ["web"])
 
 
 class GatewayServer:
-    def __init__(self, config: Optional[GatewayConfig] = None):
+    def __init__(self, config: Optional[GatewayConfig] = None, app_config: Optional[dict] = None):
         self.config = config or GatewayConfig()
+        self._app_config = app_config or {}
         self.app = FastAPI(
             title="PyClaw Gateway",
             description="Personal AI Assistant Gateway",
@@ -41,6 +44,7 @@ class GatewayServer:
         self.runtime = GatewayRuntimeState()
         self.websocket_clients: Dict[str, WebSocket] = {}
         self.handlers: Dict[str, Callable] = {}
+        self.channels: Dict[str, IMChannelAdapter] = {}
         self._shutdown_event = asyncio.Event()
         self.web_channel = WebChannelManager()
         self._setup_middleware()
@@ -253,6 +257,7 @@ class GatewayServer:
 
     async def start(self):
         register_handlers(self)
+        await self._init_channels()
         uvicorn_config = uvicorn.Config(
             self.app,
             host=self.config.host,
@@ -280,6 +285,15 @@ class GatewayServer:
         ]
         if close_tasks:
             await asyncio.gather(*close_tasks, return_exceptions=True)
+
+        # Shut down IM channels
+        for name, adapter in list(self.channels.items()):
+            try:
+                await adapter.disconnect()
+                logger.info("IM channel '%s' disconnected", name)
+            except Exception as exc:
+                logger.warning("Error disconnecting channel '%s': %s", name, exc)
+
         logger.info("Gateway shutdown complete")
 
     async def _close_websocket(self, client_id: str, websocket: WebSocket):
@@ -290,3 +304,73 @@ class GatewayServer:
         finally:
             if client_id in self.websocket_clients:
                 del self.websocket_clients[client_id]
+
+    # ------------------------------------------------------------------
+    # IM channel lifecycle
+    # ------------------------------------------------------------------
+
+    async def _init_channels(self):
+        """Initialize IM channel adapters from CLI --channel / config."""
+        active = self.config.enabled_channels
+
+        # Web channel is always wired in _setup_routes, nothing extra to do.
+        im_platforms = {p for p in active if p != "web"}
+        if not im_platforms:
+            return
+
+        channels_cfg = self._app_config.get("channels", {})
+
+        for platform in im_platforms:
+            # lookup config entry for this platform
+            cfg = {}
+            for _, v in channels_cfg.items():
+                if v.get("platform") == platform:
+                    cfg = v
+                    break
+            if not cfg.get("enabled", True):
+                continue
+
+            adapter = IMChannelAdapter({"platform": platform, **(cfg.get("options") or {})})
+
+            # Agent for this channel
+            from ..agents import Agent
+
+            agent = Agent(provider=self.config.provider, model=self.config.model)
+
+            async def _on_message(
+                msg,
+                _channel_id,
+                    _adapter=adapter,
+                    _agent=agent,
+                    _platform=platform,
+            ):
+                session_id = f"im_{_platform}_{msg.sender_id}"
+                self.runtime.get_or_create_session(session_id)
+                try:
+                    response = _agent.chat(msg.text)
+                    outbound = OutboundMessage(
+                        text=response,
+                        reply_to=msg.id,
+                        metadata=msg.metadata,
+                    )
+                    await _adapter.send_message(msg.sender_id, outbound)
+                    self.runtime.increment_channel_messages(_adapter.channel_id)
+                    self.runtime.increment_requests()
+                except Exception as exc:
+                    logger.error("Channel '%s' handler error: %s", _platform, exc)
+                    self.runtime.increment_errors()
+                    err_out = OutboundMessage(text=f"Error: {exc}")
+                    await _adapter.send_message(msg.sender_id, err_out)
+
+            adapter.set_message_handler(_on_message)
+            self.runtime.register_channel(adapter.channel_id, enabled=True)
+
+            ok = await adapter.connect()
+            self.runtime.set_channel_connected(adapter.channel_id, ok)
+
+            if ok:
+                self.channels[platform] = adapter
+                logger.info("IM channel '%s' connected", platform)
+            else:
+                logger.warning("IM channel '%s' failed to connect", platform)
+                self.runtime.set_channel_error(adapter.channel_id, "connect failed")

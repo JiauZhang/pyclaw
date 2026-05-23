@@ -24,11 +24,14 @@ async def start_server(args):
         logger.warning(f"Could not load config: {e}")
         config = None
 
+    channels = args.channels or ["web"]
+
     gateway_config = GatewayConfig(
         port=args.port,
         host=args.host,
         provider=args.provider,
-        model=args.model
+        model=args.model,
+        enabled_channels=channels,
     )
 
     if config and config.get("gateway"):
@@ -37,7 +40,7 @@ async def start_server(args):
         gateway_config.host = gw.get("http", {}).get("host", gateway_config.host)
         gateway_config.control_ui_enabled = gw.get("control_ui", {}).get("enabled", True)
 
-    gateway = GatewayServer(gateway_config)
+    gateway = GatewayServer(gateway_config, app_config=config or {})
     logger.info(f"Using provider={gateway_config.provider}, model={gateway_config.model}")
 
     try:
@@ -59,6 +62,7 @@ def main():
     serve_parser.add_argument("--host", type=str, default="127.0.0.1", help="Gateway host")
     serve_parser.add_argument("--config", type=str, help="Path to config file")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["web", "qq", "wechat"], help="Channels to enable (default: web only)")
     serve_parser.add_argument("--provider", type=str, default="openrouter", help="AI model provider")
     serve_parser.add_argument("--model", type=str, default="tencent/hy3-preview:free", help="AI model name")
 
