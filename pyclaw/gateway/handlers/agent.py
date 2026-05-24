@@ -10,6 +10,16 @@ from ...config import load
 logger = logging.getLogger(__name__)
 
 _agent_cache: Dict[str, Agent] = {}
+_agent_cache_maxsize = 20
+
+
+def _agent_cache_clear(agent_id: Optional[str] = None):
+    if agent_id is None:
+        _agent_cache.clear()
+        return
+    keys = [k for k in _agent_cache if k.startswith(f'{agent_id}:')]
+    for k in keys:
+        del _agent_cache[k]
 
 
 def _get_or_create_agent(
@@ -23,6 +33,11 @@ def _get_or_create_agent(
 
     if cache_key in _agent_cache:
         return _agent_cache[cache_key]
+
+    # Evict oldest entry if cache is full
+    if len(_agent_cache) >= _agent_cache_maxsize:
+        oldest = next(iter(_agent_cache))
+        del _agent_cache[oldest]
 
     agents = config.get('agents', {})
     default_agent = config.get('default_agent', 'default')
@@ -46,8 +61,14 @@ def _get_or_create_agent(
     return agent
 
 
-async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle agent RPC call."""
+def _resolve_params(
+    params: Dict[str, Any],
+    context: Dict[str, Any],
+) -> Dict[str, Any]:
+    config = load()
+    runtime = context.get('runtime')
+    gateway = context.get('gateway')
+
     message = params.get('message', '').strip()
     session_key = params.get('sessionKey') or params.get('session_id') or 'default'
     agent_id = params.get('agentId') or params.get('agent_id')
@@ -55,13 +76,6 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
     model = params.get('model')
     stream = params.get('stream', False)
 
-    if not message:
-        return {'error': 'Message is required'}
-
-    config = load()
-    runtime = context.get('runtime')
-    gateway = context.get('gateway')
-
     if not provider and gateway and gateway.config.provider:
         provider = gateway.config.provider
     if not model and gateway and gateway.config.model:
@@ -69,96 +83,93 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
 
     runtime.get_or_create_session(session_key, agent_id or 'default')
 
+    return dict(
+        message=message,
+        session_key=session_key,
+        agent_id=agent_id or 'default',
+        provider=provider,
+        model=model,
+        stream=stream,
+        config=config,
+        runtime=runtime,
+    )
+
+
+async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle agent RPC call."""
+    resolved = _resolve_params(params, context)
+    if not resolved['message']:
+        return {'error': 'Message is required'}
+
     try:
-        agent = _get_or_create_agent(agent_id or 'default', config, provider, model)
+        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
     except Exception as e:
         logger.error(f'Failed to create agent: {e}')
         return {'error': f'Failed to initialize agent: {str(e)}'}
 
     try:
-        if stream:
+        if resolved['stream']:
             return {
                 'stream': True,
-                'sessionKey': session_key,
-                'agentId': agent_id or 'default',
-                'message': 'Use /v1/chat/completions for streaming'
+                'sessionKey': resolved['session_key'],
+                'agentId': resolved['agent_id'],
+                'message': 'Use /v1/chat/completions for streaming',
             }
-        else:
-            response = agent.chat(message)
-            runtime.update_session_activity(session_key)
-            runtime.increment_requests()
-
-            return {
-                'response': response,
-                'sessionKey': session_key,
-                'agentId': agent_id or 'default',
-                'tools_available': agent.get_available_tools(),
-                'provider': agent.provider,
-                'model': agent.model,
-            }
+        response = agent.chat(resolved['message'])
+        resolved['runtime'].update_session_activity(resolved['session_key'])
+        resolved['runtime'].increment_requests()
+        return {
+            'response': response,
+            'sessionKey': resolved['session_key'],
+            'agentId': resolved['agent_id'],
+            'tools_available': agent.get_available_tools(),
+            'provider': agent.provider,
+            'model': agent.model,
+        }
     except Exception as e:
         logger.error(f'Agent error: {e}')
-        runtime.increment_errors()
+        resolved['runtime'].increment_errors()
         return {'error': str(e)}
 
 
-async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]):
-    """Handle streaming agent RPC call."""
-    message = params.get('message', '').strip()
-    session_key = params.get('sessionKey') or params.get('session_id') or 'default'
-    agent_id = params.get('agentId') or params.get('agent_id')
-    provider = params.get('provider')
-    model = params.get('model')
-
-    if not message:
-        yield {'error': 'Message is required'}
-        return
-
-    config = load()
-    runtime = context.get('runtime')
-    gateway = context.get('gateway')
-
-    if not provider and gateway and gateway.config.provider:
-        provider = gateway.config.provider
-    if not model and gateway and gateway.config.model:
-        model = gateway.config.model
-
-    runtime.get_or_create_session(session_key, agent_id or 'default')
+async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle streaming agent RPC call (non-streaming fallback via RPC)."""
+    resolved = _resolve_params(params, context)
+    if not resolved['message']:
+        return {'error': 'Message is required'}
 
     try:
-        agent = _get_or_create_agent(agent_id or 'default', config, provider, model)
+        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
     except Exception as e:
-        yield {'error': f'Failed to initialize agent: {str(e)}'}
-        return
+        return {'error': f'Failed to initialize agent: {str(e)}'}
 
     try:
-        for chunk in agent.chat_stream(message):
-            yield {'chunk': chunk}
-
-        runtime.update_session_activity(session_key)
-        runtime.increment_requests()
+        response = agent.chat(resolved['message'])
+        resolved['runtime'].update_session_activity(resolved['session_key'])
+        resolved['runtime'].increment_requests()
+        return {
+            'response': response,
+            'sessionKey': resolved['session_key'],
+            'agentId': resolved['agent_id'],
+            'stream': False,
+        }
     except Exception as e:
         logger.error(f'Stream error: {e}')
-        yield {'error': str(e)}
+        resolved['runtime'].increment_errors()
+        return {'error': str(e)}
 
 
 async def handle_agent_tools(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     """Get available tools for an agent."""
-    agent_id = params.get('agentId') or params.get('agent_id')
-    provider = params.get('provider')
-    model = params.get('model')
-
-    config = load()
+    resolved = _resolve_params(params, context)
 
     try:
-        agent = _get_or_create_agent(agent_id or 'default', config, provider, model)
-
+        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
         return {
-            'agentId': agent_id or 'default',
+            'agentId': resolved['agent_id'],
             'provider': agent.provider,
             'model': agent.model,
             'tools': agent.get_available_tools(),
-            'schemas': agent.get_tool_schemas(),
         }
     except Exception as e:
         return {'error': str(e)}
@@ -171,84 +182,49 @@ async def handle_tool_call(params: Dict[str, Any], context: Dict[str, Any]) -> D
     }
 
 
-async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any]):
+async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     """OpenAI-compatible chat completions endpoint."""
     messages = params.get('messages', [])
-    model = params.get('model', 'default')
-    stream = params.get('stream', False)
-    session_key = params.get('sessionKey') or params.get('session_id') or 'default'
-    agent_id = params.get('agentId') or params.get('agent_id')
+    model_param = params.get('model', 'default')
 
     if not messages:
-        yield {'error': 'Messages are required'}
-        return
+        return {'error': 'Messages are required'}
 
-    config = load()
-    runtime = context.get('runtime')
-    gateway = context.get('gateway')
-    runtime.get_or_create_session(session_key, agent_id or 'default')
+    resolved = _resolve_params(params, context)
 
-    provider = None
-    model_name = model
-    if '/' in model:
-        parts = model.split('/', 1)
+    provider = resolved['provider']
+    model_name = model_param
+    if '/' in model_param:
+        parts = model_param.split('/', 1)
         provider = parts[0]
         model_name = parts[1] if parts[1] else None
 
-    if not provider and gateway and gateway.config.provider:
-        provider = gateway.config.provider
-    if not model_name and gateway and gateway.config.model:
-        model_name = gateway.config.model
+    try:
+        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], provider, model_name)
+    except Exception as e:
+        return {'error': f'Failed to initialize agent: {str(e)}'}
+
+    last_message = next(
+        (msg.get('content', '') for msg in reversed(messages) if msg.get('role') == 'user'),
+        None
+    )
+    if not last_message:
+        return {'error': 'No user message found'}
 
     try:
-        agent = _get_or_create_agent(agent_id or 'default', config, provider, model_name)
-
-        last_message = None
-        for msg in reversed(messages):
-            if msg.get('role') == 'user':
-                last_message = msg.get('content', '')
-                break
-
-        if not last_message:
-            yield {'error': 'No user message found'}
-            return
-
-        if stream:
-            full_response = ''
-            for chunk in agent.chat_stream(last_message):
-                full_response += chunk
-                yield {
-                    'choices': [{
-                        'delta': {'content': chunk},
-                        'index': 0
-                    }]
-                }
-
-            runtime.update_session_activity(session_key)
-            runtime.increment_requests()
-        else:
-            response = agent.chat(last_message)
-
-            runtime.update_session_activity(session_key)
-            runtime.increment_requests()
-
-            yield {
-                'choices': [{
-                    'message': {
-                        'role': 'assistant',
-                        'content': response
-                    },
-                    'index': 0,
-                    'finish_reason': 'stop'
-                }],
-                'model': model,
-                'usage': {
-                    'prompt_tokens': 0,
-                    'completion_tokens': 0,
-                    'total_tokens': 0
-                }
-            }
-
+        response = agent.chat(last_message)
+        resolved['runtime'].update_session_activity(resolved['session_key'])
+        resolved['runtime'].increment_requests()
+        return {
+            'choices': [{
+                'message': {'role': 'assistant', 'content': response},
+                'index': 0,
+                'finish_reason': 'stop',
+            }],
+            'model': model_param,
+            'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0},
+        }
     except Exception as e:
         logger.error(f'Chat completions error: {e}')
-        yield {'error': str(e)}
+        resolved['runtime'].increment_errors()
+        return {'error': str(e)}

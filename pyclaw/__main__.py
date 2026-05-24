@@ -35,17 +35,14 @@ async def start_server(args):
     if modified:
         save_config(config)
 
+    gw = config.get("gateway", {})
     gateway_config = GatewayConfig(
-        port=args.port,
-        host=args.host,
+        port=gw.get("http", {}).get("port", args.port),
+        host=gw.get("http", {}).get("host", args.host),
         provider=config["provider"],
         model=config["model"],
         enabled_channels=config["enabled_channels"],
     )
-
-    gw = config.get("gateway", {})
-    gateway_config.port = gw.get("http", {}).get("port", gateway_config.port)
-    gateway_config.host = gw.get("http", {}).get("host", gateway_config.host)
 
     gateway = GatewayServer(gateway_config, app_config=config)
     logger.info(f"Using provider={gateway_config.provider}, model={gateway_config.model}")

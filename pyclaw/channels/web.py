@@ -25,6 +25,7 @@ class WebChannelAdapter(ChannelAdapter):
         super().__init__(config)
         self._message_queue: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._clients: Dict[str, Dict[str, Any]] = {}
+        self._client_sessions: Dict[str, str] = {}
         self._message_handler: Optional[Callable[[InboundMessage, str], asyncio.Future]] = None
 
     async def connect(self) -> bool:
@@ -221,29 +222,6 @@ class WebChannelAdapter(ChannelAdapter):
         """Check if a client is connected."""
         return client_id in self._clients
 
-
-class WebChannelManager:
-    """
-    Manager for web channel connections.
-
-    Handles multiple browser clients and routes messages between them
-    and the PyClaw gateway.
-    """
-
-    def __init__(self):
-        self.adapter = WebChannelAdapter({})
-        self._client_sessions: Dict[str, str] = {}  # Maps client_id to session_id
-
-    async def start(self):
-        """Start the web channel manager."""
-        await self.adapter.connect()
-        logger.info("Web channel manager started")
-
-    async def stop(self):
-        """Stop the web channel manager."""
-        await self.adapter.disconnect()
-        logger.info("Web channel manager stopped")
-
     async def handle_websocket(
         self,
         websocket,
@@ -251,61 +229,30 @@ class WebChannelManager:
         agent,
         runtime
     ):
-        """
-        Handle a WebSocket connection.
-
-        Args:
-            websocket: The WebSocket object
-            client_id: Unique client identifier
-            agent: The PyClaw Agent instance
-            runtime: GatewayRuntimeState for session management
-        """
-        await self.adapter.register_client(client_id, websocket)
-
+        """Handle a WebSocket connection."""
+        await self.register_client(client_id, websocket)
         try:
-            # Send welcome message
             await websocket.send_json({
                 "type": "connected",
                 "client_id": client_id,
                 "channel": "web",
                 "timestamp": datetime.now().isoformat()
             })
-
-            # Message loop
             while True:
                 try:
                     data = await websocket.receive_json()
-
-                    # Handle the message
-                    response = await self.adapter.handle_incoming_message(
-                        client_id,
-                        data
-                    )
-
-                    # Send immediate response if any
+                    response = await self.handle_incoming_message(client_id, data)
                     if response:
                         await websocket.send_json(response)
-
-                    # Process through agent if it's a chat message
                     if data.get("type") == "message":
                         asyncio.create_task(
-                            self._process_message(
-                                client_id,
-                                data,
-                                agent,
-                                runtime
-                            )
+                            self._process_message(client_id, data, agent, runtime)
                         )
-
                 except Exception as e:
                     logger.error(f"Error handling WebSocket message: {e}")
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": str(e)
-                    })
-
+                    await websocket.send_json({"type": "error", "error": str(e)})
         finally:
-            await self.adapter.unregister_client(client_id)
+            await self.unregister_client(client_id)
 
     async def _process_message(
         self,
@@ -316,59 +263,36 @@ class WebChannelManager:
     ):
         """Process a message through the agent with streaming support."""
         try:
-            # Get or create session for this client
             session_id = self._client_sessions.get(client_id, f"web_{client_id}")
             self._client_sessions[client_id] = session_id
-
             runtime.get_or_create_session(session_id, "default")
-
             message = data.get("text", "")
 
-            # Send streaming response
             full_response = ""
             for chunk in agent.chat_stream(message):
                 if chunk:
                     full_response += chunk
-                    await self.adapter.send_response(
+                    await self.send_response(
                         client_id,
                         chunk,
                         message_type="stream_chunk",
-                        extra_data={
-                            "session_id": session_id,
-                            "agent_id": "default",
-                            "is_final": False
-                        }
+                        extra_data={"session_id": session_id, "agent_id": "default", "is_final": False},
                     )
 
-            # Send final message to indicate stream is complete
-            await self.adapter.send_response(
+            await self.send_response(
                 client_id,
                 "",
                 message_type="stream_complete",
-                extra_data={
-                    "session_id": session_id,
-                    "agent_id": "default",
-                    "is_final": True,
-                    "full_response": full_response
-                }
+                extra_data={"session_id": session_id, "agent_id": "default", "is_final": True, "full_response": full_response},
             )
 
             runtime.update_session_activity(session_id)
             runtime.increment_requests()
-
         except Exception as e:
             logger.error(f"Error processing message: {e}")
-            await self.adapter.send_response(
-                client_id,
-                f"Error: {str(e)}",
-                message_type="error"
-            )
+            await self.send_response(client_id, f"Error: {str(e)}", message_type="error")
             runtime.increment_errors()
 
     async def send_to_client(self, client_id: str, text: str):
         """Send a message to a specific client."""
-        await self.adapter.send_response(client_id, text)
-
-    async def broadcast(self, text: str, exclude_client: Optional[str] = None):
-        """Broadcast to all clients."""
-        await self.adapter.broadcast(text, exclude_client)
+        await self.send_response(client_id, text)

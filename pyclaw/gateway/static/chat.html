@@ -323,7 +323,8 @@
 
     <script>
         // Use the dedicated chat WebSocket endpoint
-        const ws = new WebSocket(`ws://${window.location.host}/chat/ws`);
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/chat/ws`);
         const messagesEl = document.getElementById('messages');
         const inputEl = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');

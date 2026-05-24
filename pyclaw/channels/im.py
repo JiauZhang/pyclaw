@@ -1,6 +1,7 @@
 """IM channel adapter using imchat library (QQ/WeChat)."""
 
 import asyncio
+import itertools
 import logging
 from datetime import datetime
 from typing import AsyncIterator, Dict, Any, Optional
@@ -8,6 +9,8 @@ from typing import AsyncIterator, Dict, Any, Optional
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 
 logger = logging.getLogger(__name__)
+
+_wechat_msg_counter = itertools.count()
 
 
 class IMChannelAdapter(ChannelAdapter):
@@ -24,6 +27,8 @@ class IMChannelAdapter(ChannelAdapter):
         self._message_queue: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._receive_task: Optional[asyncio.Task] = None
         self._stop_event = asyncio.Event()
+        self._ready_event = asyncio.Event()
+        self._greeting_sent = False
 
     @property
     def channel_id(self) -> str:
@@ -94,17 +99,17 @@ class IMChannelAdapter(ChannelAdapter):
         """Wait until the adapter is fully ready to send messages.
 
         QQ connects asynchronously — the client may not be ready immediately
-        after connect() returns.  We poll ``_connected`` until it becomes
-        ``True`` or the timeout expires.
+        after connect() returns.  We wait on an event that gets set when the
+        client signals it is ready.
         """
         if self._connected:
             return True
         if self.platform != "qq":
             return self._connected
-        for _ in range(int(timeout)):
-            if self._connected:
-                return True
-            await asyncio.sleep(1)
+        try:
+            await asyncio.wait_for(self._ready_event.wait(), timeout=timeout)
+        except asyncio.TimeoutError:
+            pass
         return self._connected
 
     async def send_greeting_on_startup(self) -> bool:
@@ -120,7 +125,7 @@ class IMChannelAdapter(ChannelAdapter):
         send a message first.
         """
         greeting_text = self.config.get("greeting_text", "")
-        if not greeting_text:
+        if not greeting_text or self._greeting_sent:
             return False
 
         from imchat.keystore import load_keys
@@ -142,6 +147,7 @@ class IMChannelAdapter(ChannelAdapter):
             logger.info(
                 "Greeting sent proactively to %s on '%s'", contact_id, self.platform
             )
+            self._greeting_sent = True
             return True
 
         logger.warning(
@@ -169,6 +175,19 @@ class IMChannelAdapter(ChannelAdapter):
     # platform-specific connect helpers
     # ------------------------------------------------------------------
 
+    async def _dispatch_qq_message(self, msg_id, text, sender_id, sender_name, metadata):
+        inbound = InboundMessage(
+            id=msg_id,
+            text=text,
+            sender_id=sender_id,
+            sender_name=sender_name,
+            channel_id=self.channel_id,
+            metadata=metadata,
+        )
+        await self._message_queue.put(inbound)
+        if self._message_handler is not None:
+            await self.handle_incoming(inbound)
+
     async def _connect_qq(self) -> bool:
         from imchat.qq import QQClient
 
@@ -184,38 +203,27 @@ class IMChannelAdapter(ChannelAdapter):
         async def on_ready(data):
             logger.info("QQ bot online – session: %s", data.get("session_id"))
             self._connected = True
+            self._ready_event.set()
 
         @client.on_c2c_message
         async def on_c2c(msg):
-            inbound = InboundMessage(
-                id=f"qq_c2c_{msg.id}",
-                text=msg.content,
-                sender_id=msg.user_openid,
-                sender_name=msg.user_openid,
-                channel_id=self.channel_id,
-                metadata={"platform": "qq", "type": "c2c"},
+            await self._dispatch_qq_message(
+                f"qq_c2c_{msg.id}",
+                msg.content,
+                msg.user_openid,
+                msg.user_openid,
+                {"platform": "qq", "type": "c2c"},
             )
-            await self._message_queue.put(inbound)
-            if self._message_handler is not None:
-                await self.handle_incoming(inbound)
 
         @client.on_group_message
         async def on_group(msg):
-            inbound = InboundMessage(
-                id=f"qq_group_{msg.id}",
-                text=msg.content,
-                sender_id=msg.group_openid,
-                sender_name=msg.author_name or "",
-                channel_id=self.channel_id,
-                metadata={
-                    "platform": "qq",
-                    "type": "group",
-                    "group_openid": msg.group_openid,
-                },
+            await self._dispatch_qq_message(
+                f"qq_group_{msg.id}",
+                msg.content,
+                msg.group_openid,
+                msg.author_name or "",
+                {"platform": "qq", "type": "group", "group_openid": msg.group_openid},
             )
-            await self._message_queue.put(inbound)
-            if self._message_handler is not None:
-                await self.handle_incoming(inbound)
 
         @client.on_error
         async def on_error(error):
@@ -260,7 +268,7 @@ class IMChannelAdapter(ChannelAdapter):
         try:
             async for ctx in self._client.poll_messages():
                 inbound = InboundMessage(
-                    id=f"wechat_{datetime.now().timestamp()}",
+                    id=f"wechat_{next(_wechat_msg_counter)}",
                     text=ctx.body,
                     sender_id=ctx.from_user_id,
                     sender_name=ctx.from_user_id,

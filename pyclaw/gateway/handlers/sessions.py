@@ -41,6 +41,10 @@ async def handle_sessions_reset(params: Dict[str, Any], context: Dict[str, Any])
     # Delete and recreate session
     runtime.delete_session(key)
     
+    # Clear cached agent instances to reset conversation history
+    from .agent import _agent_cache_clear
+    _agent_cache_clear()
+    
     return {
         "key": key,
         "ok": True,

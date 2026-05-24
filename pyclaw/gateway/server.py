@@ -16,7 +16,7 @@ import uvicorn
 from pyclaw.version import __version__
 
 from ..channels import IMChannelAdapter, OutboundMessage
-from ..channels.web import WebChannelManager
+from ..channels.web import WebChannelAdapter
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
 
@@ -47,7 +47,7 @@ class GatewayServer:
         self.handlers: Dict[str, Callable] = {}
         self.channels: Dict[str, IMChannelAdapter] = {}
         self._shutdown_event = asyncio.Event()
-        self.web_channel = WebChannelManager()
+        self.web_channel = WebChannelAdapter({})
         self._setup_middleware()
         self._setup_routes()
 
