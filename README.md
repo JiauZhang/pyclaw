@@ -1,6 +1,6 @@
 # PyClaw
 
-PyClaw is a personal AI assistant built on [chatchat](https://github.com/jiauzhang/chatchat).
+PyClaw is a personal AI assistant built on [chatchat](https://github.com/jiauzhang/chatchat) and [imchat](https://github.com/jiauzhang/imchat).
 
 ## Installation
 
@@ -25,23 +25,31 @@ http://127.0.0.1:12321/chat
 ## Command Line Options
 
 ```shell
-pyclaw serve --provider openrouter --model "tencent/hy3-preview:free" --port 12321 --host 0.0.0.0
+pyclaw serve --channels web wechat --provider agnes --model "agnes-2.0-flash" --port 12321 --host 0.0.0.0
 ```
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `--provider` | `openrouter` | AI model provider |
-| `--model` | `tencent/hy3-preview:free` | Model name |
+| `--channels` | `web` | IM channels to enable (`web`, `qq`, `wechat`) |
+| `--provider` | `agnes` | AI model provider |
+| `--model` | `agnes-2.0-flash` | Model name |
 | `--port` | `12321` | HTTP server port |
 | `--host` | `127.0.0.1` | Bind address |
 | `--log-level` | `INFO` | Logging level |
+
+### pyclaw channel rebind
+
+Rebind (re-authenticate) an IM channel:
+
+```shell
+pyclaw channel rebind wechat
+```
 
 ## API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/` | GET | Server info |
-| `/health` | GET | Health check |
 | `/v1/status` | GET | Detailed runtime status |
 | `/v1/{method}` | POST | RPC endpoint |
 | `/ws` | WebSocket | General WebSocket connection |

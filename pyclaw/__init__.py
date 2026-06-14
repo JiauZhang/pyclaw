@@ -5,10 +5,10 @@ from pathlib import Path
 
 __pyclaw_home__ = os.environ.get("PYCLAW_HOME", str(Path.home() / ".pyclaw"))
 os.environ["PYCLAW_HOME"] = __pyclaw_home__
-os.environ["CHATCHAT_SECRET_FILE"] = os.path.join(__pyclaw_home__, "chatchat.json")
+os.environ["CHATCHAT_HOME"] = __pyclaw_home__
 os.environ["IMCHAT_HOME"] = __pyclaw_home__
 
-from chatchat.client import __secret_file__
+__secret_file__ = str(Path(__pyclaw_home__) / "chatchat.json")
 
 from .gateway import GatewayServer, GatewayConfig
 from .config import load
@@ -22,4 +22,5 @@ __all__ = [
     "Agent",
     "IMChannelAdapter",
     "__pyclaw_home__",
+    "__secret_file__",
 ]

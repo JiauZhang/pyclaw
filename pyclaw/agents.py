@@ -13,26 +13,31 @@ logger = logging.getLogger(__name__)
 class Agent:
     def __init__(
         self,
-        provider: str = 'openrouter',
-        model: Optional[str] = 'tencent/hy3-preview:free',
+        provider: str = 'agnes',
+        model: Optional[str] = 'agnes-2.0-flash',
         instruction: Optional[str] = None,
         tools: Optional[List[Any]] = None,
-        generation_options: Optional[Dict[str, Any]] = None,
+        stream: bool = False,
+        thinking: bool = False,
         http_options: Optional[Dict[str, Any]] = None,
     ):
         self.provider = provider
         self.model = model
         self.instruction = instruction or self._default_instruction()
         self.tools = tools if tools else default_tools
-        self.generation_options = generation_options or {'stream': False}
+        self.stream = stream
+        self.thinking = thinking
         self.http_options = http_options or {}
 
         self._agent = ChatAgent(
             provider=provider,
             model=model,
+            name='pyclaw',
+            description='A helpful AI assistant.',
             instruction=self.instruction,
             tools=self.tools,
-            generation_options=self.generation_options,
+            stream=stream,
+            thinking=thinking,
             http_options=self.http_options,
         )
 
@@ -45,17 +50,24 @@ Use the tool results to provide accurate and helpful responses to the user.
 Be helpful, accurate, and concise.'''
 
     def chat(self, message: str) -> str:
-        return self._agent.client.chat(message, generation_options=self._agent.generation_options, tools=self._agent.tools)
+        result = self._call_with_mode(message, stream=False)
+        if isinstance(result, str):
+            return result
+        return ''.join(result)
 
     def chat_stream(self, message: str):
         """Send a message and get a streaming response."""
-        response = self._agent.client.chat(
-            message,
-            generation_options={**self._agent.generation_options, 'stream': True},
-            tools=self._agent.tools,
-        )
-        for chunk in response:
-            yield chunk
+        for chunk in self._call_with_mode(message, stream=True):
+            if chunk:
+                yield chunk
+
+    def _call_with_mode(self, message: str, stream: bool):
+        original = self._agent.stream
+        self._agent.stream = stream
+        try:
+            return self._agent(message)
+        finally:
+            self._agent.stream = original
 
     def clear(self):
         """Clear conversation history."""
@@ -63,4 +75,4 @@ Be helpful, accurate, and concise.'''
 
     def get_available_tools(self) -> List[str]:
         """Get list of available tool names."""
-        return [t.name for t in self.tools]
+        return [t.name for t in self._agent.tools]

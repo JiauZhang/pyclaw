@@ -116,10 +116,11 @@ class IMChannelAdapter(ChannelAdapter):
         """Proactively send the greeting to a known contact from keystore.
 
         QQ: sends via ``send_c2c_message`` using ``user_openid`` from
-        ``~/.pyclaw/qq.json`` (same pattern as ``qq_echo_bot.py``).
+        ``~/.pyclaw/qq.json``.
 
         WeChat: sends via ``send_text`` using ``user_id`` from
-        ``~/.pyclaw/wechat.json``.
+        ``~/.pyclaw/wechat.json`` (the ID of the person who scanned the
+        QR code at login time).
 
         If no saved contact exists yet, logs a hint so the user knows to
         send a message first.
@@ -170,6 +171,51 @@ class IMChannelAdapter(ChannelAdapter):
 
     async def get_user_info(self, user_id: str) -> Dict[str, Any]:
         return {"id": user_id, "name": user_id, "channel": self.platform}
+
+    async def rebind(self, on_qr_url=None) -> bool:
+        """Rebind the channel by clearing saved credentials and re-authenticating.
+
+        For WeChat this triggers a new QR login.  The *on_qr_url* callback,
+        if provided, is called with the QR code URL so the caller can display
+        it to the user.
+
+        Returns ``True`` if rebind succeeded and the adapter is connected.
+        """
+        await self.disconnect()
+        from imchat.keystore import delete_keys
+        delete_keys(self.platform)
+
+        if self.platform == "wechat":
+            from imchat.wechat import WeChatClient
+            from imchat.wechat.auth import WeChatAuth
+
+            client = WeChatClient()
+            auth = WeChatAuth()
+            try:
+                start = await auth.start_login(client.account_id)
+                qrcode_url = start["qrcode_url"]
+                if on_qr_url:
+                    on_qr_url(qrcode_url)
+
+                result = await client.login_with_qr(verbose=True)
+                if not result.connected:
+                    logger.error("WeChat rebind failed")
+                    await client.close()
+                    return False
+
+                self._client = client
+                self._connected = True
+                self._receive_task = asyncio.create_task(self._run_wechat_poller())
+                logger.info("WeChat rebind success as %s", result.user_id)
+                return True
+            except Exception as exc:
+                logger.error("WeChat rebind error: %s", exc)
+                await client.close()
+                return False
+
+        # QQ: reconnect will either succeed (if creds exist outside keystore)
+        # or fail cleanly.
+        return await self.connect()
 
     # ------------------------------------------------------------------
     # platform-specific connect helpers

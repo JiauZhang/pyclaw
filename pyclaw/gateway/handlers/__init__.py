@@ -9,7 +9,7 @@ from .agent import (
 )
 from .sessions import handle_sessions_get, handle_sessions_reset, handle_sessions_list
 from .chat import handle_chat_send, handle_chat_history
-from .system import handle_status
+from .system import handle_status, handle_channel_rebind
 
 __all__ = [
     "register_handlers",
@@ -24,6 +24,7 @@ __all__ = [
     "handle_chat_send",
     "handle_chat_history",
     "handle_status",
+    "handle_channel_rebind",
 ]
 
 
@@ -40,3 +41,4 @@ def register_handlers(gateway):
     gateway.register_handler("chat.send", handle_chat_send)
     gateway.register_handler("chat.history", handle_chat_history)
     gateway.register_handler("status", handle_status)
+    gateway.register_handler("channel.rebind", handle_channel_rebind)

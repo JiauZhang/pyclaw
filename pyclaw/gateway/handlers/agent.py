@@ -44,9 +44,9 @@ def _get_or_create_agent(
     agent_config = agents.get(agent_id, agents.get(default_agent, {})) if agents else {}
 
     if not provider:
-        provider = agent_config.get('provider') or os.getenv('OPENCLAW_PROVIDER', 'openrouter')
+        provider = agent_config.get('provider') or os.getenv('OPENCLAW_PROVIDER', 'agnes')
     if not model:
-        model = agent_config.get('model') or os.getenv('OPENCLAW_MODEL', 'tencent/hy3-preview:free')
+        model = agent_config.get('model') or os.getenv('OPENCLAW_MODEL', 'agnes-2.0-flash')
 
     instruction = agent_config.get('system_prompt') if agent_config else None
 
