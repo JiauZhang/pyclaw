@@ -1,5 +1,3 @@
-"""Gateway WebSocket and HTTP server implementation."""
-
 import asyncio
 import logging
 import os
@@ -278,7 +276,6 @@ class GatewayServer:
         if close_tasks:
             await asyncio.gather(*close_tasks, return_exceptions=True)
 
-        # Shut down IM channels
         for name, adapter in list(self.channels.items()):
             try:
                 await adapter.disconnect()
@@ -297,15 +294,9 @@ class GatewayServer:
             if client_id in self.websocket_clients:
                 del self.websocket_clients[client_id]
 
-    # ------------------------------------------------------------------
-    # IM channel lifecycle
-    # ------------------------------------------------------------------
-
     async def _init_channels(self):
-        """Initialize IM channel adapters from CLI --channel / config."""
         active = self.config.enabled_channels
 
-        # Web channel is always wired in _setup_routes, nothing extra to do.
         im_platforms = {p for p in active if p != "web"}
         if not im_platforms:
             return
@@ -313,7 +304,6 @@ class GatewayServer:
         channels_cfg = self._app_config.get("channels", {})
 
         for platform in im_platforms:
-            # lookup config entry for this platform
             cfg = {}
             for _, v in channels_cfg.items():
                 if v.get("platform") == platform:
@@ -324,11 +314,9 @@ class GatewayServer:
 
             adapter = IMChannelAdapter({"platform": platform, **(cfg.get("options") or {})})
 
-            # Inherit root-level greeting_text if not already set per-channel
             if "greeting_text" not in adapter.config and "greeting_text" in self._app_config:
                 adapter.config["greeting_text"] = self._app_config["greeting_text"]
 
-            # Agent for this channel
             from ..agents import Agent
 
             agent = Agent(provider=self.config.provider, model=self.config.model)
@@ -340,7 +328,6 @@ class GatewayServer:
                     _agent=agent,
                     _platform=platform,
             ):
-                # Remember this sender so future startups can send proactively
                 await _adapter.save_known_contact(msg.sender_id)
 
                 session_id = f"im_{_platform}_{msg.sender_id}"

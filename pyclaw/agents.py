@@ -1,5 +1,3 @@
-"""Agent implementation using chatchat."""
-
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -56,7 +54,6 @@ Be helpful, accurate, and concise.'''
         return ''.join(result)
 
     def chat_stream(self, message: str):
-        """Send a message and get a streaming response."""
         for chunk in self._call_with_mode(message, stream=True):
             if chunk:
                 yield chunk
@@ -70,9 +67,7 @@ Be helpful, accurate, and concise.'''
             self._agent.stream = original
 
     def clear(self):
-        """Clear conversation history."""
         self._agent.client.clear()
 
     def get_available_tools(self) -> List[str]:
-        """Get list of available tool names."""
         return [t.name for t in self._agent.tools]

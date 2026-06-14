@@ -1,5 +1,3 @@
-"""Session RPC handlers."""
-
 import logging
 from typing import Dict, Any, List
 
@@ -7,7 +5,6 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_sessions_get(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Get a session by key."""
     key = params.get("key")
     runtime = context.get("runtime")
     
@@ -31,7 +28,6 @@ async def handle_sessions_get(params: Dict[str, Any], context: Dict[str, Any]) -
 
 
 async def handle_sessions_reset(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Reset a session."""
     key = params.get("key")
     runtime = context.get("runtime")
     
@@ -53,7 +49,6 @@ async def handle_sessions_reset(params: Dict[str, Any], context: Dict[str, Any])
 
 
 async def handle_sessions_list(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """List all sessions."""
     runtime = context.get("runtime")
     
     sessions: List[Dict[str, Any]] = []

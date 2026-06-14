@@ -1,5 +1,3 @@
-"""Agent RPC handler."""
-
 import logging
 import os
 from typing import Dict, Any, Optional
@@ -28,7 +26,6 @@ def _get_or_create_agent(
     provider: Optional[str] = None,
     model: Optional[str] = None
 ) -> Agent:
-    """Get or create an agent instance."""
     cache_key = f'{agent_id}:{provider}:{model}'
 
     if cache_key in _agent_cache:
@@ -96,7 +93,6 @@ def _resolve_params(
 
 
 async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle agent RPC call."""
     resolved = _resolve_params(params, context)
     if not resolved['message']:
         return {'error': 'Message is required'}
@@ -133,7 +129,6 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
 
 
 async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Handle streaming agent RPC call (non-streaming fallback via RPC)."""
     resolved = _resolve_params(params, context)
     if not resolved['message']:
         return {'error': 'Message is required'}
@@ -160,7 +155,6 @@ async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]) -
 
 
 async def handle_agent_tools(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Get available tools for an agent."""
     resolved = _resolve_params(params, context)
 
     try:
@@ -176,14 +170,12 @@ async def handle_agent_tools(params: Dict[str, Any], context: Dict[str, Any]) ->
 
 
 async def handle_tool_call(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute a tool call directly (deprecated, tools are handled by chatchat agent)."""
     return {
         'error': 'Direct tool calls are no longer supported. Tools are automatically managed by the agent.'
     }
 
 
 async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """OpenAI-compatible chat completions endpoint."""
     messages = params.get('messages', [])
     model_param = params.get('model', 'default')
 

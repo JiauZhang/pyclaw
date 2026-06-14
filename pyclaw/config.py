@@ -30,8 +30,6 @@ def load() -> dict:
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Recursively merge *override* into *base*, preserving base keys
-    not present in *override*."""
     merged = {}
     for k in base | override:
         if k in base and k in override and isinstance(base[k], dict) and isinstance(override[k], dict):

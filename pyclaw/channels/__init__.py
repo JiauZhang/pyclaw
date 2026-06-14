@@ -1,5 +1,3 @@
-"""Channel adapters for messaging platforms."""
-
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from .im import IMChannelAdapter
 

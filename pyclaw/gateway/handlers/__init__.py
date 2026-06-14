@@ -1,5 +1,3 @@
-"""Gateway RPC handlers."""
-
 from .agent import (
     handle_agent,
     handle_agent_stream,
@@ -29,7 +27,6 @@ __all__ = [
 
 
 def register_handlers(gateway):
-    """Register all RPC handlers with the gateway."""
     gateway.register_handler("agent", handle_agent)
     gateway.register_handler("agent.stream", handle_agent_stream)
     gateway.register_handler("agent.tools", handle_agent_tools)

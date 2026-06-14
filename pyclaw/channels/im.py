@@ -1,5 +1,3 @@
-"""IM channel adapter using imchat library (QQ/WeChat)."""
-
 import asyncio
 import itertools
 import logging
@@ -14,12 +12,6 @@ _wechat_msg_counter = itertools.count()
 
 
 class IMChannelAdapter(ChannelAdapter):
-    """Channel adapter for instant messaging platforms (QQ/WeChat).
-
-    Config:
-        platform: ``"qq"`` or ``"wechat"`` (default: ``"qq"``)
-    """
-
     def __init__(self, config: Dict[str, Any]):
         super().__init__(config)
         self.platform: str = config.get("platform", "qq")
@@ -33,10 +25,6 @@ class IMChannelAdapter(ChannelAdapter):
     @property
     def channel_id(self) -> str:
         return f"im_{self.platform}"
-
-    # ------------------------------------------------------------------
-    # connect / disconnect
-    # ------------------------------------------------------------------
 
     async def connect(self) -> bool:
         if self.platform == "qq":
@@ -63,10 +51,6 @@ class IMChannelAdapter(ChannelAdapter):
             except asyncio.CancelledError:
                 pass
         self._connected = False
-
-    # ------------------------------------------------------------------
-    # send / receive
-    # ------------------------------------------------------------------
 
     async def send_message(self, to: str, message: OutboundMessage) -> bool:
         if self._client is None or not self._connected:
@@ -96,12 +80,6 @@ class IMChannelAdapter(ChannelAdapter):
                 continue
 
     async def wait_until_ready(self, timeout: float = 30.0) -> bool:
-        """Wait until the adapter is fully ready to send messages.
-
-        QQ connects asynchronously — the client may not be ready immediately
-        after connect() returns.  We wait on an event that gets set when the
-        client signals it is ready.
-        """
         if self._connected:
             return True
         if self.platform != "qq":
@@ -113,18 +91,6 @@ class IMChannelAdapter(ChannelAdapter):
         return self._connected
 
     async def send_greeting_on_startup(self) -> bool:
-        """Proactively send the greeting to a known contact from keystore.
-
-        QQ: sends via ``send_c2c_message`` using ``user_openid`` from
-        ``~/.pyclaw/qq.json``.
-
-        WeChat: sends via ``send_text`` using ``user_id`` from
-        ``~/.pyclaw/wechat.json`` (the ID of the person who scanned the
-        QR code at login time).
-
-        If no saved contact exists yet, logs a hint so the user knows to
-        send a message first.
-        """
         greeting_text = self.config.get("greeting_text", "")
         if not greeting_text or self._greeting_sent:
             return False
@@ -157,7 +123,6 @@ class IMChannelAdapter(ChannelAdapter):
         return False
 
     async def save_known_contact(self, sender_id: str):
-        """Persist the sender ID so future startups can proactively greet them."""
         from imchat.keystore import load_keys, save_keys
         keys = load_keys(self.platform)
         if self.platform == "qq":
@@ -173,14 +138,6 @@ class IMChannelAdapter(ChannelAdapter):
         return {"id": user_id, "name": user_id, "channel": self.platform}
 
     async def rebind(self, on_qr_url=None) -> bool:
-        """Rebind the channel by clearing saved credentials and re-authenticating.
-
-        For WeChat this triggers a new QR login.  The *on_qr_url* callback,
-        if provided, is called with the QR code URL so the caller can display
-        it to the user.
-
-        Returns ``True`` if rebind succeeded and the adapter is connected.
-        """
         await self.disconnect()
         from imchat.keystore import delete_keys
         delete_keys(self.platform)
@@ -213,13 +170,7 @@ class IMChannelAdapter(ChannelAdapter):
                 await client.close()
                 return False
 
-        # QQ: reconnect will either succeed (if creds exist outside keystore)
-        # or fail cleanly.
         return await self.connect()
-
-    # ------------------------------------------------------------------
-    # platform-specific connect helpers
-    # ------------------------------------------------------------------
 
     async def _dispatch_qq_message(self, msg_id, text, sender_id, sender_name, metadata):
         inbound = InboundMessage(

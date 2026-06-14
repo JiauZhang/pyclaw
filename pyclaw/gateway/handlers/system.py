@@ -1,5 +1,3 @@
-"""System RPC handlers."""
-
 import logging
 from typing import Dict, Any
 from datetime import datetime
@@ -10,7 +8,6 @@ logger = logging.getLogger(__name__)
 
 
 async def handle_status(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Get detailed status."""
     runtime = context.get("runtime")
 
     return {
@@ -30,7 +27,6 @@ async def handle_status(params: Dict[str, Any], context: Dict[str, Any]) -> Dict
 
 
 async def handle_channel_rebind(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
-    """Rebind a channel (re-authenticate, e.g. new WeChat QR login)."""
     gateway = context.get("gateway")
     platform = params.get("platform", "wechat")
 

@@ -1,5 +1,3 @@
-"""WebSocket-based browser channel for direct browser interaction."""
-
 import asyncio
 import json
 import logging
@@ -12,13 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class WebChannelAdapter(ChannelAdapter):
-    """
-    WebSocket-based channel adapter for browser interaction.
-
-    This adapter allows direct communication between the browser and PyClaw
-    without requiring any external messaging platform.
-    """
-
     channel_id = "web"
 
     def __init__(self, config: Dict[str, Any]):
@@ -29,25 +20,16 @@ class WebChannelAdapter(ChannelAdapter):
         self._message_handler: Optional[Callable[[InboundMessage, str], asyncio.Future]] = None
 
     async def connect(self) -> bool:
-        """Connect the web channel (always returns True as it's passive)."""
         self._connected = True
         logger.info("Web channel adapter initialized")
         return True
 
     async def disconnect(self):
-        """Disconnect the web channel."""
         self._connected = False
         self._clients.clear()
         logger.info("Web channel adapter disconnected")
 
     async def send_message(self, to: str, message: OutboundMessage) -> bool:
-        """
-        Send a message to a browser client.
-
-        Args:
-            to: Client session ID
-            message: Message to send
-        """
         if to not in self._clients:
             logger.warning(f"Client {to} not found")
             return False
@@ -73,7 +55,6 @@ class WebChannelAdapter(ChannelAdapter):
             return False
 
     async def receive_messages(self) -> AsyncIterator[InboundMessage]:
-        """Receive messages from the queue."""
         while self._connected:
             try:
                 message = await asyncio.wait_for(
@@ -85,7 +66,6 @@ class WebChannelAdapter(ChannelAdapter):
                 continue
 
     async def get_user_info(self, user_id: str) -> Dict[str, Any]:
-        """Get user info for a web client."""
         if user_id in self._clients:
             client = self._clients[user_id]
             return {
@@ -96,10 +76,7 @@ class WebChannelAdapter(ChannelAdapter):
             }
         return {"id": user_id, "name": "Unknown"}
 
-    # WebSocket-specific methods
-
     async def register_client(self, client_id: str, websocket, name: str = "Web User"):
-        """Register a new WebSocket client."""
         self._clients[client_id] = {
             "websocket": websocket,
             "name": name,
@@ -109,7 +86,6 @@ class WebChannelAdapter(ChannelAdapter):
         logger.info(f"Web client registered: {client_id}")
 
     async def unregister_client(self, client_id: str):
-        """Unregister a WebSocket client."""
         if client_id in self._clients:
             del self._clients[client_id]
             logger.info(f"Web client unregistered: {client_id}")
@@ -119,20 +95,9 @@ class WebChannelAdapter(ChannelAdapter):
         client_id: str,
         data: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """
-        Handle an incoming message from a WebSocket client.
-
-        Args:
-            client_id: Client identifier
-            data: Message data
-
-        Returns:
-            Response data if immediate response needed
-        """
         msg_type = data.get("type", "message")
 
         if msg_type == "message":
-            # Create inbound message
             inbound = InboundMessage(
                 id=f"web_{datetime.now().timestamp()}",
                 text=data.get("text", ""),
@@ -146,15 +111,7 @@ class WebChannelAdapter(ChannelAdapter):
                 }
             )
 
-            # Add to queue for processing
             await self._message_queue.put(inbound)
-
-            # If handler is set, process immediately
-            if self._message_handler:
-                try:
-                    await self._message_handler(inbound, self.channel_id)
-                except Exception as e:
-                    logger.error(f"Error handling message: {e}")
 
             return {"status": "received", "message_id": inbound.id}
 
@@ -162,7 +119,6 @@ class WebChannelAdapter(ChannelAdapter):
             return {"type": "pong", "timestamp": datetime.now().isoformat()}
 
         elif msg_type == "typing":
-            # Broadcast typing indicator to other clients if needed
             return None
 
         return None
@@ -174,7 +130,6 @@ class WebChannelAdapter(ChannelAdapter):
         message_type: str = "response",
         extra_data: Optional[Dict] = None
     ):
-        """Send a response to a specific client."""
         if client_id not in self._clients:
             logger.warning(f"Cannot send response, client {client_id} not found")
             return
@@ -197,31 +152,6 @@ class WebChannelAdapter(ChannelAdapter):
         except Exception as e:
             logger.error(f"Failed to send response to {client_id}: {e}")
 
-    async def broadcast(self, text: str, exclude_client: Optional[str] = None):
-        """Broadcast a message to all connected clients."""
-        for client_id, client_info in self._clients.items():
-            if client_id == exclude_client:
-                continue
-
-            websocket = client_info.get("websocket")
-            if websocket:
-                try:
-                    await websocket.send_json({
-                        "type": "broadcast",
-                        "text": text,
-                        "timestamp": datetime.now().isoformat()
-                    })
-                except Exception as e:
-                    logger.error(f"Failed to broadcast to {client_id}: {e}")
-
-    def get_connected_clients(self) -> Dict[str, Dict[str, Any]]:
-        """Get all connected clients."""
-        return self._clients.copy()
-
-    def is_client_connected(self, client_id: str) -> bool:
-        """Check if a client is connected."""
-        return client_id in self._clients
-
     async def handle_websocket(
         self,
         websocket,
@@ -229,7 +159,6 @@ class WebChannelAdapter(ChannelAdapter):
         agent,
         runtime
     ):
-        """Handle a WebSocket connection."""
         await self.register_client(client_id, websocket)
         try:
             await websocket.send_json({
@@ -261,7 +190,6 @@ class WebChannelAdapter(ChannelAdapter):
         agent,
         runtime
     ):
-        """Process a message through the agent with streaming support."""
         try:
             session_id = self._client_sessions.get(client_id, f"web_{client_id}")
             self._client_sessions[client_id] = session_id
@@ -292,7 +220,3 @@ class WebChannelAdapter(ChannelAdapter):
             logger.error(f"Error processing message: {e}")
             await self.send_response(client_id, f"Error: {str(e)}", message_type="error")
             runtime.increment_errors()
-
-    async def send_to_client(self, client_id: str, text: str):
-        """Send a message to a specific client."""
-        await self.send_response(client_id, text)

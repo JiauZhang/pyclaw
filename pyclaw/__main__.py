@@ -1,5 +1,3 @@
-"""PyClaw CLI entry point."""
-
 import argparse, asyncio, logging, sys
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
 from pyclaw.config import save as save_config
@@ -35,7 +33,6 @@ async def start_server(args):
     if modified:
         save_config(config)
 
-    # Priority: CLI explicit arg > config file > hardcoded default
     gw_http = config.get("gateway", {}).get("http", {})
     gateway_config = GatewayConfig(
         port=args.port if args.port is not None else gw_http.get("port", 12321),
@@ -52,9 +49,6 @@ async def start_server(args):
         await gateway.start()
     except KeyboardInterrupt:
         await gateway.shutdown()
-    except SystemExit:
-        logger.error("Gateway start failed")
-        raise
     except Exception as e:
         logger.error(f"Gateway error: {e}")
         raise
@@ -72,8 +66,6 @@ async def run_channel_rebind(args):
         qr_url = url
 
     ok = await adapter.rebind(on_qr_url=on_qr)
-    # The adapter was only needed for rebind – shut down its client cleanly
-    # to avoid "Unclosed client session" warnings.
     await adapter.disconnect()
     if qr_url:
         print(f"\n请扫描二维码绑定微信:\n{qr_url}\n")
