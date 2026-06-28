@@ -13,7 +13,7 @@ import uvicorn
 
 from pyclaw.version import __version__
 
-from ..agents import Agent
+from ..agents import Agent, IM_EXTRA
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from .runtime import GatewayRuntimeState
@@ -47,6 +47,7 @@ class GatewayServer:
         self.websocket_clients: Dict[str, WebSocket] = {}
         self.handlers: Dict[str, Callable] = {}
         self.channels: Dict[str, IMChannelAdapter] = {}
+        self._session_agents: Dict[str, Agent] = {}
         self._shutdown_event = asyncio.Event()
         self.web_channel = WebChannelAdapter({})
         self._setup_middleware()
@@ -61,6 +62,28 @@ class GatewayServer:
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
+
+    def _create_agent(self):
+        skill_tools = load_skills_as_tools(
+            provider=self.config.provider,
+            model=self.config.model,
+        )
+        return Agent(
+            provider=self.config.provider,
+            model=self.config.model,
+            http_options={'timeout': 300},
+            tools=_base_tools + skill_tools,
+        )
+
+    def _get_session_agent(self, session_key: str) -> Agent:
+        agent = self._session_agents.get(session_key)
+        if agent is None:
+            agent = self._create_agent()
+            self._session_agents[session_key] = agent
+        return agent
+
+    def _remove_session_agent(self, session_key: str):
+        self._session_agents.pop(session_key, None)
 
     def _setup_routes(self):
         @self.app.get("/")
@@ -140,30 +163,16 @@ class GatewayServer:
             client_id = f"chat_{uuid.uuid4().hex[:8]}"
             logger.info(f"WebChat client {client_id} connected")
 
+            agent = self._get_session_agent(client_id)
             try:
-                skill_tools = load_skills_as_tools(
-                    provider=self.config.provider,
-                    model=self.config.model,
+                await self.web_channel.handle_websocket(
+                    websocket,
+                    client_id,
+                    agent,
+                    self.runtime
                 )
-                agent = Agent(
-                    provider=self.config.provider,
-                    model=self.config.model,
-                    tools=_base_tools + skill_tools,
-                )
-            except Exception as e:
-                logger.error(f"Agent error in WebSocket handler: {e}")
-                await websocket.send_json({
-                    "type": "error",
-                    "error": f"Failed to initialize agent: {str(e)}"
-                })
-                return
-
-            await self.web_channel.handle_websocket(
-                websocket,
-                client_id,
-                agent,
-                self.runtime
-            )
+            finally:
+                self._remove_session_agent(client_id)
 
         @self.app.post("/v1/{method}")
         async def rpc_endpoint(method: str, request: Request):
@@ -324,25 +333,45 @@ class GatewayServer:
             if "greeting_text" not in adapter.config and "greeting_text" in self._app_config:
                 adapter.config["greeting_text"] = self._app_config["greeting_text"]
 
-            skill_tools = load_skills_as_tools(
-                provider=self.config.provider,
-                model=self.config.model,
-            )
-            agent = Agent(provider=self.config.provider, model=self.config.model, tools=_base_tools + skill_tools)
-
             async def _on_message(
                 msg,
                 _channel_id,
                     _adapter=adapter,
-                    _agent=agent,
                     _platform=platform,
             ):
                 await _adapter.save_known_contact(msg.sender_id)
 
                 session_id = f"im_{_platform}_{msg.sender_id}"
                 self.runtime.get_or_create_session(session_id)
+                agent = self._get_session_agent(session_id)
+
+                async def _send_progress(p):
+                    text = ''
+                    if p.type.value == 'agent:start':
+                        text = '[PyClaw is thinking…]'
+                    elif p.type.value == 'tool:start':
+                        text = f'[Using: {p.tool_name}]'
+                    elif p.type.value == 'tool:error':
+                        text = f'[{p.tool_name} failed: {p.content}]'
+                    elif p.type.value == 'agent:error':
+                        text = f'[Error: {p.content}]'
+                    if text:
+                        await _adapter.send_message(
+                            msg.sender_id,
+                            OutboundMessage(text=text, reply_to=msg.id),
+                        )
+
+                loop = asyncio.get_running_loop()
+
+                def on_progress(p):
+                    asyncio.run_coroutine_threadsafe(
+                        _send_progress(p), loop,
+                    )
+
                 try:
-                    response = _agent.chat(msg.text)
+                    response = await loop.run_in_executor(
+                        None, agent.chat, f"{IM_EXTRA}\n{msg.text}", on_progress,
+                    )
                     outbound = OutboundMessage(
                         text=response,
                         reply_to=msg.id,
@@ -354,7 +383,16 @@ class GatewayServer:
                 except Exception as exc:
                     logger.error("Channel '%s' handler error: %s", _platform, exc)
                     self.runtime.increment_errors()
-                    err_out = OutboundMessage(text=f"Error: {exc}")
+                    err_msg = str(exc)
+                    if "timed out" in err_msg.lower():
+                        friendly = "Request timed out. Please try again later."
+                    elif "InternalServerError" in err_msg or "500" in err_msg:
+                        friendly = "Service temporarily unavailable. Please try again later."
+                    elif "rate" in err_msg.lower():
+                        friendly = "Too many requests. Please wait a moment and try again."
+                    else:
+                        friendly = f"An error occurred: {err_msg[:200]}"
+                    err_out = OutboundMessage(text=friendly, reply_to=msg.id)
                     await _adapter.send_message(msg.sender_id, err_out)
 
             adapter.set_message_handler(_on_message)
