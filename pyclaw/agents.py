@@ -22,7 +22,6 @@ class Agent:
         self.provider = provider
         self.model = model
         self.instruction = instruction or self._default_instruction()
-        self.tools = tools if tools else default_tools
         self.stream = stream
         self.thinking = thinking
         self.http_options = http_options or {}
@@ -31,9 +30,8 @@ class Agent:
             provider=provider,
             model=model,
             name='pyclaw',
-            description='A helpful AI assistant.',
             instruction=self.instruction,
-            tools=self.tools,
+            tools=tools if tools is not None else default_tools,
             stream=stream,
             thinking=thinking,
             http_options=self.http_options,
@@ -47,27 +45,23 @@ Use the tool results to provide accurate and helpful responses to the user.
 
 Be helpful, accurate, and concise.'''
 
-    def chat(self, message: str) -> str:
-        result = self._call_with_mode(message, stream=False)
+    def chat(self, message: str, on_progress=None) -> str:
+        self._agent.stream = False
+        result = self._agent.chat(message, on_progress=on_progress)
         if isinstance(result, str):
             return result
         return ''.join(result)
 
-    def chat_stream(self, message: str):
-        for chunk in self._call_with_mode(message, stream=True):
+    def chat_stream(self, message: str, on_progress=None):
+        self._agent.stream = True
+        for chunk in self._agent.chat(message, on_progress=on_progress):
             if chunk:
                 yield chunk
-
-    def _call_with_mode(self, message: str, stream: bool):
-        original = self._agent.stream
-        self._agent.stream = stream
-        try:
-            return self._agent(message)
-        finally:
-            self._agent.stream = original
 
     def clear(self):
         self._agent.client.clear()
 
     def get_available_tools(self) -> List[str]:
-        return [t.name for t in self._agent.tools]
+        if self._agent.tools is None:
+            return []
+        return [t.name for t in self._agent.tools.tools]

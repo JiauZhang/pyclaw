@@ -13,9 +13,12 @@ import uvicorn
 
 from pyclaw.version import __version__
 
+from ..agents import Agent
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from .runtime import GatewayRuntimeState
+from ..skills import load_skills_as_tools
+from ..tools import tools as _base_tools
 from .handlers import register_handlers
 
 logger = logging.getLogger(__name__)
@@ -137,11 +140,15 @@ class GatewayServer:
             client_id = f"chat_{uuid.uuid4().hex[:8]}"
             logger.info(f"WebChat client {client_id} connected")
 
-            from ..agents import Agent
             try:
+                skill_tools = load_skills_as_tools(
+                    provider=self.config.provider,
+                    model=self.config.model,
+                )
                 agent = Agent(
                     provider=self.config.provider,
-                    model=self.config.model
+                    model=self.config.model,
+                    tools=_base_tools + skill_tools,
                 )
             except Exception as e:
                 logger.error(f"Agent error in WebSocket handler: {e}")
@@ -317,9 +324,11 @@ class GatewayServer:
             if "greeting_text" not in adapter.config and "greeting_text" in self._app_config:
                 adapter.config["greeting_text"] = self._app_config["greeting_text"]
 
-            from ..agents import Agent
-
-            agent = Agent(provider=self.config.provider, model=self.config.model)
+            skill_tools = load_skills_as_tools(
+                provider=self.config.provider,
+                model=self.config.model,
+            )
+            agent = Agent(provider=self.config.provider, model=self.config.model, tools=_base_tools + skill_tools)
 
             async def _on_message(
                 msg,

@@ -4,6 +4,11 @@ import logging
 from datetime import datetime
 from typing import AsyncIterator, Dict, Any, Optional
 
+from imchat.keystore import delete_keys, load_keys, save_keys
+from imchat.qq import QQClient
+from imchat.wechat import WeChatClient
+from imchat.wechat.auth import WeChatAuth
+
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 
 logger = logging.getLogger(__name__)
@@ -95,7 +100,6 @@ class IMChannelAdapter(ChannelAdapter):
         if not greeting_text or self._greeting_sent:
             return False
 
-        from imchat.keystore import load_keys
         keys = load_keys(self.platform)
 
         contact_id = keys.get("user_openid") or keys.get("user_id")
@@ -123,7 +127,6 @@ class IMChannelAdapter(ChannelAdapter):
         return False
 
     async def save_known_contact(self, sender_id: str):
-        from imchat.keystore import load_keys, save_keys
         keys = load_keys(self.platform)
         if self.platform == "qq":
             if keys.get("user_openid") == sender_id:
@@ -139,13 +142,9 @@ class IMChannelAdapter(ChannelAdapter):
 
     async def rebind(self, on_qr_url=None) -> bool:
         await self.disconnect()
-        from imchat.keystore import delete_keys
         delete_keys(self.platform)
 
         if self.platform == "wechat":
-            from imchat.wechat import WeChatClient
-            from imchat.wechat.auth import WeChatAuth
-
             client = WeChatClient()
             auth = WeChatAuth()
             try:
@@ -186,8 +185,6 @@ class IMChannelAdapter(ChannelAdapter):
             await self.handle_incoming(inbound)
 
     async def _connect_qq(self) -> bool:
-        from imchat.qq import QQClient
-
         client = QQClient.from_saved_keys()
         if client is None:
             logger.error(
@@ -240,8 +237,6 @@ class IMChannelAdapter(ChannelAdapter):
             self._connected = False
 
     async def _connect_wechat(self) -> bool:
-        from imchat.wechat import WeChatClient
-
         client = WeChatClient.from_saved_keys()
         if client is None:
             logger.info("No saved WeChat keys – starting QR login ...")

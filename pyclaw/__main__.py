@@ -1,5 +1,6 @@
 import argparse, asyncio, logging, sys
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from chatchat.cli.config import parse_config, cli_config
 
@@ -56,8 +57,6 @@ async def start_server(args):
 
 async def run_channel_rebind(args):
     setup_logging(args.log_level)
-    from pyclaw.channels.im import IMChannelAdapter
-
     adapter = IMChannelAdapter({"platform": args.channel})
     qr_url = None
 

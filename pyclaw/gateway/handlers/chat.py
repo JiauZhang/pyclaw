@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, Any, List
 
+from .agent import handle_agent
+
 logger = logging.getLogger(__name__)
 
 
@@ -14,8 +16,6 @@ async def handle_chat_send(params: Dict[str, Any], context: Dict[str, Any]) -> D
     runtime = context.get("runtime")
     runtime.update_session_activity(session_key)
     
-    # Delegate to agent handler
-    from .agent import handle_agent
     return await handle_agent(params, context)
 
 

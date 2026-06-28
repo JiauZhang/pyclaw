@@ -196,8 +196,28 @@ class WebChannelAdapter(ChannelAdapter):
             runtime.get_or_create_session(session_id, "default")
             message = data.get("text", "")
 
+            progress_events: list = []
+
+            def on_progress(p):
+                progress_events.append(p)
+
+            async def _flush_progress():
+                while progress_events:
+                    p = progress_events.pop(0)
+                    await self.send_response(
+                        client_id,
+                        text=p.content,
+                        message_type=f"progress_{p.type}",
+                        extra_data={
+                            "agent": p.agent,
+                            "step": p.step,
+                            "tool_name": p.tool_name,
+                        },
+                    )
+
             full_response = ""
-            for chunk in agent.chat_stream(message):
+            for chunk in agent.chat_stream(message, on_progress=on_progress):
+                await _flush_progress()
                 if chunk:
                     full_response += chunk
                     await self.send_response(
@@ -207,6 +227,7 @@ class WebChannelAdapter(ChannelAdapter):
                         extra_data={"session_id": session_id, "agent_id": "default", "is_final": False},
                     )
 
+            await _flush_progress()
             await self.send_response(
                 client_id,
                 "",

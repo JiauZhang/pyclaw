@@ -24,7 +24,7 @@ def _get_or_create_agent(
     agent_id: str,
     config: Any,
     provider: Optional[str] = None,
-    model: Optional[str] = None
+    model: Optional[str] = None,
 ) -> Agent:
     cache_key = f'{agent_id}:{provider}:{model}'
 

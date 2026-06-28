@@ -1,6 +1,8 @@
 import logging
 from typing import Dict, Any, List
 
+from .agent import _agent_cache_clear
+
 logger = logging.getLogger(__name__)
 
 
@@ -38,7 +40,6 @@ async def handle_sessions_reset(params: Dict[str, Any], context: Dict[str, Any])
     runtime.delete_session(key)
     
     # Clear cached agent instances to reset conversation history
-    from .agent import _agent_cache_clear
     _agent_cache_clear()
     
     return {
