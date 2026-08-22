@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, AsyncIterator, Callable
 from datetime import datetime
 
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
+from ..slash import handle_slash
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,8 @@ class WebChannelAdapter(ChannelAdapter):
 
         try:
             await websocket.send_json(payload)
+            if message_type in ("stream_chunk", "stream_complete", "message"):
+                logger.info("web sent to %s [%s]: %s", client_id, message_type, text)
         except Exception as e:
             logger.error(f"Failed to send response to {client_id}: {e}")
 
@@ -156,7 +159,7 @@ class WebChannelAdapter(ChannelAdapter):
         self,
         websocket,
         client_id: str,
-        agent,
+        session,
         runtime
     ):
         await self.register_client(client_id, websocket)
@@ -175,7 +178,7 @@ class WebChannelAdapter(ChannelAdapter):
                         await websocket.send_json(response)
                     if data.get("type") == "message":
                         asyncio.create_task(
-                            self._process_message(client_id, data, agent, runtime)
+                            self._process_message(client_id, data, session, runtime)
                         )
                 except Exception as e:
                     logger.error(f"Error handling WebSocket message: {e}")
@@ -183,57 +186,70 @@ class WebChannelAdapter(ChannelAdapter):
         finally:
             await self.unregister_client(client_id)
 
+    async def _finish_stream(self, client_id, session_id, session, full_response):
+        await self.send_response(
+            client_id,
+            "",
+            message_type="stream_complete",
+            extra_data={
+                "session_id": session_id,
+                "agent_id": session.name,
+                "is_final": True,
+                "full_response": full_response,
+            },
+        )
+
     async def _process_message(
         self,
         client_id: str,
         data: Dict[str, Any],
-        agent,
+        session,
         runtime
     ):
         try:
             session_id = self._client_sessions.get(client_id, f"web_{client_id}")
             self._client_sessions[client_id] = session_id
-            runtime.get_or_create_session(session_id, "default")
+            runtime.get_or_create_session(session_id, session.name)
             message = data.get("text", "")
+            session.deliver = lambda text: self.send_response(client_id, text, message_type="message")
 
-            progress_events: list = []
+            slash_reply = await handle_slash(message, session, session_id)
+            if slash_reply is not None:
+                await self.send_response(
+                    client_id,
+                    text=slash_reply,
+                    message_type="stream_chunk",
+                    extra_data={"session_id": session_id, "agent_id": session.name, "is_final": False},
+                )
+                await self._finish_stream(client_id, session_id, session, slash_reply)
+                runtime.update_session_activity(session_id)
+                runtime.increment_requests()
+                return
 
-            def on_progress(p):
-                progress_events.append(p)
-
-            async def _flush_progress():
-                while progress_events:
-                    p = progress_events.pop(0)
-                    await self.send_response(
-                        client_id,
-                        text=p.content,
-                        message_type=f"progress_{p.type}",
-                        extra_data={
-                            "agent": p.agent,
-                            "step": p.step,
-                            "tool_name": p.tool_name,
-                        },
-                    )
+            async def on_event(ev):
+                parts = ev.topic.split(':')
+                await self.send_response(
+                    client_id,
+                    text=ev.data.get('content', ''),
+                    message_type=f"progress_{':'.join(parts[1:])}",
+                    extra_data={
+                        "tool_name": ev.data.get('name', ''),
+                        "content": ev.data.get('content', ''),
+                    },
+                )
 
             full_response = ""
-            for chunk in agent.chat_stream(message, on_progress=on_progress):
-                await _flush_progress()
+            async for chunk in session.stream(message, on_event=on_event):
                 if chunk:
                     full_response += chunk
                     await self.send_response(
                         client_id,
                         chunk,
                         message_type="stream_chunk",
-                        extra_data={"session_id": session_id, "agent_id": "default", "is_final": False},
+                        extra_data={"session_id": session_id, "agent_id": session.name, "is_final": False},
                     )
 
-            await _flush_progress()
-            await self.send_response(
-                client_id,
-                "",
-                message_type="stream_complete",
-                extra_data={"session_id": session_id, "agent_id": "default", "is_final": True, "full_response": full_response},
-            )
+            await self._finish_stream(client_id, session_id, session, full_response)
 
             runtime.update_session_activity(session_id)
             runtime.increment_requests()

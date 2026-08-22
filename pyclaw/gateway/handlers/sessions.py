@@ -1,8 +1,6 @@
 import logging
 from typing import Dict, Any, List
 
-from .agent import _agent_cache_clear
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,17 +29,12 @@ async def handle_sessions_get(params: Dict[str, Any], context: Dict[str, Any]) -
 
 async def handle_sessions_reset(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     key = params.get("key")
-    runtime = context.get("runtime")
-    
+
     if not key:
         return {"error": "Session key is required"}
-    
-    # Delete and recreate session
-    runtime.delete_session(key)
-    
-    # Clear cached agent instances to reset conversation history
-    _agent_cache_clear()
-    
+
+    await context.get("gateway")._remove_session(key)
+
     return {
         "key": key,
         "ok": True,

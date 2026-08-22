@@ -59,6 +59,7 @@ class IMChannelAdapter(ChannelAdapter):
 
     async def send_message(self, to: str, message: OutboundMessage) -> bool:
         if self._client is None or not self._connected:
+            logger.info("[%s] send skipped to %s (not connected): %s", self.platform, to, message.text)
             return False
         msg_type = message.metadata.get("type", "c2c")
         try:
@@ -69,6 +70,7 @@ class IMChannelAdapter(ChannelAdapter):
                     await self._client.send_c2c_message(to, message.text)
             elif self.platform == "wechat":
                 await self._client.send_text(to, message.text)
+            logger.info("[%s] sent to %s: %s", self.platform, to, message.text)
             return True
         except Exception as e:
             logger.error("Failed to send %s message: %s", self.platform, e)

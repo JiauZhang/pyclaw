@@ -1,6 +1,6 @@
 from datetime import datetime
 
-import httpx
+import aiohttp
 from chatchat.tool import tool
 
 
@@ -70,22 +70,22 @@ WEATHER_CODES = {
 }
 
 
-def _get_location_coords(location: str):
-    with httpx.Client(timeout=10) as client:
-        url = 'https://geocoding-api.open-meteo.com/v1/search'
-        params = {'name': location, 'count': 1, 'language': 'en', 'format': 'json'}
-        resp = client.get(url, params=params)
-        data = resp.json()
-        results = data.get('results', [])
-        if not results:
-            return None
-        result = results[0]
-        return {
-            'lat': result.get('latitude'),
-            'lon': result.get('longitude'),
-            'name': result.get('name', location),
-            'country': result.get('country', ''),
-        }
+async def _get_location_coords(location: str):
+    url = 'https://geocoding-api.open-meteo.com/v1/search'
+    params = {'name': location, 'count': 1, 'language': 'en', 'format': 'json'}
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        async with session.get(url, params=params) as resp:
+            data = await resp.json()
+    results = data.get('results', [])
+    if not results:
+        return None
+    result = results[0]
+    return {
+        'lat': result.get('latitude'),
+        'lon': result.get('longitude'),
+        'name': result.get('name', location),
+        'country': result.get('country', ''),
+    }
 
 
 @tool(
@@ -102,44 +102,44 @@ def _get_location_coords(location: str):
         'required': ['location'],
     }
 )
-def geocode_tool(location: str):
+async def geocode_tool(location: str):
     if not location:
         return 'Error: location is required.'
-    coords = _get_location_coords(location)
+    coords = await _get_location_coords(location)
     if coords is None:
         return f'Error: could not find location: {location}'
     return f"Name: {coords['name']}\nCountry: {coords['country']}\nLatitude: {coords['lat']}\nLongitude: {coords['lon']}"
 
 
-def _get_weather_data(lat: float, lon: float):
-    with httpx.Client(timeout=15) as client:
-        url = 'https://api.open-meteo.com/v1/forecast'
-        params = {
-            'latitude': lat,
-            'longitude': lon,
-            'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m',
-            'timezone': 'auto',
-        }
-        resp = client.get(url, params=params)
-        return resp.json()
+async def _get_weather_data(lat: float, lon: float):
+    url = 'https://api.open-meteo.com/v1/forecast'
+    params = {
+        'latitude': lat,
+        'longitude': lon,
+        'current': 'temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m',
+        'timezone': 'auto',
+    }
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+        async with session.get(url, params=params) as resp:
+            return await resp.json()
 
 
-def _get_ip_location():
-    with httpx.Client(timeout=10) as client:
-        resp = client.get('https://ipapi.co/json/')
-        data = resp.json()
-        lat = data.get('latitude')
-        lon = data.get('longitude')
-        city = data.get('city', '')
-        country = data.get('country_name', '')
-        if lat is None or lon is None:
-            raise RuntimeError('cannot detect location')
-        return {
-            'lat': lat,
-            'lon': lon,
-            'name': city,
-            'country': country,
-        }
+async def _get_ip_location():
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=10)) as session:
+        async with session.get('https://ipapi.co/json/') as resp:
+            data = await resp.json()
+    lat = data.get('latitude')
+    lon = data.get('longitude')
+    city = data.get('city', '')
+    country = data.get('country_name', '')
+    if lat is None or lon is None:
+        raise RuntimeError('cannot detect location')
+    return {
+        'lat': lat,
+        'lon': lon,
+        'name': city,
+        'country': country,
+    }
 
 
 @tool(
@@ -151,9 +151,9 @@ def _get_ip_location():
         'required': [],
     }
 )
-def location_tool():
+async def location_tool():
     try:
-        loc = _get_ip_location()
+        loc = await _get_ip_location()
         return f"City: {loc['name']}\nCountry: {loc['country']}\nLatitude: {loc['lat']}\nLongitude: {loc['lon']}"
     except Exception as e:
         return f'Error detecting location: {str(e)}'
@@ -173,17 +173,17 @@ def location_tool():
         'required': [],
     }
 )
-def weather_tool(location: str = ''):
+async def weather_tool(location: str = ''):
     if not location:
         try:
-            loc = _get_ip_location()
+            loc = await _get_ip_location()
             lat = loc['lat']
             lon = loc['lon']
             display_name = f"{loc['name']}, {loc['country']}" if loc['name'] and loc['country'] else (loc['name'] or loc['country'] or 'Unknown')
         except Exception:
             return 'Error: cannot auto-detect location. Please provide a city name.'
     else:
-        coords = _get_location_coords(location)
+        coords = await _get_location_coords(location)
         if coords is None:
             return f'Error: could not find location: {location}'
         lat = coords['lat']
@@ -193,7 +193,7 @@ def weather_tool(location: str = ''):
         display_name = f'{name}, {country}' if country else name
 
     try:
-        data = _get_weather_data(lat, lon)
+        data = await _get_weather_data(lat, lon)
         current = data.get('current', {})
         temp = current.get('temperature_2m', 'N/A')
         feels_like = current.get('apparent_temperature', 'N/A')

@@ -1,94 +1,38 @@
 import logging
-import os
-from typing import Dict, Any, Optional
-
-from ...agents import Agent
-from ...config import load
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
-_agent_cache: Dict[str, Agent] = {}
-_agent_cache_maxsize = 20
 
-
-def _agent_cache_clear(agent_id: Optional[str] = None):
-    if agent_id is None:
-        _agent_cache.clear()
-        return
-    keys = [k for k in _agent_cache if k.startswith(f'{agent_id}:')]
-    for k in keys:
-        del _agent_cache[k]
-
-
-def _get_or_create_agent(
-    agent_id: str,
-    config: Any,
-    provider: Optional[str] = None,
-    model: Optional[str] = None,
-) -> Agent:
-    cache_key = f'{agent_id}:{provider}:{model}'
-
-    if cache_key in _agent_cache:
-        return _agent_cache[cache_key]
-
-    # Evict oldest entry if cache is full
-    if len(_agent_cache) >= _agent_cache_maxsize:
-        oldest = next(iter(_agent_cache))
-        del _agent_cache[oldest]
-
-    agents = config.get('agents', {})
-    default_agent = config.get('default_agent', 'default')
-    agent_config = agents.get(agent_id, agents.get(default_agent, {})) if agents else {}
-
-    if not provider:
-        provider = agent_config.get('provider') or os.getenv('OPENCLAW_PROVIDER', 'agnes')
-    if not model:
-        model = agent_config.get('model') or os.getenv('OPENCLAW_MODEL', 'agnes-2.0-flash')
-
-    instruction = agent_config.get('system_prompt') if agent_config else None
-
-    agent = Agent(
-        provider=provider,
-        model=model,
-        instruction=instruction,
-    )
-    logger.info(f'Created Agent for {agent_id} using {provider}/{model or "default"}')
-
-    _agent_cache[cache_key] = agent
-    return agent
-
-
-def _resolve_params(
-    params: Dict[str, Any],
-    context: Dict[str, Any],
-) -> Dict[str, Any]:
-    config = load()
-    runtime = context.get('runtime')
+def _resolve_params(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     gateway = context.get('gateway')
+    runtime = context.get('runtime')
 
     message = params.get('message', '').strip()
     session_key = params.get('sessionKey') or params.get('session_id') or 'default'
-    agent_id = params.get('agentId') or params.get('agent_id')
     provider = params.get('provider')
     model = params.get('model')
-    stream = params.get('stream', False)
 
     if not provider and gateway and gateway.config.provider:
         provider = gateway.config.provider
     if not model and gateway and gateway.config.model:
         model = gateway.config.model
 
-    runtime.get_or_create_session(session_key, agent_id or 'default')
-
     return dict(
         message=message,
         session_key=session_key,
-        agent_id=agent_id or 'default',
         provider=provider,
         model=model,
-        stream=stream,
-        config=config,
+        stream=params.get('stream', False),
         runtime=runtime,
+        gateway=gateway,
+    )
+
+
+async def _get_session(resolved: Dict[str, Any]):
+    gateway = resolved['gateway']
+    return await gateway._get_session(
+        resolved['session_key'], resolved['provider'], resolved['model'],
     )
 
 
@@ -98,9 +42,9 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
         return {'error': 'Message is required'}
 
     try:
-        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
+        session = await _get_session(resolved)
     except Exception as e:
-        logger.error(f'Failed to create agent: {e}')
+        logger.error(f'Failed to create session: {e}')
         return {'error': f'Failed to initialize agent: {str(e)}'}
 
     try:
@@ -108,19 +52,19 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
             return {
                 'stream': True,
                 'sessionKey': resolved['session_key'],
-                'agentId': resolved['agent_id'],
+                'agentId': session.name,
                 'message': 'Use /v1/chat/completions for streaming',
             }
-        response = agent.chat(resolved['message'])
+        response = await session.chat(resolved['message'])
         resolved['runtime'].update_session_activity(resolved['session_key'])
         resolved['runtime'].increment_requests()
         return {
             'response': response,
             'sessionKey': resolved['session_key'],
-            'agentId': resolved['agent_id'],
-            'tools_available': agent.get_available_tools(),
-            'provider': agent.provider,
-            'model': agent.model,
+            'agentId': session.name,
+            'tools_available': session.available_tools,
+            'provider': session.provider,
+            'model': session.model,
         }
     except Exception as e:
         logger.error(f'Agent error: {e}')
@@ -134,18 +78,18 @@ async def handle_agent_stream(params: Dict[str, Any], context: Dict[str, Any]) -
         return {'error': 'Message is required'}
 
     try:
-        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
+        session = await _get_session(resolved)
     except Exception as e:
         return {'error': f'Failed to initialize agent: {str(e)}'}
 
     try:
-        response = agent.chat(resolved['message'])
+        response = await session.chat(resolved['message'])
         resolved['runtime'].update_session_activity(resolved['session_key'])
         resolved['runtime'].increment_requests()
         return {
             'response': response,
             'sessionKey': resolved['session_key'],
-            'agentId': resolved['agent_id'],
+            'agentId': session.name,
             'stream': False,
         }
     except Exception as e:
@@ -158,12 +102,12 @@ async def handle_agent_tools(params: Dict[str, Any], context: Dict[str, Any]) ->
     resolved = _resolve_params(params, context)
 
     try:
-        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], resolved['provider'], resolved['model'])
+        session = await _get_session(resolved)
         return {
-            'agentId': resolved['agent_id'],
-            'provider': agent.provider,
-            'model': agent.model,
-            'tools': agent.get_available_tools(),
+            'agentId': resolved['session_key'],
+            'provider': session.provider,
+            'model': session.model,
+            'tools': session.available_tools,
         }
     except Exception as e:
         return {'error': str(e)}
@@ -183,16 +127,13 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
         return {'error': 'Messages are required'}
 
     resolved = _resolve_params(params, context)
-
     provider = resolved['provider']
     model_name = model_param
     if '/' in model_param:
-        parts = model_param.split('/', 1)
-        provider = parts[0]
-        model_name = parts[1] if parts[1] else None
+        provider, model_name = model_param.split('/', 1)
 
     try:
-        agent = _get_or_create_agent(resolved['agent_id'], resolved['config'], provider, model_name)
+        session = await _get_session({**resolved, 'provider': provider, 'model': model_name})
     except Exception as e:
         return {'error': f'Failed to initialize agent: {str(e)}'}
 
@@ -204,7 +145,7 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
         return {'error': 'No user message found'}
 
     try:
-        response = agent.chat(last_message)
+        response = await session.chat(last_message)
         resolved['runtime'].update_session_activity(resolved['session_key'])
         resolved['runtime'].increment_requests()
         return {

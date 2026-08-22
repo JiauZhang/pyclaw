@@ -1,16 +1,46 @@
 import argparse, asyncio, logging, sys
-from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__, __pyclaw_home__
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
+from pyclaw.cli import stop_server
 from chatchat.cli.config import parse_config, cli_config
+
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 
 def setup_logging(level: str = "INFO"):
-    logging.basicConfig(
-        level=getattr(logging, level.upper()),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)]
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(getattr(logging, level.upper()))
+    console.setFormatter(logging.Formatter(_LOG_FORMAT))
+    root.addHandler(console)
+
+    log_dir = Path(__pyclaw_home__) / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    file_handler = RotatingFileHandler(
+        log_dir / "pyclaw.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
     )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+    root.addHandler(file_handler)
+
+
+def _apply_overrides(config: dict, args) -> bool:
+    overrides = {
+        "provider": args.provider,
+        "model": args.model,
+        "enabled_channels": args.channels,
+    }
+    modified = False
+    for key, value in overrides.items():
+        if value is not None:
+            config[key] = value
+            modified = True
+    return modified
 
 
 async def start_server(args):
@@ -20,18 +50,7 @@ async def start_server(args):
     config = load_config()
     logger.info("Configuration loaded")
 
-    modified = False
-    if args.provider is not None:
-        config["provider"] = args.provider
-        modified = True
-    if args.model is not None:
-        config["model"] = args.model
-        modified = True
-    if args.channels is not None:
-        config["enabled_channels"] = args.channels
-        modified = True
-
-    if modified:
+    if _apply_overrides(config, args):
         save_config(config)
 
     gw_http = config.get("gateway", {}).get("http", {})
@@ -75,6 +94,15 @@ async def run_channel_rebind(args):
         sys.exit(1)
 
 
+def stop_server_cmd(args):
+    killed = stop_server(port=args.port, force=args.force, all_processes=args.all)
+    if not killed:
+        print("No running PyClaw gateway found.")
+        return
+    scope = "all served processes" if args.all else f"port {args.port or 'from config'}"
+    print(f"Stopped {scope}: PIDs {', '.join(str(p) for p in killed)}")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PyClaw – Personal AI Assistant")
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
@@ -85,7 +113,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--port", type=int, default=None, help="HTTP port (config/gateway/http/port or 12321)")
     serve_parser.add_argument("--host", type=str, default=None, help="Bind address (config/gateway/http/host or 127.0.0.1)")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["web", "qq", "wechat"], help="Channels to enable (default: web only)")
+    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["web", "qq", "wechat"], help="Channels to enable (default: wechat only)")
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
 
@@ -99,6 +127,12 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     rebind_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
 
+    # --- stop ---
+    stop_parser = subparsers.add_parser("stop", help="Stop a running gateway (kills listener by port)")
+    stop_parser.add_argument("--port", type=int, default=None, help="Port to free (config/gateway/http/port or 12321)")
+    stop_parser.add_argument("--force", action="store_true", help="Send SIGKILL instead of SIGTERM")
+    stop_parser.add_argument("--all", action="store_true", help="Kill every `pyclaw serve` process, ignoring port")
+
     # --- config (delegated to chatchat) ---
     cli_config(subparsers)
 
@@ -106,9 +140,18 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _finalize_args(args) -> argparse.Namespace:
+    if not hasattr(args, "log_level"):
+        args.log_level = "INFO"
+    for field in ("provider", "model", "channels", "port", "host"):
+        if not hasattr(args, field):
+            setattr(args, field, None)
+    return args
+
+
 def main():
     parser = _build_parser()
-    args = parser.parse_args()
+    args = _finalize_args(parser.parse_args())
 
     if args.version:
         print(__version__)
@@ -123,6 +166,10 @@ def main():
             asyncio.run(run_channel_rebind(args))
         else:
             parser._channel_parser.print_help()
+        return
+
+    if args.command == "stop":
+        stop_server_cmd(args)
         return
 
     if args.command == "serve" or args.command is None:

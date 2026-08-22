@@ -12,14 +12,16 @@ __secret_file__ = str(Path(__pyclaw_home__) / "chatchat.json")
 
 from .gateway import GatewayServer, GatewayConfig
 from .config import load
-from .agents import Agent
+from .agents import Session, build_team, IM_EXTRA
 from .channels import IMChannelAdapter
 
 __all__ = [
     "GatewayServer",
     "GatewayConfig",
     "load",
-    "Agent",
+    "Session",
+    "build_team",
+    "IM_EXTRA",
     "IMChannelAdapter",
     "__pyclaw_home__",
     "__secret_file__",

@@ -14,8 +14,8 @@ def load() -> dict:
             "http": {"port": 12321, "host": "127.0.0.1"},
         },
         "provider": "agnes",
-        "model": "agnes-2.0-flash",
-        "enabled_channels": ["web"],
+        "model": "agnes-2.5-flash",
+        "enabled_channels": ["wechat"],
         "greeting_text": "PyClaw 已上线，随时为您服务！",
     }
     if __config_file__.exists():
@@ -43,7 +43,10 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 def save(config: dict) -> None:
     __config_file__.parent.mkdir(parents=True, exist_ok=True)
-    json.write(__config_file__, config)
+    try:
+        json.write(__config_file__, config)
+    except OSError:
+        pass
 
 
 def reload() -> dict:
