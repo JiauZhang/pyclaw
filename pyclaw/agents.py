@@ -1,5 +1,7 @@
 import asyncio
+import inspect
 import itertools
+import logging
 from typing import AsyncIterator, Callable, Optional
 
 from chatchat.agent import Agent, AgentConfig, create_agent
@@ -76,6 +78,66 @@ def _delta_text(chunk) -> str:
         return ''
 
 
+_conv_logger = logging.getLogger("pyclaw.conversation")
+
+
+def _summarize(value, limit: int = 300) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if len(text) <= limit:
+        return text
+    return text[:limit] + "…"
+
+
+def _delta_thinking(chunk) -> str:
+    try:
+        return chunk.choices[0].delta.reasoning_content or ''
+    except (AttributeError, IndexError, TypeError):
+        return ''
+
+
+def _record_event(session_id: str, ev, logger=_conv_logger):
+    topic = getattr(ev, "topic", "")
+    data = getattr(ev, "data", None) or {}
+    role = "system"
+    detail = ""
+
+    if "tool" in topic:
+        role = "tool"
+        name = data.get("name", "")
+        if topic.endswith(":start"):
+            detail = f"{name} | input={_summarize(data.get('input') or data.get('arguments'))}"
+        elif topic.endswith(":end"):
+            detail = f"{name} | output={_summarize(data.get('output') or data.get('result'))}"
+        elif topic.endswith(":error"):
+            detail = f"{name} | error={data.get('error')}"
+    elif "agent" in topic or "team" in topic:
+        role = "agent"
+        name = data.get("name", "")
+        if topic.endswith(":start"):
+            detail = f"{name} started"
+        elif topic.endswith(":end"):
+            detail = f"{name} finished"
+        elif topic.endswith(":error"):
+            detail = f"{name} error: {data.get('error')}"
+
+    if not detail:
+        return
+    logger.info(
+        "lifecycle",
+        extra={"conv_session": session_id, "conv_role": role,
+               "conv_topic": topic, "conv_detail": detail},
+    )
+
+
+def _dispatch_event(on_event, ev):
+    if inspect.iscoroutinefunction(on_event):
+        asyncio.create_task(on_event(ev))
+    else:
+        on_event(ev)
+
+
 def build_agent(
     provider: str,
     model: str,
@@ -135,6 +197,9 @@ class Session:
         self.name = entity.name
         self.mode = entity.kind
         self.deliver = None
+        self.conv_session_id = entity.id
+        self._conv_thinking = ""
+        self._conv_reply = ""
         self._runtime = get_runtime()
         self._hooks: list[tuple[str, Callable]] = []
         _sessions_by_root[entity.id] = self
@@ -217,21 +282,57 @@ class Session:
         self._hooks.append((pattern, handler))
 
     def _unbind(self):
+        self._flush_conv()
         for pattern, handler in self._hooks:
             self._runtime.unsubscribe(pattern, handler)
         self._hooks.clear()
 
-    def _bind_lifecycle(self, on_event: Optional[Callable]):
-        if not on_event:
-            return
+    def _accumulate(self, ev):
+        thinking = _delta_thinking(getattr(ev, "data", None))
+        content = _delta_text(getattr(ev, "data", None))
+        if thinking:
+            self._conv_thinking += thinking
+        if content:
+            self._conv_reply += content
 
-        def dispatch(ev):
+    def _flush_conv(self):
+        session_id = self.conv_session_id
+        if self._conv_thinking:
+            _conv_logger.info(
+                "thinking",
+                extra={"conv_session": session_id, "conv_role": "thinking",
+                       "conv_topic": "THINKING", "conv_detail": self._conv_thinking},
+            )
+            self._conv_thinking = ""
+        if self._conv_reply:
+            _conv_logger.info(
+                "reply",
+                extra={"conv_session": session_id, "conv_role": "assistant",
+                       "conv_topic": "REPLY", "conv_detail": self._conv_reply},
+            )
+            self._conv_reply = ""
+
+    def _bind_lifecycle(self, on_event: Optional[Callable]):
+        def record(ev):
             if not self._scoped(ev):
                 return
-            asyncio.create_task(on_event(ev))
+            if ev.topic == "lifecycle:client:step":
+                self._accumulate(ev)
+            else:
+                _record_event(self.conv_session_id, ev)
 
-        for pattern in LIFECYCLE_PATTERNS:
-            self._bind(pattern, dispatch)
+        for pattern in LIFECYCLE_PATTERNS + ("lifecycle:client:step",):
+            self._bind(pattern, record)
+
+        if on_event:
+
+            def dispatch(ev):
+                if not self._scoped(ev):
+                    return
+                _dispatch_event(on_event, ev)
+
+            for pattern in LIFECYCLE_PATTERNS:
+                self._bind(pattern, dispatch)
 
     async def chat(self, message: str, on_event: Optional[Callable] = None) -> str:
         self._bind_lifecycle(on_event)

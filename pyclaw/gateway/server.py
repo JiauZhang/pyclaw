@@ -14,10 +14,11 @@ import uvicorn
 
 from pyclaw.version import __version__
 
-from ..agents import Session, build_team, IM_EXTRA
+from ..agents import Session, build_team, IM_EXTRA, _conv_logger
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from ..slash import handle_slash
+from ..channels.im_formatter import IMStatusTracker, split_long_message
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
 
@@ -28,13 +29,23 @@ def _im_progress_text(ev) -> str:
     topic = ev.topic
     data = ev.data or {}
     if topic in ('lifecycle:team:start', 'lifecycle:agent:start'):
-        return '[PyClaw is thinking…]'
+        return '🔄 PyClaw 思考中…'
     if topic == 'lifecycle:tool:start':
-        return f'[Using: {data.get("name")}]'
+        name = data.get('name', 'tool')
+        arg = data.get('input') or data.get('arguments')
+        if arg:
+            return f'🔧 调用工具 {name}：{str(arg)[:80]}'
+        return f'🔧 调用工具 {name}'
+    if topic == 'lifecycle:tool:end':
+        name = data.get('name', 'tool')
+        out = data.get('output') or data.get('result')
+        if out:
+            return f'✅ {name} 完成：{str(out)[:80]}'
+        return f'✅ {name} 完成'
     if topic == 'lifecycle:tool:error':
-        return f'[{data.get("name")} failed: {data.get("error")}]'
+        return f'⚠️ {data.get("name", "tool")} 失败：{data.get("error")}'
     if topic in ('lifecycle:team:error', 'lifecycle:agent:error'):
-        return f'[Error: {data.get("error")}]'
+        return f'⚠️ 错误：{data.get("error")}'
     return ''
 
 
@@ -48,6 +59,55 @@ def _friendly_channel_error(exc: Exception) -> str:
     if "rate" in lowered:
         return "Too many requests. Please wait a moment and try again."
     return f"An error occurred: {err_msg[:200]}"
+
+
+async def run_im_interaction(
+    session,
+    adapter,
+    sender_id: str,
+    text: str,
+    msg_id,
+    *,
+    im_extra: str,
+    progress_fn: Callable,
+    status_interval: float = 4.0,
+    max_msg_len: int = 1500,
+    clock=time.monotonic,
+):
+    session_id = f"im_{sender_id}"
+    session.conv_session_id = session_id
+    _conv_logger.info(
+        "user message",
+        extra={"conv_session": session_id, "conv_role": "user",
+               "conv_topic": "USER", "conv_detail": text},
+    )
+
+    tracker = IMStatusTracker(refresh_interval=status_interval)
+
+    def on_event(ev):
+        status = progress_fn(ev)
+        if status:
+            tracker.update(status, clock())
+
+    async def pump_status():
+        while True:
+            await asyncio.sleep(status_interval / 2)
+            for status in tracker.drain(clock()):
+                await adapter.send_message(sender_id, OutboundMessage(text=status, reply_to=msg_id))
+
+    pump = asyncio.create_task(pump_status())
+    response = ""
+    try:
+        response = await session.chat(f"{im_extra}\n{text}", on_event=on_event)
+    finally:
+        pump.cancel()
+        for status in tracker.drain(clock()):
+            await adapter.send_message(sender_id, OutboundMessage(text=status, reply_to=msg_id))
+
+    if response:
+        for part in split_long_message(response, max_msg_len):
+            await adapter.send_message(sender_id, OutboundMessage(text=part, reply_to=msg_id))
+    return response
 
 
 @dataclass
@@ -403,25 +463,16 @@ class GatewayServer:
                     self.runtime.increment_requests()
                     return
 
-                async def on_event(ev):
-                    text = _im_progress_text(ev)
-                    if text:
-                        logger.debug("IM '%s' progress to %s: %s", _platform, msg.sender_id, text)
-                        await _adapter.send_message(
-                            msg.sender_id,
-                            OutboundMessage(text=text, reply_to=msg.id),
-                        )
-
                 try:
-                    response = await session.chat(
-                        f"{IM_EXTRA}\n{msg.text}", on_event=on_event,
+                    response = await run_im_interaction(
+                        session,
+                        _adapter,
+                        msg.sender_id,
+                        msg.text,
+                        msg.id,
+                        im_extra=IM_EXTRA,
+                        progress_fn=_im_progress_text,
                     )
-                    outbound = OutboundMessage(
-                        text=response,
-                        reply_to=msg.id,
-                        metadata=msg.metadata,
-                    )
-                    await _adapter.send_message(msg.sender_id, outbound)
                     logger.info("IM '%s' replied to %s", _platform, msg.sender_id)
                     self.runtime.increment_channel_messages(_adapter.channel_id)
                     self.runtime.increment_requests()

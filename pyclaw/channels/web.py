@@ -6,6 +6,7 @@ from datetime import datetime
 
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
+from ..agents import _conv_logger
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,13 @@ class WebChannelAdapter(ChannelAdapter):
             session_id = self._client_sessions.get(client_id, f"web_{client_id}")
             self._client_sessions[client_id] = session_id
             runtime.get_or_create_session(session_id, session.name)
+            session.conv_session_id = session_id
             message = data.get("text", "")
+            _conv_logger.info(
+                "user message",
+                extra={"conv_session": session_id, "conv_role": "user",
+                       "conv_topic": "USER", "conv_detail": message},
+            )
             session.deliver = lambda text: self.send_response(client_id, text, message_type="message")
 
             slash_reply = await handle_slash(message, session, session_id)
