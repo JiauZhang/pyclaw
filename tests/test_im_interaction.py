@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from pyclaw import agents
 from pyclaw.gateway.server import run_im_interaction
 
 
@@ -42,11 +43,12 @@ class _Session:
         return self._response
 
 
-def test_interaction_splits_long_response():
+def test_interaction_splits_long_response(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     adapter = _Adapter()
     session = _Session("x" * 5000)
     response = asyncio.run(run_im_interaction(
-        session, adapter, "u1", "hi", "m1",
+        session, adapter, "sid1", "u1", "hi", "m1",
         im_extra="", progress_fn=_progress, status_interval=4.0, max_msg_len=1500,
         clock=lambda: 0.0,
     ))
@@ -55,9 +57,10 @@ def test_interaction_splits_long_response():
     assert "".join(adapter.sent) == "x" * 5000
 
 
-def test_interaction_throttles_status_messages():
+def test_interaction_throttles_status_messages(tmp_path, monkeypatch):
     # clock advances slowly so only the first drain emits; later drains within
     # the interval are suppressed. We let chat emit two distinct statuses.
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     events = [_Ev("lifecycle:agent:start"), _Ev("lifecycle:tool:start", {"name": "search"})]
     session = _Session("done", events)
     adapter = _Adapter()
@@ -71,7 +74,7 @@ def test_interaction_throttles_status_messages():
         return v
 
     asyncio.run(run_im_interaction(
-        session, adapter, "u1", "hi", "m1",
+        session, adapter, "sid1", "u1", "hi", "m1",
         im_extra="", progress_fn=_progress, status_interval=4.0, max_msg_len=1500,
         clock=clock,
     ))
@@ -83,11 +86,12 @@ def test_interaction_throttles_status_messages():
     assert adapter.sent[-1] == "done"
 
 
-def test_interaction_no_status_when_progress_empty():
+def test_interaction_no_status_when_progress_empty(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     session = _Session("short answer")
     adapter = _Adapter()
     asyncio.run(run_im_interaction(
-        session, adapter, "u1", "hi", "m1",
+        session, adapter, "sid1", "u1", "hi", "m1",
         im_extra="", progress_fn=lambda ev: "", status_interval=4.0, max_msg_len=1500,
         clock=lambda: 0.0,
     ))

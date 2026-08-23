@@ -6,7 +6,7 @@ from datetime import datetime
 
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
-from ..agents import _conv_logger
+from ..agents import append_conv, record_meta, session_logger
 
 logger = logging.getLogger(__name__)
 
@@ -208,16 +208,14 @@ class WebChannelAdapter(ChannelAdapter):
         runtime
     ):
         try:
-            session_id = self._client_sessions.get(client_id, f"web_{client_id}")
+            session_id = self._client_sessions.get(client_id, client_id)
             self._client_sessions[client_id] = session_id
+            s_log = session_logger(session_id)
+            record_meta(session_id, {"channel": "web", "client_id": client_id})
             runtime.get_or_create_session(session_id, session.name)
             session.conv_session_id = session_id
             message = data.get("text", "")
-            _conv_logger.info(
-                "user message",
-                extra={"conv_session": session_id, "conv_role": "user",
-                       "conv_topic": "USER", "conv_detail": message},
-            )
+            append_conv(session_id, "user", message)
             session.deliver = lambda text: self.send_response(client_id, text, message_type="message")
 
             slash_reply = await handle_slash(message, session, session_id)
@@ -260,7 +258,8 @@ class WebChannelAdapter(ChannelAdapter):
 
             runtime.update_session_activity(session_id)
             runtime.increment_requests()
+            s_log.info("web replied to %s (%d chars)", client_id, len(full_response))
         except Exception as e:
-            logger.error(f"Error processing message: {e}")
+            s_log.error("Error processing message: %s", e)
             await self.send_response(client_id, f"Error: {str(e)}", message_type="error")
             runtime.increment_errors()

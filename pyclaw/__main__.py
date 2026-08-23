@@ -8,18 +8,6 @@ from pyclaw.cli import stop_server
 from chatchat.cli.config import parse_config, cli_config
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-_CONV_FORMAT = "%(asctime)s | session=%(conv_session)s | %(conv_role)s | %(conv_topic)s | %(conv_detail)s"
-
-
-class _ConvFormatter(logging.Formatter):
-    def __init__(self):
-        super().__init__(_CONV_FORMAT)
-
-    def format(self, record):
-        for field in ("conv_session", "conv_role", "conv_topic", "conv_detail"):
-            if not hasattr(record, field):
-                setattr(record, field, "-")
-        return super().format(record)
 
 
 def setup_logging(level: str = "INFO"):
@@ -39,16 +27,6 @@ def setup_logging(level: str = "INFO"):
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
     root.addHandler(file_handler)
-
-    conv_logger = logging.getLogger("pyclaw.conversation")
-    conv_logger.setLevel(logging.DEBUG)
-    conv_logger.propagate = False
-    conv_handler = RotatingFileHandler(
-        log_dir / "conversation.log", maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8",
-    )
-    conv_handler.setLevel(logging.DEBUG)
-    conv_handler.setFormatter(_ConvFormatter())
-    conv_logger.addHandler(conv_handler)
 
 
 def _apply_overrides(config: dict, args) -> bool:

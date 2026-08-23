@@ -14,7 +14,10 @@ import uvicorn
 
 from pyclaw.version import __version__
 
-from ..agents import Session, build_team, IM_EXTRA, _conv_logger
+from ..agents import (
+    Session, build_team, IM_EXTRA, append_conv, record_meta, session_logger,
+    resolve_session_id,
+)
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from ..slash import handle_slash
@@ -64,6 +67,7 @@ def _friendly_channel_error(exc: Exception) -> str:
 async def run_im_interaction(
     session,
     adapter,
+    session_id: str,
     sender_id: str,
     text: str,
     msg_id,
@@ -74,13 +78,8 @@ async def run_im_interaction(
     max_msg_len: int = 1500,
     clock=time.monotonic,
 ):
-    session_id = f"im_{sender_id}"
     session.conv_session_id = session_id
-    _conv_logger.info(
-        "user message",
-        extra={"conv_session": session_id, "conv_role": "user",
-               "conv_topic": "USER", "conv_detail": text},
-    )
+    append_conv(session_id, "user", text)
 
     tracker = IMStatusTracker(refresh_interval=status_interval)
 
@@ -267,7 +266,7 @@ class GatewayServer:
         @self.app.websocket("/chat/ws")
         async def chat_websocket_endpoint(websocket: WebSocket):
             await websocket.accept()
-            client_id = f"chat_{uuid.uuid4().hex[:8]}"
+            client_id = uuid.uuid4().hex
             logger.info(f"WebChat client {client_id} connected")
 
             session = await self._get_session(client_id)
@@ -435,19 +434,25 @@ class GatewayServer:
                     _platform=platform,
             ):
                 await _adapter.save_known_contact(msg.sender_id)
-                logger.info("IM '%s' received from %s: %s", _platform, msg.sender_id, msg.text)
+                session_id = resolve_session_id([_platform, str(msg.sender_id)])
+                s_log = session_logger(session_id)
+                s_log.info("IM '%s' received from %s: %s", _platform, msg.sender_id, msg.text)
+                record_meta(session_id, {
+                    "channel": "im",
+                    "platform": _platform,
+                    "sender_id": str(msg.sender_id),
+                })
 
                 key = (_platform, msg.sender_id, msg.text)
                 now = time.time()
                 if key in self._recent_im and now - self._recent_im[key] < 30:
-                    logger.debug("Dropped duplicate IM message from %s", msg.sender_id)
+                    s_log.debug("Dropped duplicate IM message from %s", msg.sender_id)
                     return
                 self._recent_im[key] = now
 
                 if not _adapter._greeting_sent:
                     await _adapter.send_greeting_on_startup()
 
-                session_id = f"im_{_platform}_{msg.sender_id}"
                 self.runtime.get_or_create_session(session_id)
                 session = await self._get_session(session_id)
                 session.deliver = lambda text: _adapter.send_message(
@@ -467,17 +472,18 @@ class GatewayServer:
                     response = await run_im_interaction(
                         session,
                         _adapter,
+                        session_id,
                         msg.sender_id,
                         msg.text,
                         msg.id,
                         im_extra=IM_EXTRA,
                         progress_fn=_im_progress_text,
                     )
-                    logger.info("IM '%s' replied to %s", _platform, msg.sender_id)
+                    s_log.info("IM '%s' replied to %s", _platform, msg.sender_id)
                     self.runtime.increment_channel_messages(_adapter.channel_id)
                     self.runtime.increment_requests()
                 except Exception as exc:
-                    logger.error("Channel '%s' handler error: %s", _platform, exc)
+                    s_log.error("Channel '%s' handler error: %s", _platform, exc)
                     self.runtime.increment_errors()
                     friendly = _friendly_channel_error(exc)
                     err_out = OutboundMessage(text=friendly, reply_to=msg.id)

@@ -1,8 +1,15 @@
 import asyncio
+import datetime
 import inspect
 import itertools
+import json
 import logging
+import os
+import uuid
+from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
+
+from conippets import jsonl
 
 from chatchat.agent import Agent, AgentConfig, create_agent
 from chatchat.runtime import get_runtime
@@ -78,7 +85,93 @@ def _delta_text(chunk) -> str:
         return ''
 
 
-_conv_logger = logging.getLogger("pyclaw.conversation")
+def _logs_dir() -> Path:
+    home = os.environ.get("PYCLAW_HOME", str(Path.home() / ".pyclaw"))
+    logs = Path(home) / "logs"
+    logs.mkdir(parents=True, exist_ok=True)
+    return logs
+
+
+def _session_dir(session_id) -> Path:
+    session = _logs_dir() / str(session_id)
+    session.mkdir(parents=True, exist_ok=True)
+    return session
+
+
+def _session_index_path() -> Path:
+    return _logs_dir() / "session_index.json"
+
+
+def resolve_session_id(logical_key) -> str:
+    path = _session_index_path()
+    index = {}
+    if path.exists():
+        index = json.loads(path.read_text(encoding="utf-8"))
+    key = json.dumps(logical_key, ensure_ascii=False, sort_keys=True)
+    session_id = index.get(key)
+    if session_id is None:
+        session_id = uuid.uuid4().hex
+        index[key] = session_id
+        path.write_text(
+            json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8",
+        )
+    return session_id
+
+
+_session_loggers: dict[str, logging.Logger] = {}
+
+
+def session_logger(session_id) -> logging.Logger:
+    if session_id not in _session_loggers:
+        name = f"session.{session_id}"
+        log = logging.getLogger(name)
+        log.setLevel(logging.DEBUG)
+        log.propagate = False
+        handler = logging.FileHandler(
+            _session_dir(session_id) / "run.log", encoding="utf-8",
+        )
+        handler.setFormatter(logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s"
+        ))
+        log.addHandler(handler)
+        _session_loggers[session_id] = log
+    return _session_loggers[session_id]
+
+
+def close_session_logger(session_id) -> None:
+    log = _session_loggers.pop(session_id, None)
+    if log is not None:
+        for handler in list(log.handlers):
+            handler.close()
+            log.removeHandler(handler)
+
+
+def record_meta(session_id, meta: dict) -> None:
+    path = _session_dir(session_id) / "meta.json"
+    existing = {}
+    if path.exists():
+        existing = json.loads(path.read_text(encoding="utf-8"))
+    existing.setdefault("session_id", str(session_id))
+    existing.update(meta)
+    path.write_text(
+        json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+    )
+
+
+def append_conv(session_id, role, content, *, reasoning_content=None, topic=None,
+                 name=None, path=None):
+    record = {
+        "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "role": role,
+        "content": content,
+    }
+    if reasoning_content:
+        record["reasoning_content"] = reasoning_content
+    if topic:
+        record["topic"] = topic
+    if name:
+        record["name"] = name
+    jsonl.append(path or _session_dir(session_id) / "messages.jsonl", [record])
 
 
 def _summarize(value, limit: int = 300) -> str:
@@ -97,14 +190,13 @@ def _delta_thinking(chunk) -> str:
         return ''
 
 
-def _record_event(session_id: str, ev, logger=_conv_logger):
+def _record_event(session_id: str, ev):
     topic = getattr(ev, "topic", "")
     data = getattr(ev, "data", None) or {}
-    role = "system"
+    source = getattr(ev, "source", None) or ""
     detail = ""
 
     if "tool" in topic:
-        role = "tool"
         name = data.get("name", "")
         if topic.endswith(":start"):
             detail = f"{name} | input={_summarize(data.get('input') or data.get('arguments'))}"
@@ -112,23 +204,20 @@ def _record_event(session_id: str, ev, logger=_conv_logger):
             detail = f"{name} | output={_summarize(data.get('output') or data.get('result'))}"
         elif topic.endswith(":error"):
             detail = f"{name} | error={data.get('error')}"
-    elif "agent" in topic or "team" in topic:
-        role = "agent"
-        name = data.get("name", "")
+        append_conv(session_id, source, detail, topic=topic, name=name or None)
+        return
+
+    if "agent" in topic or "team" in topic:
         if topic.endswith(":start"):
-            detail = f"{name} started"
+            detail = f"{source} started"
         elif topic.endswith(":end"):
-            detail = f"{name} finished"
+            detail = f"{source} finished"
         elif topic.endswith(":error"):
-            detail = f"{name} error: {data.get('error')}"
+            detail = f"{source} error: {data.get('error')}"
 
     if not detail:
         return
-    logger.info(
-        "lifecycle",
-        extra={"conv_session": session_id, "conv_role": role,
-               "conv_topic": topic, "conv_detail": detail},
-    )
+    append_conv(session_id, source, detail, topic=topic, name=source or None)
 
 
 def _dispatch_event(on_event, ev):
@@ -297,20 +386,15 @@ class Session:
 
     def _flush_conv(self):
         session_id = self.conv_session_id
-        if self._conv_thinking:
-            _conv_logger.info(
-                "thinking",
-                extra={"conv_session": session_id, "conv_role": "thinking",
-                       "conv_topic": "THINKING", "conv_detail": self._conv_thinking},
+        thinking = self._conv_thinking
+        reply = self._conv_reply
+        self._conv_thinking = ""
+        self._conv_reply = ""
+        if reply or thinking:
+            append_conv(
+                session_id, "assistant", reply,
+                reasoning_content=thinking or None,
             )
-            self._conv_thinking = ""
-        if self._conv_reply:
-            _conv_logger.info(
-                "reply",
-                extra={"conv_session": session_id, "conv_role": "assistant",
-                       "conv_topic": "REPLY", "conv_detail": self._conv_reply},
-            )
-            self._conv_reply = ""
 
     def _bind_lifecycle(self, on_event: Optional[Callable]):
         def record(ev):
@@ -374,3 +458,4 @@ class Session:
         self._unbind()
         self._runtime.unregister_entity(self.entity.id)
         _sessions_by_root.pop(self.entity.id, None)
+        close_session_logger(self.conv_session_id)

@@ -1,15 +1,19 @@
 import asyncio
+import json
+from pathlib import Path
 
 import pytest
+from conippets import jsonl
 
 from pyclaw import agents
 from pyclaw.gateway.server import run_im_interaction
 
 
 class _Ev:
-    def __init__(self, topic, data=None):
+    def __init__(self, topic, data=None, source=None):
         self.topic = topic
         self.data = data or {}
+        self.source = source
 
 
 class _Chunk:
@@ -19,75 +23,144 @@ class _Chunk:
         })})()]
 
 
-def _capture(monkeypatch):
-    records = []
-
-    def fake_info(msg, extra=None, **kwargs):
-        records.append({"msg": msg, "extra": extra or {}})
-
-    monkeypatch.setattr(agents._conv_logger, "info", fake_info)
-    return records
+def _read(path: Path):
+    return jsonl.read(path)
 
 
-def test_record_tool_start_and_end(monkeypatch):
-    records = _capture(monkeypatch)
-    agents._record_event("s1", _Ev("lifecycle:tool:start", {"name": "search", "input": "北京天气"}))
-    agents._record_event("s1", _Ev("lifecycle:tool:end", {"name": "search", "output": "晴 25度"}))
-
-    tool_records = [r for r in records if r["extra"].get("conv_role") == "tool"]
-    assert len(tool_records) == 2
-    assert tool_records[0]["extra"]["conv_topic"] == "lifecycle:tool:start"
-    assert "search" in tool_records[0]["extra"]["conv_detail"]
-    assert "北京天气" in tool_records[0]["extra"]["conv_detail"]
-    assert "晴 25度" in tool_records[1]["extra"]["conv_detail"]
+def _read_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def test_record_tool_error(monkeypatch):
-    records = _capture(monkeypatch)
-    agents._record_event("s1", _Ev("lifecycle:tool:error", {"name": "search", "error": "timeout"}))
-
-    rec = records[-1]
-    assert rec["extra"]["conv_role"] == "tool"
-    assert rec["extra"]["conv_topic"] == "lifecycle:tool:error"
-    assert "timeout" in rec["extra"]["conv_detail"]
+def test_session_dir_under_logs(monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: Path("/tmp/logs"))
+    assert agents._session_dir("s1") == Path("/tmp/logs") / "s1"
 
 
-def test_accumulate_then_flush_merges_steps(monkeypatch):
-    records = _capture(monkeypatch)
-    session = agents.Session.__new__(agents.Session)
-    session.conv_session_id = "s1"
-    session._conv_thinking = ""
-    session._conv_reply = ""
-
-    session._accumulate(_Ev("lifecycle:client:step", _Chunk(
-        content="你好", reasoning_content="用户在问好",
-    )))
-    session._accumulate(_Ev("lifecycle:client:step", _Chunk(
-        content="世界", reasoning_content="接着想",
-    )))
-    session._flush_conv()
-
-    topics = [(r["extra"]["conv_topic"], r["extra"]["conv_detail"]) for r in records]
-    assert ("THINKING", "用户在问好接着想") in topics
-    assert ("REPLY", "你好世界") in topics
-    assert len([t for t in topics if t[0] == "REPLY"]) == 1
-    assert len([t for t in topics if t[0] == "THINKING"]) == 1
+def test_record_event_writes_tool_record(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents._record_event(
+        "s1", _Ev("lifecycle:tool:start", {"name": "search", "input": "北京"}, source="a1b2c3d4"),
+    )
+    data = _read(tmp_path / "s1" / "messages.jsonl")
+    assert len(data) == 1
+    assert data[0]["role"] == "a1b2c3d4"
+    assert data[0]["topic"] == "lifecycle:tool:start"
+    assert data[0]["name"] == "search"
+    assert "北京" in data[0]["content"]
+    assert "session" not in data[0] and "time" in data[0]
 
 
-def test_record_agent_start(monkeypatch):
-    records = _capture(monkeypatch)
-    agents._record_event("s1", _Ev("lifecycle:agent:start", {"name": "researcher"}))
+def test_record_event_writes_agent_record(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents._record_event("s1", _Ev("lifecycle:agent:start", {}, source="researcher"))
+    data = _read(tmp_path / "s1" / "messages.jsonl")
+    assert data[0]["role"] == "researcher"
+    assert data[0]["name"] == "researcher"
+    assert "researcher" in data[0]["content"]
+    assert data[0]["content"].endswith("started")
 
-    rec = records[-1]
-    assert rec["extra"]["conv_role"] == "agent"
-    assert rec["extra"]["conv_topic"] == "lifecycle:agent:start"
-    assert "researcher" in rec["extra"]["conv_detail"]
+
+def test_flush_conv_merges_content_and_reasoning(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    s = agents.Session.__new__(agents.Session)
+    s.conv_session_id = "s1"
+    s._conv_thinking = ""
+    s._conv_reply = ""
+    s._accumulate(_Ev("lifecycle:client:step", _Chunk(content="你好", reasoning_content="在想")))
+    s._accumulate(_Ev("lifecycle:client:step", _Chunk(content="世界", reasoning_content="接着")))
+    s._flush_conv()
+    data = _read(tmp_path / "s1" / "messages.jsonl")
+    assert len(data) == 1
+    assert data[0]["role"] == "assistant"
+    assert data[0]["content"] == "你好世界"
+    assert data[0]["reasoning_content"] == "在想接着"
+    assert "session" not in data[0]
 
 
-def test_im_interaction_logs_user_and_assistant(monkeypatch):
-    records = _capture(monkeypatch)
+def test_scoped_matches_subagent():
+    s = agents.Session.__new__(agents.Session)
+    sub = type("Sub", (), {"name": "sub1", "sub_agents": {}})()
+    s.entity = type("Team", (), {"name": "leader", "sub_agents": {"sub1": sub}})()
+    assert s._scoped(_Ev("lifecycle:agent:start", {}, source="sub1"))
+    assert s._scoped(_Ev("lifecycle:tool:start", {"name": "search"}, source="sub1"))
+    assert not s._scoped(_Ev("lifecycle:agent:start", {}, source="stranger"))
 
-    class _Adapter:
+
+def test_record_event_writes_subagent_records(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents._record_event("s1", _Ev("lifecycle:agent:start", {}, source="sub1"))
+    agents._record_event("s1", _Ev("lifecycle:tool:end", {"name": "search", "result": "ok"}, source="sub1"))
+    agents._record_event("s1", _Ev("lifecycle:team:end", {}, source="leader"))
+    data = _read(tmp_path / "s1" / "messages.jsonl")
+    assert data[0]["role"] == "sub1"
+    assert data[1]["role"] == "sub1"
+    assert data[1]["name"] == "search"
+    assert data[2]["role"] == "leader"
+
+
+def test_append_conv_writes_to_session_messages(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.append_conv("s1", "user", "hi")
+    agents.append_conv("s1", "tool", "ran", topic="tool:end", name="search")
+    data = _read(tmp_path / "s1" / "messages.jsonl")
+    assert "session" not in data[0]
+    assert data[0]["role"] == "user"
+    assert data[0]["content"] == "hi"
+    assert data[1]["role"] == "tool" and data[1]["name"] == "search"
+
+
+def test_append_conv_keeps_sessions_separate(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.append_conv("s1", "user", "first")
+    agents.append_conv("s2", "user", "second")
+    assert len(_read(tmp_path / "s1" / "messages.jsonl")) == 1
+    assert len(_read(tmp_path / "s2" / "messages.jsonl")) == 1
+
+
+def test_record_meta_creates_and_updates(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.record_meta("s1", {"provider": "tencent", "model": "hunyuan-lite"})
+    agents.record_meta("s1", {"message_count": 3})
+    meta = _read_json(tmp_path / "s1" / "meta.json")
+    assert meta["session_id"] == "s1"
+    assert meta["provider"] == "tencent"
+    assert meta["model"] == "hunyuan-lite"
+    assert meta["message_count"] == 3
+    assert (tmp_path / "s1" / "meta.json").read_text(encoding="utf-8").endswith("\n")
+
+
+def test_session_logger_writes_run_log(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    log = agents.session_logger("s1")
+    log.info("agent started")
+    log.error("boom")
+    text = (tmp_path / "s1" / "run.log").read_text(encoding="utf-8")
+    assert "agent started" in text
+    assert "boom" in text
+
+
+def test_session_logger_is_stable(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    a = agents.session_logger("s1")
+    b = agents.session_logger("s1")
+    assert a is b
+
+
+def test_close_session_logger_removes_and_closes(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    log = agents.session_logger("s1")
+    assert log.handlers
+    agents.close_session_logger("s1")
+    assert log.handlers == []
+    rebuilt = agents.session_logger("s1")
+    assert rebuilt.handlers
+    assert rebuilt is log
+
+
+def test_im_interaction_logs_user_and_assistant(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+
+    class Adapter:
         def __init__(self):
             self.sent = []
 
@@ -95,7 +168,7 @@ def test_im_interaction_logs_user_and_assistant(monkeypatch):
             self.sent.append(msg.text)
             return True
 
-    class _Session:
+    class Session:
         def __init__(self):
             self.conv_session_id = None
             self._conv_thinking = ""
@@ -109,19 +182,45 @@ def test_im_interaction_logs_user_and_assistant(monkeypatch):
             self._flush_conv()
             return "final answer"
 
-    adapter = _Adapter()
-    session = _Session()
-    response = asyncio.run(run_im_interaction(
-        session, adapter, "u1", "hi there", "m1",
+    adapter = Adapter()
+    session = Session()
+    asyncio.run(run_im_interaction(
+        session, adapter, "abc123", "u1", "hi there", "m1",
         im_extra="", progress_fn=lambda ev: "", status_interval=0.01, max_msg_len=1500,
     ))
 
-    assert response == "final answer"
-    topics = [r["extra"]["conv_topic"] for r in records]
-    assert "USER" in topics
-    assert "REPLY" in topics
-    user_rec = next(r for r in records if r["extra"]["conv_topic"] == "USER")
-    assert user_rec["extra"]["conv_detail"] == "hi there"
-    assert user_rec["extra"]["conv_session"] == "im_u1"
-    reply_rec = next(r for r in records if r["extra"]["conv_topic"] == "REPLY")
-    assert reply_rec["extra"]["conv_detail"] == "final answer"
+    data = _read(tmp_path / "abc123" / "messages.jsonl")
+    roles = [d["role"] for d in data]
+    assert "user" in roles
+    assert "assistant" in roles
+    user = next(d for d in data if d["role"] == "user")
+    assert user["content"] == "hi there"
+    assert "session" not in user
+    assistant = next(d for d in data if d["role"] == "assistant")
+    assert assistant["content"] == "final answer"
+
+
+def test_resolve_session_id_same_key_same_id(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    a = agents.resolve_session_id(["wechat", "u1"])
+    b = agents.resolve_session_id(["wechat", "u1"])
+    assert a == b
+
+
+def test_resolve_session_id_distinct_keys_distinct_ids(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    ids = {
+        agents.resolve_session_id(["wechat", "u1"]),
+        agents.resolve_session_id(["qq", "u1"]),
+        agents.resolve_session_id(["wechat", "u2"]),
+    }
+    assert len(ids) == 3
+
+
+def test_resolve_session_id_persists(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    first = agents.resolve_session_id(["wechat", "u1"])
+    index = json.loads((tmp_path / "session_index.json").read_text(encoding="utf-8"))
+    assert list(index.values()) == [first]
+    again = agents.resolve_session_id(["wechat", "u1"])
+    assert first == again
