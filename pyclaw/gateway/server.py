@@ -18,6 +18,11 @@ from ..agents import (
     Session, build_team, IM_EXTRA, append_conv, record_meta, session_logger,
     resolve_session_id,
 )
+from chatchat.hooks.events import (
+    AGENT_REASON_START,
+    AGENT_TOOL_CALL,
+    AGENT_WARN,
+)
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from ..slash import handle_slash
@@ -29,26 +34,15 @@ logger = logging.getLogger(__name__)
 
 
 def _im_progress_text(ev) -> str:
-    topic = ev.topic
+    kind = ev.kind
     data = ev.data or {}
-    if topic in ('lifecycle:team:start', 'lifecycle:agent:start'):
+    if kind == AGENT_REASON_START:
         return '🔄 PyClaw 思考中…'
-    if topic == 'lifecycle:tool:start':
-        name = data.get('name', 'tool')
-        arg = data.get('input') or data.get('arguments')
-        if arg:
-            return f'🔧 调用工具 {name}：{str(arg)[:80]}'
+    if kind == AGENT_TOOL_CALL:
+        name = data.get('tool', 'tool')
         return f'🔧 调用工具 {name}'
-    if topic == 'lifecycle:tool:end':
-        name = data.get('name', 'tool')
-        out = data.get('output') or data.get('result')
-        if out:
-            return f'✅ {name} 完成：{str(out)[:80]}'
-        return f'✅ {name} 完成'
-    if topic == 'lifecycle:tool:error':
-        return f'⚠️ {data.get("name", "tool")} 失败：{data.get("error")}'
-    if topic in ('lifecycle:team:error', 'lifecycle:agent:error'):
-        return f'⚠️ 错误：{data.get("error")}'
+    if kind == AGENT_WARN:
+        return f'⚠️ {data.get("text", "")}'
     return ''
 
 

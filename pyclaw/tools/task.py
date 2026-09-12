@@ -1,3 +1,4 @@
+from chatchat.core.context import current_agent
 from chatchat.tool import tool
 
 from ..task import schedule, cancel, list_tasks
@@ -16,9 +17,10 @@ from ..task import schedule, cancel, list_tasks
         'required': ['message', 'when'],
     },
 )
-async def send_message_later(ctx, message: str, when: str) -> str:
-    from ..agents import session_of
-    session = session_of(ctx.agent)
+async def send_message_later(message: str, when: str) -> str:
+    ctx = current_agent()
+    from ..agents import session_for
+    session = session_for(ctx.team_name if ctx else '')
     if session is None:
         return 'Error: no active session to deliver to.'
     return session.schedule_delivery(message, when)

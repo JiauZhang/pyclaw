@@ -36,68 +36,6 @@ def test_session_dir_under_logs(monkeypatch):
     assert agents._session_dir("s1") == Path("/tmp/logs") / "s1"
 
 
-def test_record_event_writes_tool_record(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    agents._record_event(
-        "s1", _Ev("lifecycle:tool:start", {"name": "search", "input": "北京"}, source="a1b2c3d4"),
-    )
-    data = _read(tmp_path / "s1" / "messages.jsonl")
-    assert len(data) == 1
-    assert data[0]["role"] == "a1b2c3d4"
-    assert data[0]["topic"] == "lifecycle:tool:start"
-    assert data[0]["name"] == "search"
-    assert "北京" in data[0]["content"]
-    assert "session" not in data[0] and "time" in data[0]
-
-
-def test_record_event_writes_agent_record(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    agents._record_event("s1", _Ev("lifecycle:agent:start", {}, source="researcher"))
-    data = _read(tmp_path / "s1" / "messages.jsonl")
-    assert data[0]["role"] == "researcher"
-    assert data[0]["name"] == "researcher"
-    assert "researcher" in data[0]["content"]
-    assert data[0]["content"].endswith("started")
-
-
-def test_flush_conv_merges_content_and_reasoning(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    s = agents.Session.__new__(agents.Session)
-    s.conv_session_id = "s1"
-    s._conv_thinking = ""
-    s._conv_reply = ""
-    s._accumulate(_Ev("lifecycle:client:step", _Chunk(content="你好", reasoning_content="在想")))
-    s._accumulate(_Ev("lifecycle:client:step", _Chunk(content="世界", reasoning_content="接着")))
-    s._flush_conv()
-    data = _read(tmp_path / "s1" / "messages.jsonl")
-    assert len(data) == 1
-    assert data[0]["role"] == "assistant"
-    assert data[0]["content"] == "你好世界"
-    assert data[0]["reasoning_content"] == "在想接着"
-    assert "session" not in data[0]
-
-
-def test_scoped_matches_subagent():
-    s = agents.Session.__new__(agents.Session)
-    sub = type("Sub", (), {"name": "sub1", "sub_agents": {}})()
-    s.entity = type("Team", (), {"name": "leader", "sub_agents": {"sub1": sub}})()
-    assert s._scoped(_Ev("lifecycle:agent:start", {}, source="sub1"))
-    assert s._scoped(_Ev("lifecycle:tool:start", {"name": "search"}, source="sub1"))
-    assert not s._scoped(_Ev("lifecycle:agent:start", {}, source="stranger"))
-
-
-def test_record_event_writes_subagent_records(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    agents._record_event("s1", _Ev("lifecycle:agent:start", {}, source="sub1"))
-    agents._record_event("s1", _Ev("lifecycle:tool:end", {"name": "search", "result": "ok"}, source="sub1"))
-    agents._record_event("s1", _Ev("lifecycle:team:end", {}, source="leader"))
-    data = _read(tmp_path / "s1" / "messages.jsonl")
-    assert data[0]["role"] == "sub1"
-    assert data[1]["role"] == "sub1"
-    assert data[1]["name"] == "search"
-    assert data[2]["role"] == "leader"
-
-
 def test_append_conv_writes_to_session_messages(tmp_path, monkeypatch):
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     agents.append_conv("s1", "user", "hi")

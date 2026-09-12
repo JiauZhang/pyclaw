@@ -232,14 +232,16 @@ class WebChannelAdapter(ChannelAdapter):
                 return
 
             async def on_event(ev):
-                parts = ev.topic.split(':')
+                parts = ev.kind.split(':')
+                content = (ev.data.get('delta') or ev.data.get('text')
+                           or ev.data.get('content') or '')
                 await self.send_response(
                     client_id,
-                    text=ev.data.get('content', ''),
+                    text=content,
                     message_type=f"progress_{':'.join(parts[1:])}",
                     extra_data={
-                        "tool_name": ev.data.get('name', ''),
-                        "content": ev.data.get('content', ''),
+                        "tool_name": ev.data.get('tool') or ev.data.get('name', ''),
+                        "content": content,
                     },
                 )
 

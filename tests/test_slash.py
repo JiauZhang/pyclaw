@@ -9,33 +9,18 @@ HELP_KEYWORDS = ("/help", "/agent", "/team", "/clear", "/status", "/tools", "/th
 
 
 def _fake_session(**kwargs):
-    class FakeEntity:
-        class Client:
-            messages = []
-        class Config:
-            provider = "p"
-            model = "m"
-        client = Client()
-        config = Config()
-        sub_agents = {}
-
-        class _Usage:
-            prompt_tokens = 1
-            completion_tokens = 2
-            total_tokens = 3
-        total_usage = _Usage()
-
     class FakeSession:
         name = "s1"
         mode = "agent"
         thinking = False
+        provider = "p"
+        model = "m"
         available_tools = ["a", "b"]
+        context_messages = 0
+        active_agents = 0
 
         def __init__(self, **kw):
-            self.entity = FakeEntity()
-            self.entity.config.provider = kw.get("provider", "p")
-            self.entity.config.model = kw.get("model", "m")
-            for k, v in kw.items():
+            for k, v in kwargs.items():
                 setattr(self, k, v)
 
         def switch(self, mode):

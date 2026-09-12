@@ -8,31 +8,15 @@ HELP = '''Available commands:
 /thinking     Show or toggle thinking mode (on|off)'''
 
 
-def _usage(session) -> dict:
-    try:
-        u = session.entity.total_usage
-    except AttributeError:
-        return {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
-    return {
-        'prompt_tokens': u.prompt_tokens,
-        'completion_tokens': u.completion_tokens,
-        'total_tokens': u.total_tokens,
-    }
-
-
 def _status(session, session_key: str) -> str:
-    client = session.entity.client
-    msg_count = len(client.messages) if client and client.messages else 0
-    usg = _usage(session)
     return (
         f"Session: {session_key or session.name}\n"
         f"Mode: {session.mode}\n"
-        f"Provider: {session.entity.config.provider}\n"
-        f"Model: {session.entity.config.model}\n"
+        f"Provider: {session.provider}\n"
+        f"Model: {session.model}\n"
         f"Thinking: {'on' if session.thinking else 'off'}\n"
-        f"Context messages: {msg_count}\n"
-        f"Active sub-agents: {len(session.entity.sub_agents)}\n"
-        f"Tokens: prompt={usg['prompt_tokens']}, completion={usg['completion_tokens']}, total={usg['total_tokens']}\n"
+        f"Context messages: {session.context_messages}\n"
+        f"Active sub-agents: {session.active_agents}\n"
         f"Available tools: {len(session.available_tools)}"
     )
 
@@ -71,7 +55,7 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
         return 'Switched to team (multi-agent) mode.'
     if cmd == 'clear':
         session.reset()
-        return 'Conversation history and token stats cleared.'
+        return 'Conversation history cleared.'
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'tools':
