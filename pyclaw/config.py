@@ -18,6 +18,7 @@ def load() -> dict:
         "enabled_channels": ["wechat"],
         "greeting_text": "PyClaw 已上线，随时为您服务！",
         "permissions": {"defaultMode": "default"},
+        "pricing": {},
     }
     if __config_file__.exists():
         try:

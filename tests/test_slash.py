@@ -5,7 +5,16 @@ import pytest
 from pyclaw import slash
 
 
-HELP_KEYWORDS = ("/help", "/agent", "/team", "/clear", "/status", "/tools", "/thinking")
+HELP_KEYWORDS = ("/help", "/agent", "/team", "/clear", "/status", "/tools",
+                 "/thinking", "/model", "/cost")
+
+
+class _Usage:
+    def __init__(self, prompt=0, completion=0, total=0, cached=0):
+        self.prompt_tokens = prompt
+        self.completion_tokens = completion
+        self.total_tokens = total
+        self.prompt_tokens_details = {"cached_tokens": cached} if cached else None
 
 
 def _fake_session(**kwargs):
@@ -18,6 +27,7 @@ def _fake_session(**kwargs):
         available_tools = ["a", "b"]
         context_messages = 0
         active_agents = 0
+        usage = _Usage()
 
         def __init__(self, **kw):
             for k, v in kwargs.items():
@@ -32,6 +42,9 @@ def _fake_session(**kwargs):
 
         def set_thinking(self, on):
             self.thinking = on
+
+        def set_model(self, model):
+            self.model = model
 
     return FakeSession(**kwargs)
 
@@ -93,6 +106,51 @@ def test_thinking_invalid_value():
     session = _fake_session()
     out = asyncio.run(_call("/thinking maybe", session))
     assert "Invalid" in out
+
+
+def test_status_includes_usage_and_cost():
+    session = _fake_session(usage=_Usage(1200, 300, 1500))
+    out = asyncio.run(_call("/status", session, session_key="k1"))
+    assert "1200 in" in out
+    assert "300 out" in out
+    assert "unpriced" in out
+
+
+def test_model_command_reports_current_model():
+    out = asyncio.run(_call("/model", _fake_session()))
+    assert out == "Model: m"
+
+
+def test_model_command_switches_session_and_config(monkeypatch):
+    from pyclaw import config as config_module
+    saved = {}
+    monkeypatch.setattr(config_module, "save", lambda c: saved.update(c))
+    monkeypatch.setattr("pyclaw.load", lambda: {"model": "m"})
+
+    session = _fake_session()
+    out = asyncio.run(_call("/model newmodel", session))
+    assert out == "Model: newmodel"
+    assert session.model == "newmodel"
+    assert saved["model"] == "newmodel"
+
+
+def test_cost_command_unpriced(monkeypatch):
+    from pyclaw import config as config_module
+    monkeypatch.setattr(config_module, "load", lambda: {"pricing": {}})
+    session = _fake_session(usage=_Usage(1200, 300, 1500))
+    out = asyncio.run(_call("/cost", session))
+    assert "unpriced" in out
+    assert "pricing.m" in out
+    assert "1200 in" in out
+
+
+def test_cost_command_with_pricing(monkeypatch):
+    from pyclaw import config as config_module
+    monkeypatch.setattr(config_module, "load", lambda: {
+        "pricing": {"m": {"input": 1, "output": 2}}})
+    session = _fake_session(usage=_Usage(1000, 500, 1500))
+    out = asyncio.run(_call("/cost", session))
+    assert "$0.0020" in out
 
 
 def test_command_aliases():

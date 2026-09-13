@@ -323,6 +323,11 @@ class Session:
         self._thinking = bool(on)
         self._team.set_thinking(self._thinking)
 
+    def set_model(self, model: str) -> str:
+        self._model = model
+        self._team.set_model(model)
+        return self._model
+
     @property
     def permission_mode(self) -> str:
         return self._gate.mode.value if self._gate is not None else 'default'

@@ -51,6 +51,9 @@ class _FakeTeam:
     def tool_schemas(self):
         return [{"name": "k", "description": "d", "input_schema": {}}]
 
+    def set_model(self, model):
+        self.model = model
+
     def usage(self):
         class _U:
             prompt_tokens = 1901
@@ -329,6 +332,24 @@ def test_status_shows_cached_even_when_details_absent():
             status = str(app.query_one("#status").content)
             assert "0 cached" in status
     asyncio.run(scenario())
+
+
+def test_model_switch_updates_status_bar(monkeypatch):
+    from pyclaw import config as config_module
+    monkeypatch.setattr(config_module, "save", lambda c: None)
+    monkeypatch.setattr("pyclaw.load", lambda: {"model": "m"})
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "/model newm"
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            return str(app.query_one("#status").content)
+
+    assert "p/newm" in asyncio.run(scenario())
 
 
 def test_status_shows_thinking_config_switch():
