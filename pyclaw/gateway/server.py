@@ -493,7 +493,6 @@ class GatewayServer:
                 self.channels[platform] = adapter
                 logger.info("IM channel '%s' connected", platform)
 
-                # Wait for the adapter to be fully ready, then try proactive greeting
                 ready = await adapter.wait_until_ready()
                 if ready:
                     await adapter.send_greeting_on_startup()

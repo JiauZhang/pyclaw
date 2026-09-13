@@ -58,8 +58,6 @@ def test_interaction_splits_long_response(tmp_path, monkeypatch):
 
 
 def test_interaction_throttles_status_messages(tmp_path, monkeypatch):
-    # clock advances slowly so only the first drain emits; later drains within
-    # the interval are suppressed. We let chat emit two distinct statuses.
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     events = [_Ev("lifecycle:agent:start"), _Ev("lifecycle:tool:start", {"name": "search"})]
     session = _Session("done", events)
@@ -79,8 +77,6 @@ def test_interaction_throttles_status_messages(tmp_path, monkeypatch):
         clock=clock,
     ))
 
-    # statuses emitted: first drain (clock 0) keeps only the latest pending
-    # status -> [Using: search]; earlier [thinking] is coalesced away.
     statuses = [s for s in adapter.sent if s.startswith("[")]
     assert statuses == ["[Using: search]"]
     assert adapter.sent[-1] == "done"

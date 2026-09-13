@@ -1,7 +1,8 @@
-import argparse, asyncio, logging, sys
+import argparse, asyncio, json, logging, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__, __pyclaw_home__
+from pyclaw.agents import build_team, Session
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
@@ -74,6 +75,55 @@ async def start_server(args):
         raise
 
 
+async def prompt_once(provider, model, prompt, *, on_event=None,
+                      permission_mode='default') -> dict:
+    team = build_team(provider, model, permission_mode=permission_mode)
+    session = Session(team)
+    try:
+        text = await session.chat(prompt, on_event=on_event)
+        return {"text": text, "mode": session.mode,
+                "permission_mode": session.permission_mode,
+                "messages": len(team.transcript()),
+                "usage": session.usage.to_dict()}
+    finally:
+        await session.close()
+
+
+def render_output(output_fmt: str, out: dict):
+    if output_fmt == "json":
+        print(json.dumps(out, ensure_ascii=False, indent=2))
+    else:
+        print(out["text"])
+
+
+async def run_headless(args):
+    from chatchat.hooks.events import clear_runtime_sinks
+    clear_runtime_sinks()
+    config = load_config()
+    provider = args.provider or config.get("provider")
+    model = args.model or config.get("model")
+    if not provider or not model:
+        print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
+        sys.exit(1)
+    out = await prompt_once(provider, model, args.print,
+                            permission_mode=args.permission_mode)
+    render_output(args.output, out)
+
+
+def run_tui(args):
+    from chatchat.hooks.events import clear_runtime_sinks
+    clear_runtime_sinks()
+    config = load_config()
+    provider = args.provider or config.get("provider")
+    model = args.model or config.get("model")
+    if not provider or not model:
+        print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
+        sys.exit(1)
+    from pyclaw.tui import PyClawApp
+    PyClawApp(builder=lambda: build_team(
+        provider, model, permission_mode=args.permission_mode)).run()
+
+
 async def run_channel_rebind(args):
     setup_logging(args.log_level)
     adapter = IMChannelAdapter({"platform": args.channel})
@@ -106,9 +156,17 @@ def stop_server_cmd(args):
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PyClaw – Personal AI Assistant")
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
+    parser.add_argument("-p", "--print", type=str, metavar="PROMPT", default=None,
+                        help="Print mode: run one prompt non-interactively and print the result (claude -p)")
+    parser.add_argument("--output", type=str, default="text", choices=["text", "json"],
+                        help="Output format for print mode (claude --output)")
+    parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
+    parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    parser.add_argument("--permission-mode", type=str, default=None,
+                        choices=["default", "acceptEdits", "plan"],
+                        help="Session permission mode (claude --permission-mode)")
     subparsers = parser.add_subparsers(dest="command")
 
-    # --- serve ---
     serve_parser = subparsers.add_parser("serve", help="Start the gateway server")
     serve_parser.add_argument("--port", type=int, default=None, help="HTTP port (config/gateway/http/port or 12321)")
     serve_parser.add_argument("--host", type=str, default=None, help="Bind address (config/gateway/http/host or 127.0.0.1)")
@@ -117,7 +175,6 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
 
-    # --- channel ---
     channel_parser = subparsers.add_parser("channel", help="Manage IM channels")
     channel_sub = channel_parser.add_subparsers(dest="channel_command")
     rebind_parser = channel_sub.add_parser("rebind", help="Rebind (re-authenticate) an IM channel")
@@ -127,13 +184,18 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     rebind_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
 
-    # --- stop ---
     stop_parser = subparsers.add_parser("stop", help="Stop a running gateway (kills listener by port)")
     stop_parser.add_argument("--port", type=int, default=None, help="Port to free (config/gateway/http/port or 12321)")
     stop_parser.add_argument("--force", action="store_true", help="Send SIGKILL instead of SIGTERM")
     stop_parser.add_argument("--all", action="store_true", help="Kill every `pyclaw serve` process, ignoring port")
 
-    # --- config (delegated to chatchat) ---
+    tui_parser = subparsers.add_parser("tui", help="Launch the interactive terminal UI")
+    tui_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
+    tui_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    tui_parser.add_argument("--permission-mode", type=str, default=None,
+                            choices=["default", "acceptEdits", "plan"],
+                            help="Session permission mode")
+
     cli_config(subparsers)
 
     parser._channel_parser = channel_parser
@@ -146,6 +208,9 @@ def _finalize_args(args) -> argparse.Namespace:
     for field in ("provider", "model", "channels", "port", "host"):
         if not hasattr(args, field):
             setattr(args, field, None)
+    if not hasattr(args, "permission_mode") or args.permission_mode is None:
+        args.permission_mode = (load_config().get("permissions", {})
+                                .get("defaultMode", "default"))
     return args
 
 
@@ -155,6 +220,10 @@ def main():
 
     if args.version:
         print(__version__)
+        return
+
+    if args.print is not None:
+        asyncio.run(run_headless(args))
         return
 
     if args.command == "config":
@@ -170,6 +239,10 @@ def main():
 
     if args.command == "stop":
         stop_server_cmd(args)
+        return
+
+    if args.command == "tui":
+        run_tui(args)
         return
 
     if args.command == "serve" or args.command is None:

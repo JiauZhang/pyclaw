@@ -12,6 +12,7 @@ from conippets import jsonl
 
 from chatchat.team import Team
 from chatchat.hooks.events import (
+    AGENT_PROGRESS,
     AGENT_TEXT,
     register_runtime_handler,
 )
@@ -19,6 +20,8 @@ from chatchat.hooks.events import (
 from .plugins import discover_skills, discover_tools
 from .skills import skill_roots
 from .tools import tools as base_tools
+from .tools.coding import (PermissionController, PermissionMode,
+                           build_coding_tools, parse_mode)
 
 _name_counter = itertools.count()
 _sessions_by_root: dict[str, 'Session'] = {}
@@ -62,6 +65,14 @@ def agent_instruction(tool_names: list) -> str:
     return f'''You are PyClaw, a capable AI assistant with tools: {names}.
 
 Use tools to complete the user's requests, then answer with the results. Be helpful, accurate and concise.'''
+
+
+PLAN_NOTE = '''
+
+You are in PLAN MODE (read-only). Investigate the workspace, explore and
+propose a plan, but do NOT edit files or perform state-changing operations.
+Read/Glob/Grep/LS are available; Write and Edit are blocked until the user
+approves a plan.'''
 
 
 IM_EXTRA = '''You are PyClaw, an AI assistant on an instant messaging platform (QQ/WeChat).
@@ -176,25 +187,48 @@ def build_team(
     instruction: Optional[str] = None,
     tools: Optional[list] = None,
     skills: Optional[list] = None,
-    thinking: bool = False,
+    thinking: bool = True,
     http_options: Optional[dict] = None,
     max_depth: int = 5,
     max_steps: int = 10,
+    cwd: Optional[str] = None,
+    permission_mode: str = 'default',
+    allow: Optional[list] = None,
+    ask: Optional[list] = None,
+    deny: Optional[list] = None,
 ) -> Team:
-    tools = _resolve_tools(tools)
+    cwd = cwd or os.getcwd()
+    gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
+                                ask=ask or (), deny=deny or ())
+    coding_tools = build_coding_tools(cwd)
+    coding_names = {t.name for t in coding_tools}
     _resolve_skills(skills)
-    names = [t.name for t in tools]
+    resolved = coding_tools + [t for t in _resolve_tools(tools)
+                               if t.name not in coding_names]
+    resolved = [t for t in resolved if gate.allowed_tool(t.name)]
+    names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get('timeout', 120)
-    return Team(
+    inst = instruction or team_instruction(names)
+    if gate.mode is PermissionMode.plan:
+        inst = inst + PLAN_NOTE
+    team = Team(
         f'pyclaw-{next(_name_counter)}',
         provider=provider,
         model=model,
-        tools=tools,
-        lead_instruction=instruction or team_instruction(names),
+        tools=resolved,
+        lead_instruction=inst,
         thinking=bool(thinking),
         model_timeout=model_timeout,
         http_options=http_options or {},
     )
+    team._pyclaw_gate = gate
+
+    async def _permission_gate(hook_input):
+        return await gate.authorize(hook_input.get('tool_name', ''),
+                                    hook_input.get('tool_input') or {})
+
+    team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
+    return team
 
 
 class Session:
@@ -211,6 +245,8 @@ class Session:
         self._conv_reply = ""
         self._conv_thinking = ""
         self._unreg = None
+        self._bind_gen = 0
+        self._gate = getattr(entity, '_pyclaw_gate', None)
         _sessions_by_root[entity.name] = self
 
     @property
@@ -248,8 +284,31 @@ class Session:
         self._thinking = bool(on)
         self._team.set_thinking(self._thinking)
 
+    @property
+    def permission_mode(self) -> str:
+        return self._gate.mode.value if self._gate is not None else 'default'
+
+    def set_permission_mode(self, mode: str) -> str:
+        if self._gate is None:
+            raise ValueError('Permission gate not available for this session.')
+        parsed = parse_mode(mode)
+        self._gate.mode = parsed
+        return parsed.value
+
+    def attach_approval(self, coro):
+        if self._gate is not None:
+            self._gate.request = coro
+
+    def submit(self, text: str, *, cancelable_tools: tuple = ()):
+        self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)
+
     def reset(self):
         self._team.lead.messages = []
+        self._team.reset_usage()
+
+    @property
+    def usage(self):
+        return self._team.usage()
 
     async def switch(self, mode: str):
         if mode not in ('agent', 'team'):
@@ -268,14 +327,17 @@ class Session:
         at = job['next'].strftime('%Y-%m-%d %H:%M:%S') if job.get('next') else 'later'
         return f"Scheduled delivery {job['id']} at {at}: {text}"
 
-    # ---- event plumbing --------------------------------------------
     def _member_names(self) -> set:
         return {agent.name for agent in self._team.agents.values()}
 
     def _in_scope(self, ev) -> bool:
+        if ev.kind == AGENT_PROGRESS:
+            return True
         return ev.agent == '' or ev.agent in self._member_names()
 
     def _bind(self, on_event: Callable):
+        self._unbind()
+        self._bind_gen += 1
         self._unreg = register_runtime_handler(on_event)
 
     def _unbind(self):
@@ -311,12 +373,14 @@ class Session:
             _dispatch_event(on_event, ev)
 
         self._bind(on_ev)
+        gen = self._bind_gen
         try:
             out = await self._team.query(message)
             self._flush_conv()
             return out
         finally:
-            self._unbind()
+            if gen == self._bind_gen:
+                self._unbind()
 
     async def _stream(self, message: str, on_event: Optional[Callable] = None):
         queue: asyncio.Queue = asyncio.Queue()

@@ -1,4 +1,3 @@
-"""Command-line helpers for managing the local PyClaw gateway process."""
 
 from __future__ import annotations
 
@@ -7,7 +6,6 @@ from typing import List, Optional
 
 
 def find_listener_pids(port: int) -> List[int]:
-    """Return PIDs listening on the given TCP port."""
     try:
         out = subprocess.run(
             ["lsof", "-ti", f"tcp:{port}"],
@@ -23,7 +21,6 @@ def find_listener_pids(port: int) -> List[int]:
 
 
 def find_serve_pids() -> List[int]:
-    """Return PIDs of every running `pyclaw serve` process."""
     try:
         out = subprocess.run(
             ["pgrep", "-f", "pyclaw serve"],
@@ -39,10 +36,6 @@ def find_serve_pids() -> List[int]:
 
 
 def kill_pids(pids: List[int], force: bool = False) -> List[int]:
-    """Send SIGTERM (or SIGKILL when force) to each pid.
-
-    Returns the pids that were actually signalled.
-    """
     killed: List[int] = []
     for pid in pids:
         try:
@@ -58,13 +51,6 @@ def stop_server(
     force: bool = False,
     all_processes: bool = False,
 ) -> List[int]:
-    """Stop one or more running gateway processes.
-
-    Without ``all_processes`` only the listener on ``port`` is targeted
-    (resolving the port from config when ``port`` is None). With
-    ``all_processes`` every ``pyclaw serve`` process is killed regardless
-    of the port it bound to.
-    """
     from .config import load
 
     if all_processes:

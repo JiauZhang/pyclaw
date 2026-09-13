@@ -5,7 +5,9 @@ HELP = '''Available commands:
 /clear        Clear the current session conversation history and token stats
 /status       Show the current session runtime info
 /tools        List tools available in this session
-/thinking     Show or toggle thinking mode (on|off)'''
+/thinking     Show or toggle thinking mode (on|off)
+/permissions  Show or switch permission mode (default|acceptEdits|plan)
+/plan         Enter plan (read-only) mode'''
 
 
 def _status(session, session_key: str) -> str:
@@ -37,6 +39,16 @@ def _handle_thinking(session, arg: str) -> str:
     return f'Invalid value: {arg}. Use on|off or leave empty to show current.'
 
 
+def _handle_permissions(session, arg: str) -> str:
+    if not arg:
+        return f'Permission mode: {session.permission_mode}'
+    try:
+        session.set_permission_mode(arg)
+    except ValueError as e:
+        return str(e)
+    return f'Permission mode: {session.permission_mode}'
+
+
 async def handle_slash(text: str, session, session_key: str = '') -> str | None:
     text = text.strip()
     if not text.startswith('/'):
@@ -62,5 +74,9 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
         return 'Available tools: ' + ', '.join(session.available_tools)
     if cmd == 'thinking':
         return _handle_thinking(session, arg)
+    if cmd == 'permissions':
+        return _handle_permissions(session, arg)
+    if cmd == 'plan':
+        return _handle_permissions(session, 'plan')
 
     return (f'Unknown command: /{cmd}.\n\n{HELP}')

@@ -17,6 +17,7 @@ def load() -> dict:
         "model": "agnes-2.5-flash",
         "enabled_channels": ["wechat"],
         "greeting_text": "PyClaw 已上线，随时为您服务！",
+        "permissions": {"defaultMode": "default"},
     }
     if __config_file__.exists():
         try:
