@@ -415,6 +415,57 @@ def test_rule_listing_reports_sources(tmp_path, monkeypatch):
         assert ('deny', 'Bash(curl:*)', 'cli') in rules
 
 
+def test_rules_load_project_shared_layer(tmp_path, monkeypatch):
+    from pyclaw.tools.coding import permission as perm
+    user_file = tmp_path / "user-settings.json"
+    json.write(user_file, {"permissions": {"allow": ["Bash(npm run:*)"]}})
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: user_file)
+
+    with tempfile.TemporaryDirectory() as d:
+        shared = Path(d) / ".pyclaw" / "settings.json"
+        shared.parent.mkdir(parents=True)
+        json.write(shared, {"permissions": {"deny": ["Bash(npm run:*)"]}})
+        g = perm.PermissionController(mode="default", cwd=d)
+        # project 共享层在 user 之后加载：deny 覆盖 user 的 allow
+        assert g.decide("Bash", {"command": "npm run test"}) == "deny"
+        assert ('deny', 'Bash(npm run:*)', 'project') in g.rule_listing()
+
+
+def test_remove_rule_deletes_from_saved_layer(tmp_path):
+    from pyclaw.tools.coding import permission as perm
+    with tempfile.TemporaryDirectory() as d:
+        local = Path(d) / ".pyclaw" / "settings.local.json"
+        local.parent.mkdir(parents=True)
+        json.write(local, {"permissions": {"allow": ["Bash(a:*)", "Bash(b:*)"]}})
+        g = perm.PermissionController(mode="default", cwd=d,
+                                      deny=["Bash(curl:*)"])
+        assert g.remove_rule("Bash(a:*)") is True
+        assert json.read(local)["permissions"]["allow"] == ["Bash(b:*)"]
+        assert ('allow', 'Bash(a:*)', 'local') not in g.rule_listing()
+        assert g.decide("Bash", {"command": "a x"}) == "ask"   # 内存同步移除
+        # cli 层只读，不可删
+        assert g.remove_rule("Bash(curl:*)") is False
+        # 不存在的规则
+        assert g.remove_rule("Bash(zzz:*)") is False
+
+
+def test_session_remove_rule(tmp_path):
+    from conippets import json as _json
+    from pyclaw.agents import build_team
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            local = Path(d) / ".pyclaw" / "settings.local.json"
+            local.parent.mkdir(parents=True)
+            _json.write(local, {"permissions": {"allow": ["Bash(git push:*)"]}})
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            from pyclaw import agents as agents_mod
+            session = agents_mod.Session(team, session_id="s")
+            return session.remove_rule("Bash(git push:*)")
+
+    assert asyncio.run(main()) is True
+
+
 # --- 后台任务（claude run_in_background / TaskOutput / TaskStop） ---
 
 def test_bash_run_in_background_returns_immediately():

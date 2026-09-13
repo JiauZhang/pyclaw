@@ -109,9 +109,15 @@ class PermissionController:
         # 求值时 deny > ask > allow。runtime 里 "don't ask again" 记到 session 层
         # 并持久化进 local 文件（claude 的 destination=localSettings）。
         self._layers: list[tuple[str, str, str]] = []
+        self._layer_files = {
+            'user': _user_settings_file(),
+            'project': Path(self.cwd) / '.pyclaw' / 'settings.json',
+            'local': _local_settings_file(self.cwd),
+        }
         merged = {b: [] for b in ('allow', 'ask', 'deny')}
-        layers = (('user', _user_settings_file()),
-                  ('local', _local_settings_file(self.cwd)),
+        layers = (('user', self._layer_files['user']),
+                  ('project', self._layer_files['project']),
+                  ('local', self._layer_files['local']),
                   ('cli', {'allow': list(allow), 'ask': list(ask),
                            'deny': list(deny)}))
         for source, rules in layers:
@@ -133,6 +139,29 @@ class PermissionController:
 
     def rule_listing(self) -> list[tuple[str, str, str]]:
         return list(self._layers)
+
+    def remove_rule(self, rule: str) -> bool:
+        """删除已保存层（user/project/local）里的规则；cli/session 只读。"""
+        entry = next((e for e in self._layers
+                      if e[1] == rule and e[2] in self._layer_files), None)
+        if entry is None:
+            return False
+        behavior, _rule, source = entry
+        path = self._layer_files[source]
+        try:
+            data = json.read(path) if path.exists() else {}
+            perms = data.get('permissions') or {}
+            perms[behavior] = [str(r) for r in perms.get(behavior, [])
+                               if str(r) != rule]
+            data['permissions'] = perms
+            json.write(path, data)
+        except Exception:
+            return False
+        self._layers.remove(entry)
+        bucket = getattr(self, f'_{behavior}')
+        if rule in bucket:
+            bucket.remove(rule)
+        return True
 
     def _save_local_rule(self, rule: str):
         path = _local_settings_file(self.cwd)

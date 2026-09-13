@@ -57,6 +57,14 @@ def _handle_thinking(session, arg: str) -> str:
 
 
 def _handle_permissions(session, arg: str) -> str:
+    if arg.startswith('remove '):
+        rule = arg[len('remove '):].strip()
+        if not rule:
+            return 'Usage: /permissions remove <rule>'
+        remover = getattr(session, 'remove_rule', None)
+        if remover is None or not remover(rule):
+            return f'Rule not found or read-only: {rule}'
+        return f'Removed rule: {rule}'
     if arg:
         try:
             session.set_permission_mode(arg)

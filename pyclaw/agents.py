@@ -481,4 +481,8 @@ class Session:
     def permission_rules(self):
         gate = self._gate
         return gate.rule_listing() if gate is not None else []
+
+    def remove_rule(self, rule: str) -> bool:
+        gate = self._gate
+        return gate.remove_rule(rule) if gate is not None else False
         close_session_logger(self.conv_session_id)
