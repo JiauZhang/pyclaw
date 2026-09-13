@@ -257,6 +257,10 @@ def build_team(
     team._pyclaw_gate = gate
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
+    from .agent_defs import load_agent_defs
+    for defn in load_agent_defs(cwd, all_tools=resolved):
+        team.register_agent_definition(defn)
+
     from .tools.coding import background as _background
 
     def _notify_task_finished(task_id, command, code, killed):
