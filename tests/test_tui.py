@@ -435,7 +435,7 @@ def test_interrupt_cancels_running_work():
             await pilot.press("ctrl+c")
             await pilot.pause()
             flat = _flatten(app)
-            assert "interrupted" in flat
+            assert "Interrupted by user" in flat
     asyncio.run(scenario())
 
 

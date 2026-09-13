@@ -844,7 +844,9 @@ class PyClawApp(App[None]):
         if self._processing and not self._wrote_body:
             self.query_one("#input", Input).value = self._processing
             self._processing = None
-        await self._append_block("[#FFC107]\u26a0\ufe0f interrupted[/]")
+        # claude 语义：无 emoji 的纯文本，避免 emoji 宽度歧义把会话区/任务区
+        # 边框顶偏（U+26A0 U+FE0F 终端画 2 列，wcwidth 判宽不一致）。
+        await self._append_block("[#FFC107]Interrupted by user[/]")
 
     def _begin_turn(self):
         self._live = None
