@@ -763,6 +763,28 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
     assert assistant[-1]["reasoning_content"] == "why"
 
 
+def test_permission_card_drops_remember_option_for_dangerous_command():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            locked = _PermissionPrompt("Bash", "rm -rf /", rememberable=False)
+            await app._conv().mount(locked)
+            await pilot.pause()
+            text = str(locked.content)
+            assert "always allow" not in text
+            assert "cannot be remembered" in text
+            assert locked._rememberable is False
+
+            normal = _PermissionPrompt("Edit", "a.txt", rememberable=True)
+            await app._conv().mount(normal)
+            await pilot.pause()
+            assert "always allow" in str(normal.content)
+    asyncio.run(scenario())
+
+
 def test_runtime_sink_released_on_unmount():
     from chatchat.hooks import events
 

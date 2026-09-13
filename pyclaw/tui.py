@@ -22,6 +22,7 @@ from chatchat.hooks.events import (
 
 from pyclaw.agents import Session, append_conv
 from pyclaw.tools.coding import next_mode
+from pyclaw.tools.coding.shell_rules import is_dangerous_removal
 
 
 def _summarize(value, limit: int = 60) -> str:
@@ -147,18 +148,23 @@ class _PermissionPrompt(Static):
         ("a", "always", "Always allow in this session"),
     ]
 
-    def __init__(self, tool_name: str, input_text: str, **kw):
+    def __init__(self, tool_name: str, input_text: str,
+                 rememberable: bool = True, **kw):
         super().__init__(**kw)
         self._tool = tool_name
         self._input = input_text
+        self._rememberable = rememberable
         self.on_choice = None
 
     def on_mount(self):
+        options = "[#D77757]y[/] approve  [#9A9A9A]n[/] deny"
+        if self._rememberable:
+            options += "  [#4EBA65]a[/] always allow"
+        else:
+            options += "\n[#FFC107]cannot be remembered: dangerous command[/]"
         self.update(
             f"[#B1B9F9][bold]\u276f Permission needed: {self._tool}[/bold][/]\n"
-            f"    {self._input}\n"
-            f"[#D77757]y[/] approve  [#9A9A9A]n[/] deny  "
-            f"[#4EBA65]a[/] always allow"
+            f"    {self._input}\n{options}"
         )
         self.focus()
 
@@ -169,7 +175,7 @@ class _PermissionPrompt(Static):
         await self._finish('denied')
 
     async def action_always(self):
-        await self._finish('dont_ask')
+        await self._finish('dont_ask' if self._rememberable else 'approved')
 
     async def _finish(self, decision: str):
         if self.on_choice is not None:
@@ -618,8 +624,10 @@ class PyClawApp(App[None]):
     async def _ask_permission(self, tool_name: str, tool_input) -> str:
         inp = tool_input if isinstance(tool_input, dict) else {}
         summary = _summarize(json.dumps(inp, ensure_ascii=False), 120)
+        locked = tool_name == 'Bash' and is_dangerous_removal(
+            str(inp.get('command') or ''))
         fut = asyncio.get_running_loop().create_future()
-        prompt = _PermissionPrompt(tool_name, summary)
+        prompt = _PermissionPrompt(tool_name, summary, rememberable=not locked)
         prompt.on_choice = fut.set_result
         conv = self._conv()
         await conv.mount(prompt)

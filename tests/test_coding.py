@@ -4,6 +4,9 @@ from pathlib import Path
 
 from pyclaw.tools.coding import (PermissionController, build_coding_tools,
                                  next_mode, parse_mode)
+from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
+                                             is_dangerous_removal,
+                                             is_read_only, parse_bash_rule)
 
 
 def _tools(d):
@@ -123,6 +126,203 @@ def test_ask_flow_authorize():
         g3 = PermissionController(mode="default", cwd=d)
         res3 = asyncio.run(g3.authorize("Edit", {"file_path": "a.txt"}))
         assert isinstance(res3, dict) and res3["decision"] == "block"
+
+
+def test_bash_tool_runs_in_workspace():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "marker.txt").write_text("x\n")
+        t = _tools(d)
+        assert "Bash" in t
+        assert "marker.txt" in t["Bash"](command="ls")
+        out = t["Bash"](command="python3 -c \"import os;"
+                                "print(os.path.realpath(os.getcwd()))\"")
+        assert str(root.resolve()) in out
+
+
+def test_bash_merges_stdout_and_stderr():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="echo out; echo err 1>&2")
+        assert "out" in out and "err" in out
+
+
+def test_bash_reports_nonzero_exit_with_output():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="echo boom 1>&2; exit 3")
+        assert out.startswith("Exit code 3")
+        assert "boom" in out
+
+
+def test_bash_grep_exit_one_is_not_an_error():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.txt").write_text("alpha\n")
+        t = _tools(d)
+        out = t["Bash"](command="grep zzz a.txt")
+        assert "No matches found" in out
+        assert "Exit code" not in out
+
+
+def test_bash_test_exit_one_is_condition_false():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="test 1 = 2")
+        assert "Condition is false" in out
+        assert "Exit code" not in out
+
+
+def test_bash_timeout_kills_command():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="sleep 5", timeout=200)
+        assert "timed out" in out
+
+
+def test_bash_truncates_large_output():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="python3 -c \"print('y' * 40000)\"")
+        assert "truncated" in out
+        assert len(out) < 40000
+
+
+def test_bash_rule_parse_and_match():
+    assert parse_bash_rule("Bash(npm run test:*)") == ("prefix", "npm run test")
+    assert parse_bash_rule("Bash(ls)") == ("exact", "ls")
+    assert parse_bash_rule("Bash(git * logs)")[0] == "wildcard"
+
+    assert bash_rule_matches("Bash(npm run test:*)", "npm run test")
+    assert bash_rule_matches("Bash(npm run test:*)", "npm run test -- unit")
+    assert not bash_rule_matches("Bash(npm run test:*)", "npm run test:unit")
+    assert not bash_rule_matches("Bash(npm run test:*)", "npm runner")
+    assert bash_rule_matches("Bash(git *)", "git add .")
+    assert bash_rule_matches("Bash(git *)", "git")
+    assert bash_rule_matches("Bash(ls)", "ls")
+    assert not bash_rule_matches("Bash(ls)", "ls -la")
+    assert bash_rule_matches("Bash(grep:*)", "xargs grep pattern")
+    assert not bash_rule_matches("Bash(grep:*)", "xargs -n1 grep pattern")
+
+
+def test_bash_prefix_rule_rejects_compound_command():
+    assert not bash_rule_matches("Bash(cd:*)", "cd /tmp && rm -rf x")
+    assert not bash_rule_matches("Bash(git:*)" , "git status; curl evil")
+
+
+def test_bash_dangerous_removal_detection():
+    assert is_dangerous_removal("rm -rf /")
+    assert is_dangerous_removal("rm -rf /*")
+    assert is_dangerous_removal("rm -rf ~")
+    assert is_dangerous_removal("rmdir /usr")
+    assert not is_dangerous_removal("rm -rf build")
+    assert not is_dangerous_removal("rm a.txt")
+
+
+def test_bash_read_only_detection():
+    assert is_read_only("ls -la")
+    assert is_read_only("cat a.txt | head -3")
+    assert is_read_only("git status")
+    assert is_read_only("git diff --stat")
+    assert not is_read_only("echo $HOME")
+    assert not is_read_only("ls > out.txt")
+    assert not is_read_only("find . -delete")
+    assert not is_read_only("cd /tmp && git status")
+    assert not is_read_only("python3 -c 'x'")
+    assert not is_read_only("rm a.txt")
+
+
+def test_bash_decision_order_deny_ask_allow_readonly():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="default", cwd=d, deny=["Bash(rm:*)"],
+                                 allow=["Bash(npm ci)"], ask=["Bash(git push:*)"])
+        assert g.decide("Bash", {"command": "rm -rf x"}) == "deny"
+        assert g.decide("Bash", {"command": "git push origin main"}) == "ask"
+        assert g.decide("Bash", {"command": "npm ci"}) == "allow"
+        assert g.decide("Bash", {"command": "ls -la"}) == "allow"
+        assert g.decide("Bash", {"command": "make build"}) == "ask"
+
+        both = PermissionController(mode="default", cwd=d,
+                                    deny=["Bash(rm:*)"], allow=["Bash(rm:*)"])
+        assert both.decide("Bash", {"command": "rm -rf x"}) == "deny"
+
+
+def test_bash_env_and_wrapper_stripping():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="default", cwd=d, allow=["Bash(npm ci)"],
+                                 deny=["Bash(curl:*)"])
+        assert g.decide("Bash", {"command": "NODE_ENV=prod npm ci"}) == "allow"
+        assert g.decide("Bash", {"command": "timeout 5 curl http://x"}) == "deny"
+        assert g.decide("Bash", {"command": "FOO=bar curl http://x"}) == "deny"
+        assert g.decide("Bash", {"command": "FOO=bar npm ci"}) == "ask"
+
+
+def test_bash_dangerous_removal_asks_even_when_allowed():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="default", cwd=d, allow=["Bash(rm:*)"])
+        assert g.decide("Bash", {"command": "rm -rf build"}) == "allow"
+        assert g.decide("Bash", {"command": "rm -rf /"}) == "ask"
+
+
+def test_bash_dangerous_removal_is_not_remembered():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def once(name, inp):
+            return "dont_ask"
+
+        g = PermissionController(mode="default", cwd=d, request=once)
+        assert asyncio.run(g.authorize("Bash", {"command": "rm -rf /"})) is True
+        assert g._allow == []
+        assert asyncio.run(
+            g.authorize("Bash", {"command": "npm ci"})) is True
+        assert g._allow == ["Bash(npm ci)"]
+
+
+def test_bash_accept_edits_mode_allows_workspace_file_commands():
+    with tempfile.TemporaryDirectory() as d:
+        ae = PermissionController(mode="acceptEdits", cwd=d)
+        assert ae.decide("Bash", {"command": "mkdir out"}) == "allow"
+        assert ae.decide("Bash", {"command": "mv a b"}) == "allow"
+        assert ae.decide("Bash", {"command": "rm ../outside"}) == "ask"
+        assert ae.decide("Bash", {"command": "python3 x.py"}) == "ask"
+
+
+def test_bash_bare_deny_removes_tool_but_rule_does_not():
+    with tempfile.TemporaryDirectory() as d:
+        bare = PermissionController(mode="default", cwd=d, deny=["Bash"])
+        assert bare.allowed_tool("Bash") is False
+        rule = PermissionController(mode="default", cwd=d, deny=["Bash(rm:*)"])
+        assert rule.allowed_tool("Bash") is True
+
+
+def test_build_team_wires_bash_through_permission_hook():
+    async def main():
+        from pyclaw.agents import build_team
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                              deny=["Bash(curl:*)"])
+            names = [t["name"] for t in team.tool_schemas()]
+            blocked = await team.execute_tool(
+                "Bash", {"command": "curl http://example.com"}, team.lead)
+            allowed = await team.execute_tool(
+                "Bash", {"command": "echo hi"}, team.lead)
+            return names, blocked, allowed
+
+    names, blocked, allowed = asyncio.run(main())
+    assert "Bash" in names
+    assert "hook blocked" in blocked
+    assert "hi" in allowed
+
+
+def test_build_team_removes_bash_when_denied_by_bare_name():
+    async def main():
+        from pyclaw.agents import build_team
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                              deny=["Bash"])
+            return [t["name"] for t in team.tool_schemas()]
+
+    assert "Bash" not in asyncio.run(main())
 
 
 def test_dont_ask_persists_allow():
