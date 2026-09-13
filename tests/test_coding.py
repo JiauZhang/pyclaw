@@ -2,6 +2,8 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+from conippets import json
+
 from pyclaw.tools.coding import (PermissionController, build_coding_tools,
                                  next_mode, parse_mode)
 from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
@@ -275,7 +277,7 @@ def test_bash_dangerous_removal_is_not_remembered():
         assert g._allow == []
         assert asyncio.run(
             g.authorize("Bash", {"command": "npm ci"})) is True
-        assert g._allow == ["Bash(npm ci)"]
+        assert g._allow == ["Bash(npm ci:*)"]
 
 
 def test_bash_accept_edits_mode_allows_workspace_file_commands():
@@ -335,3 +337,78 @@ def test_dont_ask_persists_allow():
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
         assert "Edit" in g._allow
         assert g.decide("Edit", {"file_path": "a.txt"}) == "allow"
+        data = json.read(Path(d) / ".pyclaw" / "settings.local.json")
+        assert data["permissions"]["allow"] == ["Edit"]
+
+
+def test_suggested_rule_prefers_two_word_prefix():
+    from pyclaw.tools.coding.shell_rules import suggested_rule
+    assert suggested_rule('git commit -m "fix"') == 'Bash(git commit:*)'
+    assert suggested_rule('npm run test') == 'Bash(npm run:*)'
+    assert suggested_rule('timeout 10 git push') == 'Bash(git push:*)'
+    assert bash_rule_matches('Bash(git commit:*)', 'git commit -m "fix"')
+
+
+def test_suggested_rule_exact_fallback():
+    from pyclaw.tools.coding.shell_rules import suggested_rule
+    assert suggested_rule('ls -la') == 'Bash(ls -la)'
+    assert suggested_rule('python3 x.py') == 'Bash(python3 x.py)'
+    assert suggested_rule('mkdir a && mkdir b') == 'Bash(mkdir a && mkdir b)'
+    assert bash_rule_matches('Bash(ls -la)', 'ls -la')
+    assert bash_rule_matches('Bash(mkdir a && mkdir b)', 'mkdir a && mkdir b')
+
+
+def test_suggested_rule_refuses_risky_commands():
+    from pyclaw.tools.coding.shell_rules import suggested_rule
+    assert suggested_rule('rm -rf /') is None            # 危险删除
+    assert suggested_rule('FOO=bar npm test') is None    # 不安全 env 前缀
+    assert suggested_rule('echo `whoami`') is None       # 无法安全解析
+    assert suggested_rule('sudo rm x') == 'Bash(sudo rm x)'  # 裸 shell 只给精确
+
+
+def test_dont_ask_saves_rule_to_local_settings():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def always(name, inp):
+            return "dont_ask"
+
+        g = PermissionController(mode="default", cwd=d, request=always)
+        assert asyncio.run(
+            g.authorize("Bash", {"command": "git commit -m x"})) is True
+        data = json.read(Path(d) / ".pyclaw" / "settings.local.json")
+        assert data["permissions"]["allow"] == ["Bash(git commit:*)"]
+        # 重启（新 controller）后不再问
+        g2 = PermissionController(mode="default", cwd=d)
+        assert g2.decide("Bash", {"command": "git commit -m x"}) == "allow"
+
+
+def test_rules_load_from_user_and_local_settings(tmp_path, monkeypatch):
+    from pyclaw.tools.coding import permission as perm
+    user_file = tmp_path / "user-settings.json"
+    json.write(user_file, {"permissions": {
+        "allow": ["Bash(npm run:*)"], "deny": ["Bash(curl:*)"]}})
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: user_file)
+
+    with tempfile.TemporaryDirectory() as d:
+        local = Path(d) / ".pyclaw" / "settings.local.json"
+        local.parent.mkdir(parents=True)
+        json.write(local, {"permissions": {"deny": ["Bash(npm run:*)"]}})
+        g = perm.PermissionController(mode="default", cwd=d)
+        # local 层的 deny 覆盖 user 层的 allow（later source wins，deny 优先求值）
+        assert g.decide("Bash", {"command": "npm run test"}) == "deny"
+        assert g.decide("Bash", {"command": "curl http://x"}) == "deny"
+        assert g.decide("Bash", {"command": "node server.js"}) == "ask"
+
+
+def test_rule_listing_reports_sources(tmp_path, monkeypatch):
+    from pyclaw.tools.coding import permission as perm
+    user_file = tmp_path / "user-settings.json"
+    json.write(user_file, {"permissions": {"allow": ["Bash(npm run:*)"]}})
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: user_file)
+
+    with tempfile.TemporaryDirectory() as d:
+        g = perm.PermissionController(mode="default", cwd=d,
+                                      deny=["Bash(curl:*)"])
+        rules = g.rule_listing()
+        assert ('allow', 'Bash(npm run:*)', 'user') in rules
+        assert ('deny', 'Bash(curl:*)', 'cli') in rules

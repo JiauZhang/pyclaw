@@ -842,14 +842,17 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
             await app._conv().mount(locked)
             await pilot.pause()
             text = str(locked.content)
-            assert "always allow" not in text
+            assert "don't ask again" not in text
             assert "cannot be remembered" in text
             assert locked._rememberable is False
 
-            normal = _PermissionPrompt("Edit", "a.txt", rememberable=True)
+            normal = _PermissionPrompt("Edit", "a.txt", rememberable=True,
+                                       rule="Edit")
             await app._conv().mount(normal)
             await pilot.pause()
-            assert "always allow" in str(normal.content)
+            text = str(normal.content)
+            assert "don't ask again" in text
+            assert "Edit" in text
     asyncio.run(scenario())
 
 

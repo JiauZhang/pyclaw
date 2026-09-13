@@ -6,7 +6,7 @@ HELP = '''Available commands:
 /status       Show the current session runtime info
 /tools        List tools available in this session
 /thinking     Show or toggle thinking mode (on|off)
-/permissions  Show or switch permission mode (default|acceptEdits|plan)
+/permissions  Show/switch permission mode, list saved permission rules
 /plan         Enter plan (read-only) mode
 /model        Show or switch the model for this session
 /cost         Show token usage and estimated cost'''
@@ -57,13 +57,19 @@ def _handle_thinking(session, arg: str) -> str:
 
 
 def _handle_permissions(session, arg: str) -> str:
-    if not arg:
-        return f'Permission mode: {session.permission_mode}'
-    try:
-        session.set_permission_mode(arg)
-    except ValueError as e:
-        return str(e)
-    return f'Permission mode: {session.permission_mode}'
+    if arg:
+        try:
+            session.set_permission_mode(arg)
+        except ValueError as e:
+            return str(e)
+    lines = [f'Permission mode: {session.permission_mode}']
+    rules = (session.permission_rules()
+             if hasattr(session, 'permission_rules') else [])
+    if rules:
+        lines.append('Rules:')
+        for behavior, rule, source in rules:
+            lines.append(f'  [{behavior}] {rule}  ({source})')
+    return '\n'.join(lines)
 
 
 def _handle_model(session, arg: str) -> str:

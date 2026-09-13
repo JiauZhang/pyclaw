@@ -462,4 +462,8 @@ class Session:
     async def close(self):
         self._unbind()
         _sessions_by_root.pop(self.name, None)
+
+    def permission_rules(self):
+        gate = self._gate
+        return gate.rule_listing() if gate is not None else []
         close_session_logger(self.conv_session_id)

@@ -156,3 +156,17 @@ def test_cost_command_with_pricing(monkeypatch):
 def test_command_aliases():
     assert "single-agent" in asyncio.run(_call("/agent", _fake_session()))
     assert "multi-agent" in asyncio.run(_call("/team", _fake_session()))
+
+
+def test_permissions_lists_mode_and_rules_with_sources():
+    class _S:
+        permission_mode = "default"
+
+        def permission_rules(self):
+            return [("allow", "Bash(git commit:*)", "local"),
+                    ("deny", "Bash(curl:*)", "user")]
+
+    out = asyncio.run(_call("/permissions", _S()))
+    assert "default" in out
+    assert "allow" in out and "Bash(git commit:*)" in out and "local" in out
+    assert "deny" in out and "Bash(curl:*)" in out and "user" in out

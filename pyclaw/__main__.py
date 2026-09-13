@@ -91,8 +91,9 @@ def _cli_resume(args) -> bool:
 
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
-                      resume=False) -> dict:
-    team = build_team(provider, model, permission_mode=permission_mode)
+                      resume=False, allow=None, ask=None, deny=None) -> dict:
+    team = build_team(provider, model, permission_mode=permission_mode,
+                      allow=allow, ask=ask, deny=deny)
     session = Session(team, session_id=session_id)
     try:
         if resume:
@@ -125,7 +126,8 @@ async def run_headless(args):
     out = await prompt_once(provider, model, args.print,
                             permission_mode=args.permission_mode,
                             session_id=_cli_session_id(args),
-                            resume=_cli_resume(args))
+                            resume=_cli_resume(args),
+                            allow=args.allow, ask=args.ask, deny=args.deny)
     render_output(args.output, out)
 
 
@@ -140,7 +142,8 @@ def run_tui(args):
         sys.exit(1)
     from pyclaw.tui import PyClawApp
     PyClawApp(builder=lambda: build_team(
-        provider, model, permission_mode=args.permission_mode),
+        provider, model, permission_mode=args.permission_mode,
+        allow=args.allow, ask=args.ask, deny=args.deny),
         session_id=_cli_session_id(args),
         resume=_cli_resume(args)).run()
 
@@ -180,6 +183,12 @@ def _add_session_args(target):
                         help="Resume the most recent session in this directory (claude -c)")
     target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID",
                         help="Resume a specific session by id (claude --resume)")
+    for flag, help_text in (
+            ("--allow", "Permission rule to allow, e.g. 'Bash(git push:*)' (claude --allowedTools)"),
+            ("--deny", "Permission rule to deny, e.g. 'Bash(curl:*)'"),
+            ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'")):
+        target.add_argument(flag, action="append", default=None, metavar="RULE",
+                            help=help_text)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -236,7 +245,8 @@ def _build_parser() -> argparse.ArgumentParser:
 def _finalize_args(args) -> argparse.Namespace:
     if not hasattr(args, "log_level"):
         args.log_level = "INFO"
-    for field in ("provider", "model", "channels", "port", "host", "resume"):
+    for field in ("provider", "model", "channels", "port", "host", "resume",
+                  "allow", "ask", "deny"):
         if not hasattr(args, field):
             setattr(args, field, None)
     if not hasattr(args, "continue_session"):

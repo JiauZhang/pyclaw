@@ -158,11 +158,30 @@ def base_command(command: str) -> str:
     return tokens[0] if tokens else ''
 
 
+_REDIR_OP = re.compile(r'\d*>>?|&>')
+_REDIR_MERGED = re.compile(r'(?:\d*&?)>>?\S+')
+
+
+def _strip_redirects(command: str) -> str:
+    tokens = _tokenize(str(command))
+    end = len(tokens)
+    while end >= 1:
+        last = tokens[end - 1]
+        if _REDIR_MERGED.fullmatch(last):
+            end -= 1
+        elif end >= 2 and _REDIR_OP.fullmatch(tokens[end - 2]):
+            end -= 2
+        else:
+            break
+    return ' '.join(tokens[:end])
+
+
 def strip_prefixes(command: str, env_all: bool = False) -> list[str]:
     text = str(command).strip()
     bare = strip_wrappers(text)
     env_safe = strip_env(bare, safe_only=True)
-    candidates = [text, bare, env_safe, strip_wrappers(env_safe)]
+    candidates = [text, _strip_redirects(text), bare, env_safe,
+                  strip_wrappers(env_safe)]
     if env_all:
         all_env = strip_env(bare, safe_only=False)
         candidates += [all_env, strip_wrappers(all_env)]
@@ -279,3 +298,34 @@ def is_workspace_edit_command(command) -> bool:
         if '..' in arg.split('/'):
             return False
     return True
+
+
+BARE_SHELL_PREFIXES = frozenset({
+    'sh', 'bash', 'zsh', 'env', 'xargs', 'nice', 'sudo', 'doas', 'pkexec',
+    'nohup', 'stdbuf',
+})
+_SUBCOMMAND = re.compile(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
+
+
+def suggested_rule(command) -> str | None:
+    """claude 的 don't-ask-again 建议规则：单命令优先两词前缀
+    （`git commit -m x` → `Bash(git commit:*)`），否则精确命令。
+    危险删除 / 无法安全解析 / 不安全 env 前缀 → 不建议保存（None）。"""
+    text = _normalize(command)
+    if not text or is_dangerous_removal(text):
+        return None
+    if _has_unquoted_special(text):
+        return None
+    tokens = _tokenize(text)
+    if tokens and ENV_ASSIGN.match(tokens[0]) \
+            and tokens[0].split('=', 1)[0] not in SAFE_ENV_VARS:
+        return None
+    stripped = _normalize(strip_wrappers(
+        _strip_redirects(strip_env(text, safe_only=True))))
+    parts = split_commands(stripped)
+    if len(parts) == 1:
+        toks = _tokenize(parts[0])
+        if len(toks) >= 2 and toks[0] not in BARE_SHELL_PREFIXES \
+                and _SUBCOMMAND.fullmatch(toks[1]):
+            return f'Bash({toks[0]} {toks[1]}:*)'
+    return f'Bash({stripped})'

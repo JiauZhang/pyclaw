@@ -48,6 +48,17 @@ def test_finalize_args_adds_missing_log_level():
     assert out.log_level == "INFO"
 
 
+def test_permission_rule_flags_on_both_session_parsers():
+    for argv in (["-p", "hi"], ["tui"]):
+        args = __main__._build_parser().parse_args(
+            argv + ["--allow", "Bash(git push:*)",
+                    "--deny", "Bash(curl:*)",
+                    "--ask", "Bash(docker:*)"])
+        assert args.allow == ["Bash(git push:*)"]
+        assert args.deny == ["Bash(curl:*)"]
+        assert args.ask == ["Bash(docker:*)"]
+
+
 def test_finalize_args_keeps_existing_log_level():
     ns = argparse.Namespace(command="serve", log_level="DEBUG")
     out = __main__._finalize_args(ns)

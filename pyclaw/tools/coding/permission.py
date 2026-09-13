@@ -3,9 +3,12 @@ from __future__ import annotations
 from enum import Enum
 from pathlib import Path
 
+from conippets import json
+
 from .paths import resolve
 from .shell_rules import (bash_rule_matches, is_dangerous_removal,
-                          is_read_only, is_workspace_edit_command)
+                          is_read_only, is_workspace_edit_command,
+                          suggested_rule)
 
 READ_TOOLS = frozenset({'Read', 'Glob', 'Grep', 'LS'})
 WRITE_TOOLS = frozenset({'Write', 'Edit', 'MultiEdit'})
@@ -76,19 +79,81 @@ def _path_fields(input) -> list[str]:
     return fields
 
 
+def _user_settings_file() -> Path:
+    from pyclaw import __pyclaw_home__
+    return Path(__pyclaw_home__) / 'settings.json'
+
+
+def _local_settings_file(cwd) -> Path:
+    return Path(cwd) / '.pyclaw' / 'settings.local.json'
+
+
+def _read_rule_file(path) -> dict:
+    try:
+        if not Path(path).exists():
+            return {}
+        perms = (json.read(path) or {}).get('permissions') or {}
+    except Exception:
+        return {}
+    return {k: [str(r) for r in perms.get(k, []) if str(r).strip()]
+            for k in ('allow', 'ask', 'deny')}
+
+
 class PermissionController:
 
     def __init__(self, *, mode: str = 'default', cwd, allow=(),
                  ask=(), deny=(), request=None):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
-        self._allow = list(allow)
-        self._ask = list(ask)
-        self._deny = list(deny)
+        # claude 五层的最小子集：user → local（项目）→ cli；数组按序合并去重，
+        # 求值时 deny > ask > allow。runtime 里 "don't ask again" 记到 session 层
+        # 并持久化进 local 文件（claude 的 destination=localSettings）。
+        self._layers: list[tuple[str, str, str]] = []
+        merged = {b: [] for b in ('allow', 'ask', 'deny')}
+        layers = (('user', _user_settings_file()),
+                  ('local', _local_settings_file(self.cwd)),
+                  ('cli', {'allow': list(allow), 'ask': list(ask),
+                           'deny': list(deny)}))
+        for source, rules in layers:
+            if source != 'cli':
+                rules = _read_rule_file(rules)
+            for behavior in ('allow', 'ask', 'deny'):
+                for rule in rules.get(behavior, []):
+                    bucket = merged[behavior]
+                    if rule not in bucket:
+                        bucket.append(rule)
+                        self._layers.append((behavior, rule, source))
+        self._allow = merged['allow']
+        self._ask = merged['ask']
+        self._deny = merged['deny']
         self.request = request
 
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)
+
+    def rule_listing(self) -> list[tuple[str, str, str]]:
+        return list(self._layers)
+
+    def _save_local_rule(self, rule: str):
+        path = _local_settings_file(self.cwd)
+        try:
+            data = json.read(path) if path.exists() else {}
+            perms = data.get('permissions') or {}
+            rules = [str(r) for r in perms.get('allow', [])]
+            if rule not in rules:
+                rules.append(rule)
+            perms['allow'] = rules
+            data['permissions'] = perms
+            path.parent.mkdir(parents=True, exist_ok=True)
+            json.write(path, data)
+            gitignore = self.cwd / '.gitignore'
+            if gitignore.exists():
+                text = gitignore.read_text(encoding='utf-8')
+                if '.pyclaw/' not in text:
+                    gitignore.write_text(
+                        text.rstrip('\n') + '\n.pyclaw/\n', encoding='utf-8')
+        except OSError:
+            pass
 
     def remember_allow(self, tool_name: str, tool_input=None):
         rule = tool_name
@@ -96,9 +161,11 @@ class PermissionController:
             command = _command_of(tool_input)
             if not command:
                 return
-            rule = f'Bash({command})'
+            rule = suggested_rule(command) or f'Bash({" ".join(command.split())})'
         if rule not in self._allow:
             self._allow.append(rule)
+            self._layers.append(('allow', rule, 'session'))
+        self._save_local_rule(rule)
 
     @staticmethod
     def _in_workspace(cwd: Path, input) -> bool:
@@ -109,7 +176,7 @@ class PermissionController:
 
     def _rememberable(self, tool_name: str, tool_input) -> bool:
         if tool_name == BASH_TOOL:
-            return not is_dangerous_removal(_command_of(tool_input))
+            return suggested_rule(_command_of(tool_input)) is not None
         return True
 
     def _decide_bash(self, tool_input) -> str:

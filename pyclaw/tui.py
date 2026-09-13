@@ -149,19 +149,20 @@ class _PermissionPrompt(Static):
     ]
 
     def __init__(self, tool_name: str, input_text: str,
-                 rememberable: bool = True, **kw):
+                 rememberable: bool = True, rule: str = "", **kw):
         super().__init__(**kw)
         self._tool = tool_name
         self._input = input_text
         self._rememberable = rememberable
+        self._rule = rule
         self.on_choice = None
 
     def on_mount(self):
         options = "[#D77757]y[/] approve  [#9A9A9A]n[/] deny"
         if self._rememberable:
-            options += "  [#4EBA65]a[/] always allow"
+            options += f"  [#4EBA65]a[/] don't ask again ({self._rule or self._tool})"
         else:
-            options += "\n[#FFC107]cannot be remembered: dangerous command[/]"
+            options += "\n[#FFC107]cannot be remembered: unsafe command[/]"
         self.update(
             f"[#B1B9F9][bold]\u276f Permission needed: {self._tool}[/bold][/]\n"
             f"    {self._input}\n{options}"
@@ -668,10 +669,14 @@ class PyClawApp(App[None]):
     async def _ask_permission(self, tool_name: str, tool_input) -> str:
         inp = tool_input if isinstance(tool_input, dict) else {}
         summary = _summarize(json.dumps(inp, ensure_ascii=False), 120)
-        locked = tool_name == 'Bash' and is_dangerous_removal(
-            str(inp.get('command') or ''))
-        fut = asyncio.get_running_loop().create_future()
-        prompt = _PermissionPrompt(tool_name, summary, rememberable=not locked)
+        rule = ""
+        if tool_name == 'Bash':
+            from pyclaw.tools.coding.shell_rules import suggested_rule
+            rule = suggested_rule(str(inp.get('command') or '')) or ""
+        # 与 PermissionController._rememberable 同口径：建议规则存在才可记住
+        prompt = _PermissionPrompt(tool_name, summary,
+                                   rememberable=bool(rule) or tool_name != 'Bash',
+                                   rule=rule if tool_name == 'Bash' else tool_name)
         prompt.on_choice = fut.set_result
         conv = self._conv()
         await conv.mount(prompt)
