@@ -1,4 +1,4 @@
-import argparse, asyncio, json, logging, sys
+import argparse, asyncio, json, logging, os, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__, __pyclaw_home__
@@ -75,11 +75,28 @@ async def start_server(args):
         raise
 
 
+def _cli_session_id(args) -> str:
+    from pyclaw.agents import resolve_session_id
+    resume_id = getattr(args, "resume", None)
+    if resume_id:
+        return resume_id
+    continue_flag = bool(getattr(args, "continue_session", False))
+    return resolve_session_id(["cli", os.getcwd()], rotate=not continue_flag)
+
+
+def _cli_resume(args) -> bool:
+    return bool(getattr(args, "resume", None)
+                or getattr(args, "continue_session", False))
+
+
 async def prompt_once(provider, model, prompt, *, on_event=None,
-                      permission_mode='default') -> dict:
+                      permission_mode='default', session_id=None,
+                      resume=False) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode)
-    session = Session(team)
+    session = Session(team, session_id=session_id)
     try:
+        if resume:
+            session.restore_transcript()
         text = await session.chat(prompt, on_event=on_event)
         return {"text": text, "mode": session.mode,
                 "permission_mode": session.permission_mode,
@@ -106,7 +123,9 @@ async def run_headless(args):
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
     out = await prompt_once(provider, model, args.print,
-                            permission_mode=args.permission_mode)
+                            permission_mode=args.permission_mode,
+                            session_id=_cli_session_id(args),
+                            resume=_cli_resume(args))
     render_output(args.output, out)
 
 
@@ -121,7 +140,9 @@ def run_tui(args):
         sys.exit(1)
     from pyclaw.tui import PyClawApp
     PyClawApp(builder=lambda: build_team(
-        provider, model, permission_mode=args.permission_mode)).run()
+        provider, model, permission_mode=args.permission_mode),
+        session_id=_cli_session_id(args),
+        resume=_cli_resume(args)).run()
 
 
 async def run_channel_rebind(args):
@@ -153,6 +174,14 @@ def stop_server_cmd(args):
     print(f"Stopped {scope}: PIDs {', '.join(str(p) for p in killed)}")
 
 
+def _add_session_args(target):
+    target.add_argument("-c", "--continue", dest="continue_session",
+                        action="store_true",
+                        help="Resume the most recent session in this directory (claude -c)")
+    target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID",
+                        help="Resume a specific session by id (claude --resume)")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PyClaw – Personal AI Assistant")
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
@@ -165,6 +194,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--permission-mode", type=str, default=None,
                         choices=["default", "acceptEdits", "plan"],
                         help="Session permission mode (claude --permission-mode)")
+    _add_session_args(parser)
     subparsers = parser.add_subparsers(dest="command")
 
     serve_parser = subparsers.add_parser("serve", help="Start the gateway server")
@@ -195,6 +225,7 @@ def _build_parser() -> argparse.ArgumentParser:
     tui_parser.add_argument("--permission-mode", type=str, default=None,
                             choices=["default", "acceptEdits", "plan"],
                             help="Session permission mode")
+    _add_session_args(tui_parser)
 
     cli_config(subparsers)
 
@@ -205,9 +236,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def _finalize_args(args) -> argparse.Namespace:
     if not hasattr(args, "log_level"):
         args.log_level = "INFO"
-    for field in ("provider", "model", "channels", "port", "host"):
+    for field in ("provider", "model", "channels", "port", "host", "resume"):
         if not hasattr(args, field):
             setattr(args, field, None)
+    if not hasattr(args, "continue_session"):
+        args.continue_session = False
     if not hasattr(args, "permission_mode") or args.permission_mode is None:
         args.permission_mode = (load_config().get("permissions", {})
                                 .get("defaultMode", "default"))

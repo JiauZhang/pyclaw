@@ -102,20 +102,49 @@ def _session_index_path() -> Path:
     return _logs_dir() / "session_index.json"
 
 
-def resolve_session_id(logical_key) -> str:
+def resolve_session_id(logical_key, *, rotate: bool = False) -> str:
     path = _session_index_path()
     index = {}
     if path.exists():
         index = json.loads(path.read_text(encoding="utf-8"))
     key = json.dumps(logical_key, ensure_ascii=False, sort_keys=True)
     session_id = index.get(key)
-    if session_id is None:
+    if session_id is None or rotate:
         session_id = uuid.uuid4().hex
         index[key] = session_id
         path.write_text(
             json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8",
         )
     return session_id
+
+
+def transcript_path(session_id) -> Path:
+    return _session_dir(session_id) / "transcript.jsonl"
+
+
+def save_transcript(session_id, messages) -> None:
+    records = [json.dumps(m, ensure_ascii=False) for m in messages
+               if isinstance(m, dict)]
+    transcript_path(session_id).write_text(
+        "\n".join(records) + ("\n" if records else ""), encoding="utf-8")
+
+
+def load_transcript(session_id) -> list:
+    path = transcript_path(session_id)
+    if not path.exists():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
 
 
 _session_loggers: dict[str, logging.Logger] = {}
@@ -232,7 +261,7 @@ def build_team(
 
 
 class Session:
-    def __init__(self, entity):
+    def __init__(self, entity, session_id=None):
         self._team: Team = entity
         self._provider = entity.provider
         self._model = entity.model
@@ -241,7 +270,7 @@ class Session:
         self.mode = 'team'
         self.name = entity.name
         self.deliver = None
-        self.conv_session_id = entity.name
+        self.conv_session_id = session_id or entity.name
         self._conv_reply = ""
         self._conv_thinking = ""
         self._unreg = None
@@ -271,6 +300,16 @@ class Session:
 
     def transcript(self) -> list:
         return self._team.transcript()
+
+    def save_transcript(self):
+        if self.conv_session_id:
+            save_transcript(self.conv_session_id, self._team.transcript())
+
+    def restore_transcript(self) -> int:
+        messages = load_transcript(self.conv_session_id)
+        if messages:
+            self._team.restore(messages)
+        return len(messages)
 
     @property
     def active_agents(self) -> int:
@@ -355,8 +394,11 @@ class Session:
 
     async def chat(self, message: str, on_event: Optional[Callable] = None) -> str:
         if on_event is not None:
-            return await self._run(message, on_event)
-        return await self._team.query(message)
+            out = await self._run(message, on_event)
+        else:
+            out = await self._team.query(message)
+        self.save_transcript()
+        return out
 
     def stream(self, message: str, on_event: Optional[Callable] = None) -> AsyncIterator[str]:
         async def gen():
@@ -410,6 +452,7 @@ class Session:
             self._unbind()
         await task
         self._flush_conv()
+        self.save_transcript()
 
     async def close(self):
         self._unbind()

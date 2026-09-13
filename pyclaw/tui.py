@@ -220,9 +220,11 @@ class PyClawApp(App[None]):
                 Binding("shift+tab", "cycle_permission", "Cycle permission mode",
                         priority=True)]
 
-    def __init__(self, *, builder):
+    def __init__(self, *, builder, session_id=None, resume=False):
         super().__init__()
         self._builder = builder
+        self._session_id = session_id
+        self._resume = resume
         self._team = None
         self._session: Session | None = None
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -257,7 +259,7 @@ class PyClawApp(App[None]):
 
     async def on_mount(self):
         self._team = self._builder()
-        self._session = Session(self._team)
+        self._session = Session(self._team, session_id=self._session_id)
         self._session.attach_approval(self._ask_permission)
         self._unreg = register_runtime_handler(self._on_event)
         self._tasks_pane = Static("", markup=True)
@@ -265,6 +267,9 @@ class PyClawApp(App[None]):
         asyncio.create_task(self._pump())
         asyncio.create_task(self._drive())
         self._spin_timer = self.set_interval(0.08, self._tool_spin_tick)
+        if self._resume:
+            self._session.restore_transcript()
+            await self._render_history()
         self.query_one(Input).focus()
         self._render_status()
         self._render_tasks()
@@ -431,15 +436,46 @@ class PyClawApp(App[None]):
         return str(n)
 
     async def _add_tool(self, ev):
-        name = ev.data.get("tool", "tool")
-        inp = ev.data.get("input", "")
-        input_text = inp if isinstance(inp, str) else str(inp)
-        uid = ev.data.get("tool_use_id", "") or name
+        await self._mount_tool(ev.data.get("tool", "tool"),
+                               ev.data.get("input", ""),
+                               ev.data.get("tool_use_id", ""))
+
+    async def _mount_tool(self, name, raw_input, tool_use_id):
+        input_text = raw_input if isinstance(raw_input, str) else str(raw_input)
+        uid = tool_use_id or name
         block = _ToolBlock(name, input_text)
-        conv = self._conv()
-        await conv.mount(block)
+        await self._conv().mount(block)
         self._tools[uid] = block
         await self._after_mount()
+
+    async def _render_history(self):
+        for message in self._session.transcript():
+            role = message.get("role")
+            if role == "user":
+                text = _content_text(message.get("content"))
+                if text:
+                    await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {text}")
+                continue
+            if role != "assistant":
+                continue
+            content = message.get("content")
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) \
+                            and block.get("type") == "tool_use":
+                        await self._mount_tool(block.get("name", "tool"),
+                                               block.get("input", ""),
+                                               block.get("id", ""))
+            text = _content_text(content)
+            if text:
+                text_block = _TextBlock(markup=True)
+                await self._conv().mount(text_block)
+                text_block.set_body(text)
+                await self._after_mount()
+            thinking = message.get("thinking")
+            if thinking:
+                await self._mount_thinking(thinking)
+        self._sync_tool_states()
 
     async def _add_think(self, ev):
         self._discard_think()
@@ -462,17 +498,25 @@ class PyClawApp(App[None]):
                 text = m['thinking']
         return text
 
+    async def _mount_thinking(self, text: str) -> _ThinkingBlock:
+        block = _ThinkingBlock(markup=True)
+        await self._conv().mount(block)
+        block.set_thinking(text)
+        if self._all_expanded:
+            block.set_expanded(True)
+        return block
+
     async def _show_turn_thinking(self):
         text = self._turn_thinking()
         if not text:
             return
         if self._thought is None:
-            self._thought = _ThinkingBlock(markup=True)
-            await self._conv().mount(self._thought)
+            self._thought = await self._mount_thinking(text)
             await self._after_mount()
-        self._thought.set_thinking(text)
-        if self._all_expanded:
-            self._thought.set_expanded(True)
+        else:
+            self._thought.set_thinking(text)
+            if self._all_expanded:
+                self._thought.set_expanded(True)
         if self._thought_timer is not None:
             self._thought_timer.stop()
         self._thought_timer = self.set_timer(THINKING_TTL, self._hide_thinking)

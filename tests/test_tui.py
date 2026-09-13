@@ -69,6 +69,9 @@ class _FakeTeam:
         self._messages.append(msg)
         return msg
 
+    def restore(self, messages):
+        self._messages = list(messages)
+
     async def query(self, prompt, timeout=60):
         from chatchat.hooks.events import emit
         self.record("user", prompt)
@@ -761,6 +764,50 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
     assert assistant
     assert assistant[-1]["content"] == "logged answer"
     assert assistant[-1]["reasoning_content"] == "why"
+
+
+def test_resume_renders_saved_history(tmp_path, monkeypatch):
+    from pyclaw import agents
+
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.save_transcript("s1", [
+        {"role": "user", "content": "old question"},
+        {"role": "assistant", "content": [
+            {"type": "tool_use", "id": "t1", "name": "Read",
+             "input": {"file_path": "a.txt"}}]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1",
+             "content": "file body"}]},
+        {"role": "assistant", "content": "old answer", "thinking": "old thought"},
+    ])
+
+    async def scenario():
+        async with PyClawApp(builder=_builder, session_id="s1",
+                             resume=True).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            flat = _flatten(app)
+            assert "old question" in flat
+            assert "old answer" in flat
+            assert "file body" in flat
+            assert "\u2234 Thinking" in flat
+            assert app._tools["t1"]._done is True
+    asyncio.run(scenario())
+
+
+def test_fresh_start_ignores_saved_history(tmp_path, monkeypatch):
+    from pyclaw import agents
+
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.save_transcript("s2", [{"role": "assistant", "content": "stale"}])
+
+    async def scenario():
+        async with PyClawApp(builder=_builder, session_id="s2",
+                             resume=False).run_test() as pilot:
+            await pilot.pause()
+            return _flatten(pilot.app)
+
+    assert "stale" not in asyncio.run(scenario())
 
 
 def test_permission_card_drops_remember_option_for_dangerous_command():

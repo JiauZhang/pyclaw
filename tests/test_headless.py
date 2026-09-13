@@ -37,8 +37,14 @@ class _FakeSession:
     thinking = False
     usage = _U()
 
-    def __init__(self, team):
+    def __init__(self, team, session_id=None):
         self.team = team
+        self.session_id = session_id
+        self.restored = False
+
+    def restore_transcript(self):
+        self.restored = True
+        return 0
 
     async def chat(self, message, on_event=None):
         return "\n\nhello\n"
