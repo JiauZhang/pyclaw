@@ -328,6 +328,30 @@ def test_build_team_removes_bash_when_denied_by_bare_name():
     assert "Bash" not in asyncio.run(main())
 
 
+def test_build_team_mode_gating():
+    """对齐 claude：agent/team 模式只能启动时决定（--use-team），
+    instruction 随模式而定，前缀稳定不破坏 KV cache。"""
+    from pyclaw import agents as agents_mod
+    from pyclaw.agents import build_team
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            single = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            teams = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            s_single = agents_mod.Session(single, session_id="ga")
+            s_team = agents_mod.Session(teams, session_id="gt")
+            return (single._pyclaw_mode, s_single.mode,
+                    teams._pyclaw_mode, s_team.mode,
+                    single.lead.instruction, teams.lead.instruction)
+
+    (mode_a, session_a, mode_t, session_t, inst_a, inst_t) = asyncio.run(main())
+    assert mode_a == "agent" and session_a == "agent"
+    assert mode_t == "team" and session_t == "team"
+    assert "capable AI assistant" in inst_a          # agent_instruction
+    assert "leader of a task-executing team" in inst_t
+    assert "create_agent" in inst_t and "create_agent" not in inst_a
+
+
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 

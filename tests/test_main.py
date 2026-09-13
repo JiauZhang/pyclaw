@@ -59,6 +59,11 @@ def test_permission_rule_flags_on_both_session_parsers():
         assert args.ask == ["Bash(docker:*)"]
 
 
+def test_use_team_flag_on_both_session_parsers():
+    assert __main__._build_parser().parse_args(["tui", "--use-team"]).use_team is True
+    assert __main__._build_parser().parse_args(["-p", "hi"]).use_team is False
+
+
 def test_finalize_args_keeps_existing_log_level():
     ns = argparse.Namespace(command="serve", log_level="DEBUG")
     out = __main__._finalize_args(ns)

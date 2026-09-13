@@ -91,9 +91,10 @@ def _cli_resume(args) -> bool:
 
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
-                      resume=False, allow=None, ask=None, deny=None) -> dict:
+                      resume=False, allow=None, ask=None, deny=None,
+                      use_team=False) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
-                      allow=allow, ask=ask, deny=deny)
+                      allow=allow, ask=ask, deny=deny, use_team=use_team)
     session = Session(team, session_id=session_id)
     try:
         if resume:
@@ -127,7 +128,8 @@ async def run_headless(args):
                             permission_mode=args.permission_mode,
                             session_id=_cli_session_id(args),
                             resume=_cli_resume(args),
-                            allow=args.allow, ask=args.ask, deny=args.deny)
+                            allow=args.allow, ask=args.ask, deny=args.deny,
+                            use_team=args.use_team)
     render_output(args.output, out)
 
 
@@ -143,7 +145,8 @@ def run_tui(args):
     from pyclaw.tui import PyClawApp
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
-        allow=args.allow, ask=args.ask, deny=args.deny),
+        allow=args.allow, ask=args.ask, deny=args.deny,
+        use_team=args.use_team),
         session_id=_cli_session_id(args),
         resume=_cli_resume(args)).run()
 
@@ -189,6 +192,9 @@ def _add_session_args(target):
             ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'")):
         target.add_argument(flag, action="append", default=None, metavar="RULE",
                             help=help_text)
+    target.add_argument("--use-team", action="store_true", default=False,
+                        help="Run in team (multi-agent) mode; fixed for the "
+                             "whole session (claude --agent-teams)")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -251,6 +257,8 @@ def _finalize_args(args) -> argparse.Namespace:
             setattr(args, field, None)
     if not hasattr(args, "continue_session"):
         args.continue_session = False
+    if not hasattr(args, "use_team") or args.use_team is False:
+        args.use_team = bool(load_config().get("agentTeams", False))
     if not hasattr(args, "permission_mode") or args.permission_mode is None:
         args.permission_mode = (load_config().get("permissions", {})
                                 .get("defaultMode", "default"))

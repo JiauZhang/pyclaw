@@ -5,7 +5,7 @@ import pytest
 from pyclaw import slash
 
 
-HELP_KEYWORDS = ("/help", "/agent", "/team", "/clear", "/status", "/tools",
+HELP_KEYWORDS = ("/help", "/clear", "/status", "/tools",
                  "/thinking", "/model", "/cost")
 
 
@@ -32,10 +32,6 @@ def _fake_session(**kwargs):
         def __init__(self, **kw):
             for k, v in kwargs.items():
                 setattr(self, k, v)
-
-        def switch(self, mode):
-            self._switched = mode
-            return asyncio.sleep(0)
 
         def reset(self):
             self._reset = True
@@ -153,9 +149,13 @@ def test_cost_command_with_pricing(monkeypatch):
     assert "$0.0020" in out
 
 
-def test_command_aliases():
-    assert "single-agent" in asyncio.run(_call("/agent", _fake_session()))
-    assert "multi-agent" in asyncio.run(_call("/team", _fake_session()))
+def test_mode_switch_commands_removed():
+    """对齐 claude：agent/team 模式只能由启动 flag 决定，slash 切换已移除。"""
+    out = asyncio.run(_call("/agent", _fake_session()))
+    assert "Unknown command" in out
+    out = asyncio.run(_call("/team", _fake_session()))
+    assert "Unknown command" in out
+    assert "/agent" not in slash.HELP and "/team" not in slash.HELP
 
 
 def test_permissions_lists_mode_and_rules_with_sources():

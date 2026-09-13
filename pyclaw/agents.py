@@ -225,6 +225,7 @@ def build_team(
     allow: Optional[list] = None,
     ask: Optional[list] = None,
     deny: Optional[list] = None,
+    use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
     gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
@@ -237,7 +238,10 @@ def build_team(
     resolved = [t for t in resolved if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get('timeout', 120)
-    inst = instruction or team_instruction(names)
+    # 对齐 claude：agent/team 模式启动时定死（--use-team），不可运行时切换，
+    # 否则 instruction 变化会使请求前缀（KV cache）整体失效。
+    inst = instruction or (team_instruction(names) if use_team
+                           else agent_instruction(names))
     if gate.mode is PermissionMode.plan:
         inst = inst + PLAN_NOTE
     team = Team(
@@ -251,6 +255,7 @@ def build_team(
         http_options=http_options or {},
     )
     team._pyclaw_gate = gate
+    team._pyclaw_mode = 'team' if use_team else 'agent'
 
     from .tools.coding import background as _background
 
@@ -282,7 +287,7 @@ class Session:
         self._model = entity.model
         self._thinking = entity.thinking
         self._tools = entity.provided_tools
-        self.mode = 'team'
+        self.mode = getattr(entity, '_pyclaw_mode', 'agent')
         self.name = entity.name
         self.deliver = None
         self.conv_session_id = session_id or entity.name
@@ -368,15 +373,6 @@ class Session:
     @property
     def usage(self):
         return self._team.usage()
-
-    async def switch(self, mode: str):
-        if mode not in ('agent', 'team'):
-            raise ValueError(f"Unknown mode: {mode}")
-        names = [t.name for t in self._tools]
-        inst = (agent_instruction(names) if mode == 'agent'
-                else team_instruction(names))
-        self._team.set_lead_instruction(inst)
-        self.mode = mode
 
     def schedule_delivery(self, text: str, when: str):
         if self.deliver is None:

@@ -1,7 +1,5 @@
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
-    {'name': 'agent', 'desc': 'Switch this session to single-agent mode', 'hint': ''},
-    {'name': 'team', 'desc': 'Switch this session to team (multi-agent) mode', 'hint': ''},
     {'name': 'clear', 'desc': 'Clear the current session conversation history and token stats', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
     {'name': 'tools', 'desc': 'List tools available in this session', 'hint': ''},
@@ -153,12 +151,6 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
 
     if cmd in ('help', 'h', '?'):
         return HELP
-    if cmd == 'agent':
-        await session.switch('agent')
-        return 'Switched to single-agent mode.'
-    if cmd == 'team':
-        await session.switch('team')
-        return 'Switched to team (multi-agent) mode.'
     if cmd == 'clear':
         session.reset()
         return 'Conversation history cleared.'
