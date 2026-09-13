@@ -4,6 +4,7 @@ import atexit
 import secrets
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -17,6 +18,26 @@ TASK_MAX_TIMEOUT_MS = 600_000
 _TASK_ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
 
 _tasks: dict = {}
+_notifier = None
+
+
+def set_notifier(cb) -> None:
+    """注册任务完成回调（pyclaw 用它把 <task-notification> 排进 lead 附件）。"""
+    global _notifier
+    _notifier = cb
+
+
+def _watch(task_id: str):
+    task = _tasks.get(task_id)
+    if task is None:
+        return
+    code = task['process'].wait()
+    cb = _notifier
+    if cb is not None:
+        try:
+            cb(task_id, task['command'], code, task['killed'])
+        except Exception:
+            pass
 
 
 def _new_task_id() -> str:
@@ -43,6 +64,7 @@ def spawn(cwd: str, command: str) -> str:
         handle.close()
     _tasks[task_id] = {'command': command, 'process': process,
                        'output': path, 'killed': False}
+    threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
 

@@ -252,6 +252,21 @@ def build_team(
     )
     team._pyclaw_gate = gate
 
+    from .tools.coding import background as _background
+
+    def _notify_task_finished(task_id, command, code, killed):
+        status = ('killed' if killed
+                  else ('completed' if code == 0 else 'failed'))
+        team.lead.enqueue_attachment(
+            f'<task-notification>\n<task-id>{task_id}</task-id>\n'
+            f'<command>{command}</command>\n'
+            f'<output-file>{_background._output_path(task_id)}</output-file>\n'
+            f'<status>{status}</status>\n'
+            f'<summary>Background command exited with code {code}</summary>\n'
+            f'</task-notification>')
+
+    _background.set_notifier(_notify_task_finished)
+
     async def _permission_gate(hook_input):
         return await gate.authorize(hook_input.get('tool_name', ''),
                                     hook_input.get('tool_input') or {})

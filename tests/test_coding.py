@@ -501,3 +501,45 @@ def test_task_output_unknown_task():
 def test_background_tools_registered_by_build_coding_tools():
     names = {t.name for t in build_coding_tools("/tmp")}
     assert {"TaskOutput", "TaskStop"} <= names
+
+
+def test_background_completion_fires_notifier():
+    import time as _time
+    from pyclaw.tools.coding import background
+    events = []
+    background.set_notifier(
+        lambda tid, cmd, code, killed: events.append((tid, cmd, code, killed)))
+    try:
+        bash = _tools("/tmp")["Bash"]
+        out = bash(command="exit 0", run_in_background=True)
+        task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+        for _ in range(30):
+            if events:
+                break
+            _time.sleep(0.1)
+        assert events and events[0][0] == task_id
+        assert events[0][2] == 0 and events[0][3] is False
+    finally:
+        background.set_notifier(None)
+        background.cleanup_background_tasks()
+
+
+def test_build_team_wires_task_notifications_to_lead():
+    import asyncio
+    from pyclaw.agents import build_team
+    from pyclaw.tools.coding import background
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            background.spawn(d, "exit 3")
+            for _ in range(30):
+                if team.lead._attachments:
+                    break
+                await asyncio.sleep(0.1)
+            return list(team.lead._attachments)
+
+    texts = asyncio.run(main())
+    assert texts and "<task-notification>" in texts[0]
+    assert "<status>failed</status>" in texts[0]     # exit 3 → failed
+    assert "<task-id>b" in texts[0]
