@@ -457,38 +457,50 @@ def test_subagent_progress_renders_tree_line():
     asyncio.run(scenario())
 
 
-def test_ctrl_o_expands_thinking_globally():
+def _transcript_text(app) -> str:
+    view = app.screen.query_one("#transcript")
+    return "".join(str(w.content) for w in view.children)
+
+
+def test_ctrl_o_opens_transcript_and_q_exits():
     async def scenario():
-        async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
+        async with PyClawApp(builder=lambda: _LongToolTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(Input).value = "go"
             await pilot.press("enter")
-            for _ in range(5):
+            for _ in range(8):
                 await pilot.pause()
-            flat = _flatten(app)
-            assert "∴ Thinking" in flat
-            assert "inner monologue" not in flat
+            assert "y" * 80 not in _flatten(app)      # 普通模式工具输出折叠
             await pilot.press("ctrl+o")
             await pilot.pause()
-            assert "inner monologue" in _flatten(app)
+            assert type(app.screen).__name__ == "TranscriptScreen"
+            assert "y" * 80 in _transcript_text(app)   # verbose：输出全文
+            assert "x" * 80 in _transcript_text(app)   # input 全文
+            await pilot.press("q")
+            await pilot.pause()
+            assert type(app.screen).__name__ != "TranscriptScreen"
+            # esc 同样可退出
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            assert type(app.screen).__name__ != "TranscriptScreen"
     asyncio.run(scenario())
 
 
-def test_new_thinking_element_follows_global_expand():
+def test_transcript_shows_thinking_of_last_assistant():
     async def scenario():
         async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app._all_expanded = True
             app.query_one(Input).value = "hi"
             await pilot.press("enter")
-            for _ in range(5):
+            for _ in range(6):
                 await pilot.pause()
-            assert app._thought is not None
-            assert app._thought._thinking == "inner monologue"
-            assert app._thought._expanded is True
-            assert "inner monologue" in _flatten(app)
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            assert "inner monologue" in _transcript_text(app)
     asyncio.run(scenario())
 
 

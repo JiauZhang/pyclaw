@@ -6,6 +6,7 @@ import json
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
+from textual.screen import Screen
 from textual.widgets import Input, Static
 
 
@@ -22,7 +23,6 @@ from chatchat.hooks.events import (
 
 from pyclaw.agents import Session, append_conv
 from pyclaw.tools.coding import next_mode
-from pyclaw.tools.coding.shell_rules import is_dangerous_removal
 
 
 def _summarize(value, limit: int = 60) -> str:
@@ -139,6 +139,65 @@ class _ToolBlock(Static):
             self.update(f"[#9A9A9A]\u2026 {self._name} ({_summarize(self._input)})[/]")
 
 
+class TranscriptScreen(Screen):
+    """claude ctrl+o：独立 transcript 阅读屏。
+
+    verbose 渲染全部消息（工具 input/output 全文），thinking 只显示最后
+    一条 assistant 的（hidePastThinking）；q/esc/ctrl+o/ctrl+c 退出，
+    退出不改动主屏状态（claude 亦不恢复滚动位置）。"""
+
+    BINDINGS = [("escape", "exit_transcript", "Back"),
+                ("q", "exit_transcript", "Back"),
+                ("ctrl+o", "exit_transcript", "Back"),
+                ("ctrl+c", "exit_transcript", "Back")]
+
+    def __init__(self, owner, **kw):
+        super().__init__(**kw)
+        self._owner = owner
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="transcript"):
+            for entry in self._entries():
+                yield Static(entry, markup=True)
+
+    def on_mount(self):
+        self.query_one("#transcript", VerticalScroll).focus()
+
+    def _entries(self) -> list[str]:
+        app = self._owner
+        blocks = list(app._conv().children)
+        entries: list[str] = []
+        last_text_index = None
+        for widget in blocks:
+            if isinstance(widget, (_PermissionPrompt, _JumpToBottom)):
+                continue
+            if isinstance(widget, _TextBlock):
+                entries.append(widget._body or str(widget.content))
+                last_text_index = len(entries) - 1
+            elif isinstance(widget, _ToolBlock):
+                parts = [f"[#D77757]{widget._name}[/]"]
+                if widget._input:
+                    parts.append(f"input: {widget._input}")
+                if widget._output is not None:
+                    parts.append(f"output: {widget._output}")
+                entries.append("\n".join(parts))
+            elif isinstance(widget, _ThinkingBlock):
+                continue          # thinking 统一取 transcript 最后一条
+            else:
+                entries.append(str(widget.content))
+        thinking = app._turn_thinking()
+        if thinking:
+            entry = f"[#9A9A9A]\u2234 Thinking\u2026[/]\n{thinking}"
+            if last_text_index is None:
+                entries.append(entry)
+            else:
+                entries.insert(last_text_index, entry)
+        return entries
+
+    def action_exit_transcript(self):
+        self.app.pop_screen()
+
+
 class _PermissionPrompt(Static):
 
     can_focus = True
@@ -207,12 +266,14 @@ class PyClawApp(App[None]):
     /* 块填满容器宽，超长文本自动换行而非撑宽；右侧留 1 列空隙吸收 emoji
        二义宽度（wcwidth 判 1、终端画 2）的 1 列溢出，避免压到边框/滚动条。 */
     #conv > Static { width: 100%; }
+    #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
+    #transcript > Static { width: 100%; margin-bottom: 1; }
     #tasks { width: 36; border: round $secondary 40%; background: $surface; overflow-y: auto; }
     #input { height: 3; background: $panel; border: round $primary; color: $text-muted; }
     #input:focus { border: round $primary; }
     """
     BINDINGS = [("ctrl+q", "quit", "Quit"),
-                ("ctrl+o", "toggle_expand", "Expand/Collapse all"),
+                ("ctrl+o", "toggle_transcript", "Transcript"),
                 ("ctrl+c", "interrupt", "Stop current work"),
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
@@ -247,7 +308,6 @@ class PyClawApp(App[None]):
         self._spin_timer = None
         self._spin_i = 0
         self._think: dict | None = None
-        self._all_expanded = False
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
 
@@ -503,8 +563,6 @@ class PyClawApp(App[None]):
         block = _ThinkingBlock(markup=True)
         await self._conv().mount(block)
         block.set_thinking(text)
-        if self._all_expanded:
-            block.set_expanded(True)
         return block
 
     async def _show_turn_thinking(self):
@@ -516,8 +574,6 @@ class PyClawApp(App[None]):
             await self._after_mount()
         else:
             self._thought.set_thinking(text)
-            if self._all_expanded:
-                self._thought.set_expanded(True)
         if self._thought_timer is not None:
             self._thought_timer.stop()
         self._thought_timer = self.set_timer(THINKING_TTL, self._hide_thinking)
@@ -801,13 +857,8 @@ class PyClawApp(App[None]):
         lines += [f"  {t['name']}" for t in self._team.tool_schemas()[:40]]
         self._tasks_pane.update("\n".join(lines))
 
-    async def action_toggle_expand(self):
-        self._all_expanded = not self._all_expanded
-        for b in self._conv().query(_ThinkingBlock):
-            b.set_expanded(self._all_expanded)
-        for b in self._tools.values():
-            b._expanded = self._all_expanded
-            b._draw()
+    def action_toggle_transcript(self):
+        self.push_screen(TranscriptScreen(self))
 
     async def action_quit(self):
         if self._spin_timer is not None:
