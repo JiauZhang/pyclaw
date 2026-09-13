@@ -1,4 +1,5 @@
 import asyncio
+import re
 import tempfile
 from pathlib import Path
 
@@ -412,3 +413,91 @@ def test_rule_listing_reports_sources(tmp_path, monkeypatch):
         rules = g.rule_listing()
         assert ('allow', 'Bash(npm run:*)', 'user') in rules
         assert ('deny', 'Bash(curl:*)', 'cli') in rules
+
+
+# --- 后台任务（claude run_in_background / TaskOutput / TaskStop） ---
+
+def test_bash_run_in_background_returns_immediately():
+    import time as _time
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    started = _time.monotonic()
+    out = bash(command="echo bg-done-42", run_in_background=True)
+    elapsed = _time.monotonic() - started
+    assert elapsed < 5                       # 不等命令结束
+    match = re.search(r"ID: (b[0-9a-z]{8})", out)
+    assert match, out
+    task_id = match.group(1)
+    assert "Output is being written to:" in out
+    assert task_id in background._tasks
+    task = background._tasks[task_id]
+    for _ in range(50):
+        if task["process"].poll() is not None:
+            break
+        _time.sleep(0.1)
+    assert task["process"].poll() == 0
+    assert "bg-done-42" in task["output"].read_text(encoding="utf-8")
+
+
+def test_task_output_blocks_until_completion():
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    out = bash(command="sleep 0.4 && echo finished-data", run_in_background=True)
+    task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=5000)
+    assert "finished-data" in text
+    assert "<exit_code>0</exit_code>" in text
+
+
+def test_task_output_timeout_reports_still_running():
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    out = bash(command="sleep 5", run_in_background=True)
+    task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=300)
+    assert "still running" in text
+    assert "exit_code" not in text
+    background.cleanup_background_tasks()
+
+
+def test_task_stop_kills_process_group():
+    import time as _time
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    out = bash(command="sleep 30", run_in_background=True)
+    task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+    task = background._tasks[task_id]
+    text = _tools("/tmp")["TaskStop"](task_id=task_id)
+    assert f"Successfully stopped task: {task_id}" in text
+    assert "sleep 30" in text
+    for _ in range(30):
+        if task["process"].poll() is not None:
+            break
+        _time.sleep(0.1)
+    assert task["process"].poll() is not None   # 进程已死
+    assert task["killed"] is True
+
+
+def test_background_tasks_cleanup_kills_all():
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    bash(command="sleep 30", run_in_background=True)
+    bash(command="sleep 30", run_in_background=True)
+    tasks = list(background._tasks.values())
+    background.cleanup_background_tasks()
+    for task in tasks:
+        assert task["process"].poll() is not None
+    assert background._tasks == {}
+
+
+def test_task_output_unknown_task():
+    from pyclaw.tools.coding import background
+    text = _tools("/tmp")["TaskOutput"](task_id="bdeadbeef")
+    assert "no such background task" in text
+    text = _tools("/tmp")["TaskStop"](task_id="bdeadbeef")
+    assert "no such background task" in text
+
+
+def test_background_tools_registered_by_build_coding_tools():
+    names = {t.name for t in build_coding_tools("/tmp")}
+    assert {"TaskOutput", "TaskStop"} <= names

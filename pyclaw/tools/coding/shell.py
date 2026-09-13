@@ -112,11 +112,25 @@ def make_bash(cwd: str):
                     'description': 'Short description of what the command '
                                    'does.',
                 },
+                'run_in_background': {
+                    'type': 'boolean',
+                    'description': 'Set to true to run this command in the '
+                                   'background and get a task ID back '
+                                   'immediately. Read its output later with '
+                                   'TaskOutput. Do not use a trailing "&".',
+                },
             },
             'required': ['command'],
         },
     )
     def bash(command: str, timeout: int | None = None,
-             description: str | None = None) -> str:
+             description: str | None = None,
+             run_in_background: bool = False) -> str:
+        if run_in_background:
+            from .background import _output_path, spawn
+            task_id = spawn(cwd, command)
+            return (f'Command running in background with ID: {task_id}. '
+                    f'Output is being written to: {_output_path(task_id)}. '
+                    'Read the output with TaskOutput.')
         return run_command(cwd, command, timeout)
     return bash
