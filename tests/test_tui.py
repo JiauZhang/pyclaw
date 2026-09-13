@@ -462,6 +462,70 @@ def _transcript_text(app) -> str:
     return "".join(str(w.content) for w in view.children)
 
 
+def test_slash_menu_shows_and_tab_completes():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press(*"/mo")
+            await pilot.pause()
+            suggest = app.query_one("#suggest", Static)
+            assert suggest.display
+            assert "/model" in str(suggest.content)
+            await pilot.press("tab")
+            await pilot.pause()
+            assert app.query_one("#input", Input).value == "/model "
+            assert not suggest.display          # 命令名 + 空格后菜单隐藏
+    asyncio.run(scenario())
+
+
+def test_slash_menu_enter_executes_noarg_and_waits_for_args():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _GateTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press(*"/plan")
+            await pilot.pause()
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            assert app._session.permission_mode == "plan"   # 无参命令直接执行
+            assert app.query_one("#input", Input).value == ""
+            await pilot.press(*"/model")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            # 带参命令：Enter 只补全，停在输入框等参数
+            assert app.query_one("#input", Input).value == "/model "
+            assert not app.query_one("#suggest", Static).display
+    asyncio.run(scenario())
+
+
+def test_slash_menu_navigates_and_hides_for_plain_text():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press(*"/c")
+            await pilot.pause()
+            suggest = app.query_one("#suggest", Static)
+            assert suggest.display
+            first = app._suggest_selected
+            await pilot.press("down")
+            await pilot.pause()
+            assert app._suggest_selected == first + 1
+            await pilot.press("x")                # /cx 无匹配 → 隐藏
+            await pilot.pause()
+            assert not suggest.display
+            await pilot.press("backspace", "backspace", "backspace")
+            await pilot.pause()
+            assert not suggest.display            # 空输入 → 隐藏
+            await pilot.press("h", "i")           # 非 / 开头 → 不出现
+            await pilot.pause()
+            assert not suggest.display
+    asyncio.run(scenario())
+
+
 def test_ctrl_o_opens_transcript_and_q_exits():
     async def scenario():
         async with PyClawApp(builder=lambda: _LongToolTeam()).run_test() as pilot:

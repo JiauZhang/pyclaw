@@ -170,3 +170,51 @@ def test_permissions_lists_mode_and_rules_with_sources():
     assert "default" in out
     assert "allow" in out and "Bash(git commit:*)" in out and "local" in out
     assert "deny" in out and "Bash(curl:*)" in out and "user" in out
+
+
+def test_permissions_remove_rule():
+    class _S:
+        removed = None
+
+        def permission_mode(self):
+            return "default"
+
+        permission_mode = "default"
+
+        def permission_rules(self):
+            return [("allow", "Bash(a:*)", "local")]
+
+        def remove_rule(self, rule):
+            self.removed = rule
+            return rule == "Bash(a:*)"
+
+    s = _S()
+    out = asyncio.run(_call("/permissions remove Bash(a:*)", s))
+    assert s.removed == "Bash(a:*)"
+    assert "Removed" in out
+    out = asyncio.run(_call("/permissions remove Nope", _S()))
+    assert "not found" in out
+
+
+def test_suggest_prefix_hits_first():
+    names = [c["name"] for c in slash.suggest("/he")]
+    assert names[0] == "help"
+
+
+def test_suggest_matches_alias_and_description():
+    names = [c["name"] for c in slash.suggest("/h")]
+    assert "help" in names                       # 别名 h 前缀命中
+    names = [c["name"] for c in slash.suggest("/tok")]
+    assert "cost" in names                       # 描述子串命中
+
+
+def test_suggest_empty_query_lists_all_and_args_hide_menu():
+    assert len(slash.suggest("/")) == len(slash.COMMANDS)
+    assert slash.suggest("/model x") == []       # 已输入实参 → 隐藏
+    assert slash.suggest("/model ") == []
+    assert slash.suggest("hello") == []          # 非 / 开头
+
+
+def test_suggest_case_insensitive():
+    names = [c["name"] for c in slash.suggest("/MO")]
+    assert names[0] == "model"

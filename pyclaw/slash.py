@@ -1,15 +1,53 @@
-HELP = '''Available commands:
-/help or /?   Show this help
-/agent        Switch this session to single-agent mode
-/team         Switch this session to team (multi-agent) mode
-/clear        Clear the current session conversation history and token stats
-/status       Show the current session runtime info
-/tools        List tools available in this session
-/thinking     Show or toggle thinking mode (on|off)
-/permissions  Show/switch permission mode, list saved permission rules
-/plan         Enter plan (read-only) mode
-/model        Show or switch the model for this session
-/cost         Show token usage and estimated cost'''
+COMMANDS = [
+    {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
+    {'name': 'agent', 'desc': 'Switch this session to single-agent mode', 'hint': ''},
+    {'name': 'team', 'desc': 'Switch this session to team (multi-agent) mode', 'hint': ''},
+    {'name': 'clear', 'desc': 'Clear the current session conversation history and token stats', 'hint': ''},
+    {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
+    {'name': 'tools', 'desc': 'List tools available in this session', 'hint': ''},
+    {'name': 'thinking', 'desc': 'Show or toggle thinking mode (on|off)', 'hint': '[on|off]'},
+    {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
+    {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
+    {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
+    {'name': 'cost', 'desc': 'Show token usage and estimated cost', 'hint': ''},
+]
+
+
+def _help_text() -> str:
+    lines = ['Available commands:']
+    for cmd in COMMANDS:
+        name = f"/{cmd['name']}" + ''.join(f" or /{a}"
+                                           for a in cmd.get('aliases', ()))
+        lines.append(f'{name:<14}{cmd["desc"]}')
+    return '\n'.join(lines)
+
+
+HELP = _help_text()
+
+
+def suggest(text: str) -> list[dict]:
+    """claude 的命令建议（最小子集）：输入以 / 开头且未带实参时，按
+    精确名 > 精确别名 > 前缀名 > 前缀别名 > 名字/描述子串排序返回。
+    大小写不敏感；命令后已输入实参则隐藏菜单。"""
+    if not text.startswith('/'):
+        return []
+    query = text[1:]
+    if query != query.strip() or ' ' in query.strip():
+        return []
+    query = query.strip().lower()
+    if not query:
+        return list(COMMANDS)
+    exact = [c for c in COMMANDS if c['name'] == query]
+    prefix_name = [c for c in COMMANDS
+                   if c['name'].startswith(query) and c not in exact]
+    prefix_alias = [c for c in COMMANDS
+                    if c not in exact + prefix_name
+                    and any(a.startswith(query) for a in c.get('aliases', ()))]
+    substring = [c for c in COMMANDS
+                 if c not in exact + prefix_name + prefix_alias
+                 and (query in c['name'].lower()
+                      or query in c['desc'].lower())]
+    return exact + prefix_name + prefix_alias + substring
 
 
 def _pricing() -> dict:

@@ -22,6 +22,7 @@ from chatchat.hooks.events import (
 )
 
 from pyclaw.agents import Session, append_conv
+from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
 
 
@@ -268,6 +269,8 @@ class PyClawApp(App[None]):
     #conv > Static { width: 100%; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #transcript > Static { width: 100%; margin-bottom: 1; }
+    #suggest { display: none; height: auto; max-height: 7; background: $panel;
+               margin: 0 1; padding: 0 1; }
     #tasks { width: 36; border: round $secondary 40%; background: $surface; overflow-y: auto; }
     #input { height: 3; background: $panel; border: round $primary; color: $text-muted; }
     #input:focus { border: round $primary; }
@@ -280,7 +283,19 @@ class PyClawApp(App[None]):
                 ("ctrl+home", "conv_scroll_top", "Scroll to top"),
                 ("ctrl+end", "jump_to_bottom", "Jump to bottom"),
                 Binding("shift+tab", "cycle_permission", "Cycle permission mode",
+                        priority=True),
+                # slash 建议菜单打开时接管方向键/tab/esc（claude 的 typeahead）。
+                Binding("down", "suggest_next", "Next suggestion", priority=True),
+                Binding("up", "suggest_prev", "Previous suggestion", priority=True),
+                Binding("tab", "suggest_tab", "Complete suggestion", priority=True),
+                Binding("escape", "suggest_dismiss", "Dismiss suggestions",
                         priority=True)]
+
+    def check_action(self, action: str, parameters) -> bool:
+        if action in ('suggest_next', 'suggest_prev', 'suggest_tab',
+                      'suggest_dismiss'):
+            return bool(self._suggest_items)
+        return True
 
     def __init__(self, *, builder, session_id=None, resume=False):
         super().__init__()
@@ -310,11 +325,15 @@ class PyClawApp(App[None]):
         self._think: dict | None = None
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
+        self._suggest_items: list[dict] = []
+        self._suggest_selected = 0
+        self._suggest_dismissed: str | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
             yield _Conv(id="conv")
             yield VerticalScroll(id="tasks")
+        yield Static('', id='suggest')
         yield Input(placeholder="Message PyClaw, or '/help'…  (ctrl+q to quit)", id="input")
         yield Static(id="status")
 
@@ -665,6 +684,17 @@ class PyClawApp(App[None]):
 
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
+        # claude：菜单打开时 Enter 补全选中项——带参命令停在输入框等参数，
+        # 无参命令直接执行。
+        if self._suggest_items and text.startswith('/'):
+            item = self._suggest_items[min(self._suggest_selected,
+                                           len(self._suggest_items) - 1)]
+            if item.get('hint'):
+                self.query_one("#input", Input).value = f"/{item['name']} "
+                self._suggest_items = []
+                self._show_suggest_widget(False)
+                return
+            text = f"/{item['name']}"
         self.query_one("#input", Input).value = ""
         if not text:
             return
@@ -681,6 +711,68 @@ class PyClawApp(App[None]):
         self._pending_inputs.put_nowait(text)
         self._render_status()
         await self._render_queued()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        value = event.value
+        items = []
+        if value.startswith('/'):
+            items = slash_suggest(value)
+        if not items or self._suggest_dismissed == value:
+            self._suggest_items = []
+            self._show_suggest_widget(False)
+            return
+        self._suggest_dismissed = None
+        self._suggest_items = items
+        self._suggest_selected = 0
+        self._show_suggest_widget(True)
+
+    def _show_suggest_widget(self, show: bool):
+        try:
+            self.query_one('#suggest', Static).display = show
+        except Exception:
+            pass
+        if show:
+            self._render_suggestions()
+
+    def _render_suggestions(self):
+        try:
+            widget = self.query_one('#suggest', Static)
+        except Exception:
+            return
+        items = self._suggest_items
+        start = max(0, min(self._suggest_selected - 2, len(items) - 5))
+        window = items[start:start + 5]
+        lines = []
+        for i, item in enumerate(window):
+            index = start + i
+            marker = '\u203a' if index == self._suggest_selected else ' '
+            line = f"{marker} /{item['name']}  {item['desc']}"
+            lines.append(f'[reverse]{line}[/]' if index == self._suggest_selected
+                         else f'[dim]{line}[/]')
+        widget.update('\n'.join(lines))
+
+    def action_suggest_next(self):
+        if self._suggest_items:
+            self._suggest_selected = ((self._suggest_selected + 1)
+                                      % len(self._suggest_items))
+            self._render_suggestions()
+
+    def action_suggest_prev(self):
+        if self._suggest_items:
+            self._suggest_selected = ((self._suggest_selected - 1)
+                                      % len(self._suggest_items))
+            self._render_suggestions()
+
+    def action_suggest_tab(self):
+        if not self._suggest_items:
+            return
+        item = self._suggest_items[self._suggest_selected]
+        self.query_one("#input", Input).value = f"/{item['name']} "
+
+    def action_suggest_dismiss(self):
+        self._suggest_dismissed = self.query_one("#input", Input).value
+        self._suggest_items = []
+        self._show_suggest_widget(False)
 
     async def _render_queued(self):
         inp = self.query_one("#input", Input)
