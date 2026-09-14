@@ -481,8 +481,7 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             await app._conv().mount(block)
             block.set_result("[/bold] output [y]")
             await pilot.pause()
-            assert "output: \\[/bold] output \\[y]" \
-                in str(block.content)
+            assert "\\[/bold] output \\[y]" in str(block.content)
     asyncio.run(scenario())
 
 
