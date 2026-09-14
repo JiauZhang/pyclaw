@@ -624,13 +624,16 @@ def test_build_team_wires_task_notifications_to_lead():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             background.spawn(d, "exit 3")
-            for _ in range(30):
-                if team.lead._attachments:
-                    break
+            # 唤醒语义：附件入队即驱动 turn，注入进 lead.messages
+            for _ in range(50):
+                msgs = [m for m in team.lead.messages
+                        if isinstance(m, dict)
+                        and "<task-notification>" in str(m.get("content"))]
+                if msgs:
+                    return msgs
                 await asyncio.sleep(0.1)
-            return list(team.lead._attachments)
+            return []
 
     texts = asyncio.run(main())
-    assert texts and "<task-notification>" in texts[0]
-    assert "<status>failed</status>" in texts[0]     # exit 3 → failed
-    assert "<task-id>b" in texts[0]
+    assert texts and "<status>failed</status>" in texts[0]["content"]
+    assert "<task-id>b" in texts[0]["content"]
