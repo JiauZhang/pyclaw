@@ -218,8 +218,6 @@ def build_team(
     skills: Optional[list] = None,
     thinking: bool = True,
     http_options: Optional[dict] = None,
-    max_depth: int = 5,
-    max_steps: int = 10,
     cwd: Optional[str] = None,
     permission_mode: str = 'default',
     allow: Optional[list] = None,
