@@ -5,6 +5,7 @@ COMMANDS = [
     {'name': 'clear', 'desc': 'Clear the current session conversation history and token stats', 'hint': ''},
     {'name': 'init', 'desc': 'Create a PYCLAW.md project instructions file (claude /init)', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (PYCLAW.md) locations', 'hint': ''},
+    {'name': 'compact', 'desc': 'Force context compaction now (claude /compact)', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
     {'name': 'tools', 'desc': 'List tools available in this session', 'hint': ''},
     {'name': 'thinking', 'desc': 'Show or toggle thinking mode (on|off)', 'hint': '[on|off]'},
@@ -158,6 +159,11 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
     if cmd == 'init':
         from pyclaw.agent_memory import init_project_memory
         return init_project_memory(getattr(session, 'cwd', None) or '.')
+    if cmd == 'compact':
+        compactor = getattr(session, 'compact', None)
+        if compactor is None:
+            return 'Compaction is not available for this session.'
+        return await compactor()
     if cmd == 'memory':
         from pyclaw.agent_memory import load_project_memory, _user_memory_file
         cwd = getattr(session, 'cwd', None) or '.'

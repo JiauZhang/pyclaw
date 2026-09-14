@@ -158,6 +158,20 @@ def test_mode_switch_commands_removed():
     assert "/agent" not in slash.HELP and "/team" not in slash.HELP
 
 
+def test_compact_calls_session_compactor():
+    class _S:
+        compacted = False
+
+        async def compact(self):
+            self.compacted = True
+            return 'Compacted: 10 -> 4 messages'
+
+    s = _S()
+    out = asyncio.run(_call("/compact", s))
+    assert s.compacted is True
+    assert "Compacted" in out
+
+
 def test_permissions_lists_mode_and_rules_with_sources():
     class _S:
         permission_mode = "default"

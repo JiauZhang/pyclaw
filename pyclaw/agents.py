@@ -251,6 +251,7 @@ def build_team(
         thinking=bool(thinking),
         model_timeout=model_timeout,
         http_options=http_options or {},
+        mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
         multi_agent=use_team,
     )
     team._pyclaw_gate = gate
@@ -485,6 +486,13 @@ class Session:
     @property
     def cwd(self):
         return str(self._gate.cwd) if self._gate is not None else '.'
+
+    async def compact(self) -> str:
+        before = len(self._team.lead.messages)
+        result = await self._team.compact(list(self._team.lead.messages),
+                                          force=True)
+        self._team.lead.messages = list(result)
+        return f'Compacted: {before} -> {len(result)} messages'
 
     def permission_rules(self):
         gate = self._gate
