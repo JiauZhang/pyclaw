@@ -352,6 +352,22 @@ def test_build_team_mode_gating():
     assert "create_agent" in inst_t and "create_agent" not in inst_a
 
 
+def test_build_team_tools_differ_by_mode():
+    """对齐 claude：协作工具只在 team 模式；create_agent（一次性 subagent，
+    claude 的 Agent 工具）两种模式都有。"""
+    async def names(**kw):
+        from pyclaw.agents import build_team
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, **kw)
+            return {t["name"] for t in team.tool_schemas()}
+
+    single = asyncio.run(names())
+    multi = asyncio.run(names(use_team=True))
+    assert "create_agent" in single and "create_agent" in multi
+    assert "send_message" not in single and "task_stop" not in single
+    assert {"send_message", "task_stop"} <= multi
+
+
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 

@@ -253,6 +253,7 @@ def build_team(
         thinking=bool(thinking),
         model_timeout=model_timeout,
         http_options=http_options or {},
+        multi_agent=use_team,
     )
     team._pyclaw_gate = gate
     team._pyclaw_mode = 'team' if use_team else 'agent'
