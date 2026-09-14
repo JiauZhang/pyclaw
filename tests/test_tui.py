@@ -472,7 +472,7 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
-                                           delta="[/bold] [x] data"))
+                                           data={"delta": "[/bold] [x] data"}))
             await pilot.pause()
             assert "[/bold] [x] data" in _flatten(app)
             app._tools["t1"].set_result("[/bold] output [y]")
