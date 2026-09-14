@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import json
 
+from rich.markup import escape
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
@@ -71,7 +73,8 @@ class _TextBlock(Static):
 
     def set_body(self, text: str):
         self._body = text
-        self.update(text)
+        # 模型输出是不可信文本：[] 会被当成 markup 解析炸掉渲染
+        self.update(escape(text))
 
 
 class _ThinkingBlock(Static):
@@ -97,7 +100,7 @@ class _ThinkingBlock(Static):
         if not self._thinking:
             self.update("")
         elif self._expanded:
-            self.update(f"[#9A9A9A]\u2234 Thinking\u2026[/]\n{self._thinking}")
+            self.update(f"[#9A9A9A]\u2234 Thinking\u2026[/]\n{escape(self._thinking)}")
         else:
             self.update("[#9A9A9A]\u2234 Thinking (ctrl+o to expand)[/]")
 
@@ -115,7 +118,8 @@ class _ToolBlock(Static):
 
     def tick(self, char: str):
         if not self._done:
-            self.update(f"[#9A9A9A]{char} {self._name} ({_summarize(self._input)})[/]")
+            self.update(f"[#9A9A9A]{char} {self._name} "
+                        f"({escape(_summarize(self._input))})[/]")
 
     def set_result(self, output: str):
         self._done = True
@@ -130,12 +134,13 @@ class _ToolBlock(Static):
         if self._expanded:
             parts = [f"[#D77757]{self._name}[/]"]
             if self._input:
-                parts.append(f"input: {self._input}")
+                parts.append(f"input: {escape(self._input)}")
             if self._output is not None:
-                parts.append(f"output: {self._output}")
+                parts.append(f"output: {escape(self._output)}")
             self.update("\n".join(parts))
         elif self._done:
-            self.update(f"[#4EBA65]\u2713[/#4EBA65] {self._name}: {_summarize(self._output)}")
+            self.update(f"[#4EBA65]\u2713[/#4EBA65] {self._name}: "
+                        f"{escape(_summarize(self._output))}")
         else:
             self.update(f"[#9A9A9A]\u2026 {self._name} ({_summarize(self._input)})[/]")
 
@@ -173,22 +178,23 @@ class TranscriptScreen(Screen):
             if isinstance(widget, (_PermissionPrompt, _JumpToBottom)):
                 continue
             if isinstance(widget, _TextBlock):
-                entries.append(widget._body or str(widget.content))
+                entries.append(escape(widget._body or str(widget.content)))
                 last_text_index = len(entries) - 1
             elif isinstance(widget, _ToolBlock):
                 parts = [f"[#D77757]{widget._name}[/]"]
                 if widget._input:
-                    parts.append(f"input: {widget._input}")
+                    parts.append(f"input: {escape(widget._input)}")
                 if widget._output is not None:
-                    parts.append(f"output: {widget._output}")
+                    parts.append(f"output: {escape(widget._output)}")
                 entries.append("\n".join(parts))
             elif isinstance(widget, _ThinkingBlock):
                 continue          # thinking 统一取 transcript 最后一条
             else:
-                entries.append(str(widget.content))
+                entries.append(escape(str(widget.content)))
         thinking = app._turn_thinking()
         if thinking:
-            entry = f"[#9A9A9A]\u2234 Thinking\u2026[/]\n{thinking}"
+            entry = (f"[#9A9A9A]\u2234 Thinking\u2026[/]\n"
+                     f"{escape(thinking)}")
             if last_text_index is None:
                 entries.append(entry)
             else:
@@ -225,7 +231,7 @@ class _PermissionPrompt(Static):
             options += "\n[#FFC107]cannot be remembered: unsafe command[/]"
         self.update(
             f"[#B1B9F9][bold]\u276f Permission needed: {self._tool}[/bold][/]\n"
-            f"    {self._input}\n{options}"
+            f"    {escape(self._input)}\n{options}"
         )
         self.focus()
 
@@ -450,7 +456,7 @@ class PyClawApp(App[None]):
             except Exception as exc:
                 try:
                     await self._append_block(
-                        f"[#FF6B80]\u26a0\ufe0f render error: {exc}[/]")
+                        f"[#FF6B80]\u26a0\ufe0f render error: {escape(str(exc))}[/]")
                 except Exception:
                     pass
             finally:
@@ -492,7 +498,8 @@ class PyClawApp(App[None]):
             self._note_progress(ev)
         elif ev.kind == AGENT_WARN:
             await self._frozen()
-            await self._append_block(f"[#FF6B80]\u26a0\ufe0f {ev.data.get('text', '')}[/]")
+            await self._append_block(f"[#FF6B80]\u26a0\ufe0f "
+                                     f"{escape(ev.data.get('text', ''))}[/]")
         elif ev.kind == AGENT_TURN_FINISHED:
             self._note(name, think=False, busy=False)
             self._discard_think()
@@ -534,7 +541,7 @@ class PyClawApp(App[None]):
             if role == "user":
                 text = _content_text(message.get("content"))
                 if text:
-                    await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {text}")
+                    await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
                 continue
             if role != "assistant":
                 continue
@@ -702,9 +709,9 @@ class PyClawApp(App[None]):
             from pyclaw.slash import handle_slash
 
             reply = await handle_slash(text, self._session)
-            await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {text}")
+            await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
             if reply:
-                await self._append_block(reply)
+                await self._append_block(escape(reply))
             self._render_status()
             await self._render_queued()
             return
@@ -778,7 +785,8 @@ class PyClawApp(App[None]):
         inp = self.query_one("#input", Input)
         inp.placeholder = (f"\u23f3 {self._processing}" if self._processing
                            else "Message PyClaw, or '/help'\u2026  (ctrl+q to quit)")
-        items = [f"[#7AB4E8]You:[/#7AB4E8] {t}" for t in self._peek_queue()]
+        items = [f"[#7AB4E8]You:[/#7AB4E8] {escape(t)}"
+                 for t in self._peek_queue()]
         if not items:
             if self._queued is not None:
                 self._queued.remove()
@@ -804,7 +812,7 @@ class PyClawApp(App[None]):
                 self._processing = text
                 self._render_status()
                 await self._render_queued()
-                await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {text}")
+                await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
                 self._begin_turn()
                 await self._converse(text)
                 await self._settle_paint()
@@ -871,13 +879,13 @@ class PyClawApp(App[None]):
         try:
             out = await self._session.chat(text)
         except Exception as exc:
-            await self._append_block(f"[#FF6B80]\u26a0\ufe0f {exc}[/]")
+            await self._append_block(f"[#FF6B80]\u26a0\ufe0f {escape(str(exc))}[/]")
             return
         await self._wait_session_idle()
         await self._queue.join()
         if out.strip() and not self._wrote_body \
                 and len(self._team.transcript()) > self._turn_start:
-            await self._append_block(out)
+            await self._append_block(escape(out))
         self._render_status()
 
     def _note(self, name, tools=None, think=None, busy=None):
