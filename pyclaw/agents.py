@@ -256,6 +256,11 @@ def build_team(
     team._pyclaw_gate = gate
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
+    from .agent_memory import load_project_memory
+    memory = load_project_memory(cwd)
+    if memory:
+        team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)
+
     from .agent_defs import load_agent_defs
     for defn in load_agent_defs(cwd, all_tools=resolved):
         team.register_agent_definition(defn)
@@ -476,6 +481,10 @@ class Session:
     async def close(self):
         self._unbind()
         _sessions_by_root.pop(self.name, None)
+
+    @property
+    def cwd(self):
+        return str(self._gate.cwd) if self._gate is not None else '.'
 
     def permission_rules(self):
         gate = self._gate

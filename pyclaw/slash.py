@@ -1,6 +1,10 @@
+from pathlib import Path
+
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
     {'name': 'clear', 'desc': 'Clear the current session conversation history and token stats', 'hint': ''},
+    {'name': 'init', 'desc': 'Create a PYCLAW.md project instructions file (claude /init)', 'hint': ''},
+    {'name': 'memory', 'desc': 'Show loaded project memory (PYCLAW.md) locations', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
     {'name': 'tools', 'desc': 'List tools available in this session', 'hint': ''},
     {'name': 'thinking', 'desc': 'Show or toggle thinking mode (on|off)', 'hint': '[on|off]'},
@@ -151,6 +155,17 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
 
     if cmd in ('help', 'h', '?'):
         return HELP
+    if cmd == 'init':
+        from pyclaw.agent_memory import init_project_memory
+        return init_project_memory(getattr(session, 'cwd', None) or '.')
+    if cmd == 'memory':
+        from pyclaw.agent_memory import load_project_memory, _user_memory_file
+        cwd = getattr(session, 'cwd', None) or '.'
+        lines = [f'user: {_user_memory_file()}',
+                 f'project: {Path(cwd) / "PYCLAW.md"}']
+        memory = load_project_memory(cwd)
+        lines.append('loaded: yes' if memory else 'loaded: nothing found')
+        return '\n'.join(lines)
     if cmd == 'clear':
         session.reset()
         return 'Conversation history cleared.'
