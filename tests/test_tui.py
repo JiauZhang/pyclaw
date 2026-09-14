@@ -476,9 +476,13 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             await pilot.pause()
             # rich 的 escape 把 [ 转成 \[：屏幕显示原文，但不再被解析为 markup
             assert "\\[/bold] \\[x] data" in _flatten(app)
-            app._tools["t1"].set_result("[/bold] output [y]")
+            from pyclaw.tui import _ToolBlock
+            block = _ToolBlock("Bash", '{"cmd": "[x]"}')
+            await app._conv().mount(block)
+            block.set_result("[/bold] output [y]")
             await pilot.pause()
-            assert "output: \\[/bold] output \\[y]" in _flatten(app)
+            assert "output: \\[/bold] output \\[y]" \
+                in str(block.content)
     asyncio.run(scenario())
 
 
