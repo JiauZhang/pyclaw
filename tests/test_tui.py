@@ -474,11 +474,11 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
                                            data={"delta": "[/bold] [x] data"}))
             await pilot.pause()
-            assert "[/bold] [x] data" in _flatten(app)
+            # rich 的 escape 把 [ 转成 \[：屏幕显示原文，但不再被解析为 markup
+            assert "\\[/bold] \\[x] data" in _flatten(app)
             app._tools["t1"].set_result("[/bold] output [y]")
             await pilot.pause()
-            assert "output: [/bold] output [y]" in _flatten(app) \
-                or "[/bold] output [y]" in str(app._tools["t1"].content)
+            assert "output: \\[/bold] output \\[y]" in _flatten(app)
     asyncio.run(scenario())
 
 
