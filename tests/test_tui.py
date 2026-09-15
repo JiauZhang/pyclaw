@@ -313,9 +313,11 @@ def test_transcript_expands_every_tool_call():
             assert "alpha" not in _flatten(app)
             await pilot.press("ctrl+o")
             await pilot.pause()
-            expanded = _plain(_transcript_text(app))
-            assert "Read(a.txt)" in expanded
+            expanded = _transcript_text(app)
+            assert "Read(a.txt)" in _plain(expanded)
             assert "alpha" in expanded
+            assert "\\[#9A9A9A]" not in expanded
+            assert "Worked for" in expanded
     asyncio.run(scenario())
 
 
@@ -1386,3 +1388,50 @@ def test_question_mark_opens_the_shortcut_panel():
     assert "shift+tab" in body
     assert "/compact" in body
     assert closed != "HelpScreen"
+
+
+def test_spinner_verbs_are_clean_words():
+    from pyclaw.spinner_verbs import SPINNER_VERBS
+
+    assert len(SPINNER_VERBS) == len(set(SPINNER_VERBS))
+    assert len(SPINNER_VERBS) >= 180
+    assert SPINNER_VERBS[0] == "Accomplishing"
+    bad = [v for v in SPINNER_VERBS if not v[:1].isalpha()
+           or any(ch.isspace() for ch in v)]
+    assert bad == []
+
+
+def test_every_spinner_verb_renders_on_one_line():
+    from pyclaw.spinner_verbs import SPINNER_VERBS
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            rendered = []
+            for verb in SPINNER_VERBS:
+                app._turn_verb = verb
+                rendered.append(app._spinner_text("\u273b"))
+            return rendered
+
+    for text in asyncio.run(scenario()):
+        assert "\n" not in text
+        assert "esc to interrupt" in text
+
+
+def test_leading_blank_lines_do_not_orphan_the_bullet():
+    from pyclaw.tui import _TextBlock
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            block = _TextBlock()
+            await app._conv().mount(block)
+            block.set_body("\n\nhello there")
+            await pilot.pause()
+            return str(block.content), block._body
+
+    shown, body = asyncio.run(scenario())
+    assert shown == "\u23fa hello there"
+    assert body == "\n\nhello there"

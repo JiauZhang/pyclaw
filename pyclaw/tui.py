@@ -324,8 +324,9 @@ class _TextBlock(Static):
 
     def set_body(self, text: str):
         self._body = text
-        self.update(_hang(self._bullet, escape(text)) if self._bullet
-                    else escape(text))
+        shown = text.strip("\n")
+        self.update(_hang(self._bullet, escape(shown)) if self._bullet
+                    else escape(shown))
 
 
 class _GroupBlock(Static):
@@ -500,10 +501,11 @@ class TranscriptScreen(Screen):
                 continue
             if isinstance(widget, _TextBlock):
                 body = widget._body or ""
-                thought = thinking_map.get(body)
+                shown = body.strip("\n")
+                thought = thinking_map.get(body) or thinking_map.get(shown)
                 if thought:
                     entries.append(self._thinking_entry(thought))
-                entries.append(_hang(BULLET_PREFIX, escape(body)))
+                entries.append(_hang(BULLET_PREFIX, escape(shown)))
             elif isinstance(widget, _UserBlock):
                 entries.append(escape(str(widget.content)))
             elif isinstance(widget, _GroupBlock):
@@ -514,7 +516,7 @@ class TranscriptScreen(Screen):
             elif isinstance(widget, _ToolBlock):
                 entries.append(self._tool_entry(widget))
             else:
-                entries.append(escape(str(widget.content)))
+                entries.append(str(widget.content))
         return entries
 
     def action_exit_transcript(self):
