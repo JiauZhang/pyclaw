@@ -59,7 +59,9 @@ def test_edit_unique_and_ambiguous():
                               new_string="X")
         assert "not unique" in ambiguous
         ok = t["Edit"](file_path="a.txt", old_string="two", new_string="TWO")
-        assert "Edited" in ok and "TWO" in _read(root / "a.txt")
+        assert "has been updated successfully" in ok
+        assert "-two" in ok and "+TWO" in ok
+        assert "TWO" in _read(root / "a.txt")
         missing = t["Edit"](file_path="a.txt", old_string="zzz",
                             new_string="y")
         assert "not found" in missing
@@ -69,10 +71,13 @@ def test_write_and_multi_edit():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         t = _tools(d)
-        assert "Wrote" in t["Write"](file_path="b.txt", content="hi\n")
+        wrote = t["Write"](file_path="b.txt", content="hi\n")
+        assert "File created successfully at: b.txt" in wrote
         out = t["MultiEdit"](file_path="b.txt", edits=[
             {"old_string": "hi", "new_string": "hello"}])
-        assert "Edited" in out and "hello" in _read(root / "b.txt")
+        assert "has been updated successfully" in out
+        assert "-hi" in out and "+hello" in out
+        assert "hello" in _read(root / "b.txt")
 
 
 def test_mode_parse_and_cycle():
@@ -695,6 +700,43 @@ def test_background_completion_fires_notifier():
     finally:
         background.set_notifier(None)
         background.cleanup_background_tasks()
+
+
+def test_write_overwrite_returns_a_diff():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.txt").write_text("one\ntwo\nthree\n")
+        t = _tools(d)
+        out = t["Write"](file_path="a.txt", content="one\nTWO\nthree\n")
+        assert "has been updated successfully" in out
+        assert "--- a/a.txt" in out and "+++ b/a.txt" in out
+        assert "-two" in out and "+TWO" in out
+        assert _read(root / "a.txt") == "one\nTWO\nthree\n"
+
+
+def test_edit_result_is_a_unified_diff():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.txt").write_text("a\nb\nc\n")
+        t = _tools(d)
+        out = t["Edit"](file_path="a.txt", old_string="b", new_string="B")
+        assert "has been updated successfully" in out
+        assert "@@ -1,3 +1,3 @@" in out
+        assert "-b" in out and "+B" in out
+
+
+def test_multi_edit_diff_covers_all_changes():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.txt").write_text("x\ny\nz\n")
+        t = _tools(d)
+        out = t["MultiEdit"](file_path="a.txt", edits=[
+            {"old_string": "x", "new_string": "X"},
+            {"old_string": "z", "new_string": "Z"},
+        ])
+        assert "has been updated successfully" in out
+        assert "-x" in out and "+X" in out
+        assert "-z" in out and "+Z" in out
 
 
 def test_build_team_wires_task_notifications_to_lead():

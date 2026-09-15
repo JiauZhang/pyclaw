@@ -599,6 +599,64 @@ def test_dynamic_text_with_brackets_renders_without_crash():
     asyncio.run(scenario())
 
 
+def test_diff_block_renders_summary_and_colored_lines():
+    from pyclaw.tui import _diff_block
+    out = ("The file a.txt has been updated successfully.\n\n"
+           "--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c")
+    text = _diff_block("Edit", {}, out, ".", 60)
+    assert text is not None
+    assert "Added 1 line" in text and "removed 1 line" in text
+    assert "[on #225C2B]" in text and "[on #7A2936]" in text
+    assert "+ B" in text and "- b" in text
+
+
+def test_diff_block_skips_non_diff_output():
+    from pyclaw.tui import _diff_block
+    assert _diff_block("Bash", {}, "ls\n", ".", 60) is None
+    err = "Error: old_string not found in a.txt."
+    assert _diff_block("Edit", {}, err, ".", 60) is None
+    plain = "The file a.txt has been updated successfully."
+    assert _diff_block("Edit", {}, plain, ".", 60) is None
+
+
+def test_diff_block_word_highlights_similar_lines():
+    from pyclaw.tui import _diff_block
+    out = ("--- a/x\n+++ b/x\n@@ -1 +1 @@\n"
+           "-def foo(bar):\n+def foo(baz):")
+    text = _diff_block("Edit", {}, out, ".", 60)
+    assert text is not None
+    assert "[on #38A660]" in text and "[on #B3596B]" in text
+
+
+def test_diff_block_pairs_only_adjacent_remove_add():
+    from pyclaw.tui import _diff_block
+    out = ("--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n"
+           "-old line\n ctx\n+new line")
+    text = _diff_block("Edit", {}, out, ".", 60)
+    assert text is not None
+    assert "#38A660" not in text and "#B3596B" not in text
+    assert "[on #225C2B]" in text and "[on #7A2936]" in text
+
+
+def test_tool_block_renders_edit_diff():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            from pyclaw.tui import _ToolBlock
+            block = _ToolBlock("Edit", {"file_path": "a.txt"}, cwd=".")
+            await app._conv().mount(block)
+            block.set_result("The file a.txt has been updated successfully.\n"
+                             "\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n"
+                             " a\n-b\n+B\n c")
+            await pilot.pause()
+            content = str(block.content)
+            assert "Added 1 line" in content
+            assert "#225C2B" in content
+            assert block.has_class("diff")
+    asyncio.run(scenario())
+
+
 def test_slash_menu_shows_and_tab_completes():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

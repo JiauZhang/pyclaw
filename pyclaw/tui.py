@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import difflib
 import json
 import random
 import re
@@ -197,6 +198,148 @@ def _edit_summary(added: int, removed: int) -> str:
     return f"Removed {_plural(removed, 'line')}"
 
 
+_DIFF_HUNK_RE = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@')
+_DIFF_TOOLS = ('Edit', 'MultiEdit', 'Write')
+_DIFF_ADD = '#225C2B'
+_DIFF_RM = '#7A2936'
+_DIFF_ADD_WORD = '#38A660'
+_DIFF_RM_WORD = '#B3596B'
+_DIFF_WORD_RATIO = 0.4
+_WORD_SPLIT_RE = re.compile(r'\w+|[^\w]+')
+
+
+def _diff_rows(text: str) -> list:
+    rows = []
+    old = new = None
+    for line in text.split('\n'):
+        m = _DIFF_HUNK_RE.match(line)
+        if m:
+            old, new = int(m.group(1)), int(m.group(2))
+            continue
+        if old is None or not line or line[0] not in ' +-':
+            continue
+        kind = 'ctx' if line[0] == ' ' else ('rm' if line[0] == '-' else 'add')
+        content = line[1:]
+        if kind == 'ctx':
+            rows.append((kind, old, new, content))
+            old += 1
+            new += 1
+        elif kind == 'rm':
+            rows.append((kind, old, None, content))
+            old += 1
+        else:
+            rows.append((kind, None, new, content))
+            new += 1
+    return rows
+
+
+def _word_parts(old: str, new: str):
+    sm = difflib.SequenceMatcher(a=_WORD_SPLIT_RE.findall(old),
+                                 b=_WORD_SPLIT_RE.findall(new),
+                                 autojunk=False)
+    rm_parts = []
+    add_parts = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == 'equal':
+            text = ''.join(sm.a[i1:i2])
+            rm_parts.append((False, text))
+            add_parts.append((False, text))
+        elif tag == 'replace':
+            rm_parts.append((True, ''.join(sm.a[i1:i2])))
+            add_parts.append((True, ''.join(sm.b[j1:j2])))
+        elif tag == 'delete':
+            rm_parts.append((True, ''.join(sm.a[i1:i2])))
+        else:
+            add_parts.append((True, ''.join(sm.b[j1:j2])))
+    return rm_parts, add_parts
+
+
+def _word_pairs(rows: list) -> dict:
+    pairs = {}
+    i = 0
+    n = len(rows)
+    while i < n:
+        if rows[i][0] != 'rm':
+            i += 1
+            continue
+        rms = []
+        while i < n and rows[i][0] == 'rm':
+            rms.append(i)
+            i += 1
+        adds = []
+        while i < n and rows[i][0] == 'add':
+            adds.append(i)
+            i += 1
+        for k in range(min(len(rms), len(adds))):
+            pairs[rms[k]] = adds[k]
+            pairs[adds[k]] = rms[k]
+    return pairs
+
+
+def _chunks(text: str, width: int) -> list:
+    if not text:
+        return ['']
+    return [text[i:i + width] for i in range(0, len(text), width)]
+
+
+def _diff_block(name, tool_input, output, cwd, width: int) -> str | None:
+    if name not in _DIFF_TOOLS:
+        return None
+    rows = _diff_rows(str(output or ''))
+    if not rows:
+        return None
+    added = sum(1 for k, *_ in rows if k == 'add')
+    removed = sum(1 for k, *_ in rows if k == 'rm')
+    nums = [n for _, o, nw, _ in rows for n in (o, nw) if n is not None]
+    gutter = max((len(str(n)) for n in nums), default=1)
+    content_w = max(20, width - gutter - 3)
+    pairs = _word_pairs(rows)
+    out = [_edit_summary(added, removed)]
+    for idx, (kind, old, new, content) in enumerate(rows):
+        num = old if kind != 'add' else new
+        num_s = f'{num:>{gutter}} ' if num is not None else ' ' * (gutter + 1)
+        sigil = '+' if kind == 'add' else ('-' if kind == 'rm' else ' ')
+        prefix = f'{num_s}{sigil} '
+        if kind == 'ctx':
+            chunks = _chunks(content, content_w)
+            last = len(chunks) - 1
+            for ci, chunk in enumerate(chunks):
+                lead = prefix if ci == 0 else ' ' * len(prefix)
+                pad = ' ' * (content_w - len(chunk)) if ci == last else ''
+                out.append(f'[dim]{escape(lead + chunk + pad)}[/]')
+            continue
+        bg = _DIFF_ADD if kind == 'add' else _DIFF_RM
+        word_bg = _DIFF_ADD_WORD if kind == 'add' else _DIFF_RM_WORD
+        parts = None
+        if idx in pairs:
+            other = rows[pairs[idx]]
+            old_line = content if kind == 'rm' else other[3]
+            new_line = content if kind == 'add' else other[3]
+            rm_parts, add_parts = _word_parts(old_line, new_line)
+            parts = rm_parts if kind == 'rm' else add_parts
+            changed = sum(len(v) for ch, v in rm_parts if ch)                 + sum(len(v) for ch, v in add_parts if ch)
+            if changed / max(1, len(old_line) + len(new_line)) > _DIFF_WORD_RATIO:
+                parts = None
+        if parts is not None:
+            spans = [escape(prefix)]
+            for changed, value in parts:
+                if value:
+                    spans.append(f'[on {word_bg if changed else bg}]'
+                                 f'{escape(value)}[/]')
+            pad = max(0, content_w - len(content))
+            if pad:
+                spans.append(f'[on {bg}]{" " * pad}[/]')
+            out.append(''.join(spans))
+            continue
+        chunks = _chunks(content, content_w)
+        last = len(chunks) - 1
+        for ci, chunk in enumerate(chunks):
+            lead = prefix if ci == 0 else ' ' * len(prefix)
+            pad = ' ' * (content_w - len(chunk)) if ci == last else ''
+            out.append(f'[on {bg}]{escape(lead + chunk + pad)}[/]')
+    return '\n'.join(out)
+
+
 def _tool_use_args(name: str, tool_input, cwd) -> str:
     if not isinstance(tool_input, dict):
         return _clip_lines(tool_input, MAX_COMMAND_LINES, MAX_COMMAND_CHARS)
@@ -242,32 +385,6 @@ def _result_summary(name: str, tool_input, output, cwd, width: int) -> str:
         rows = [r for r in text.split("\n")[1:] if r.strip()]
         noun = "entry" if len(rows) == 1 else "entries"
         return f"Listed {len(rows)} {noun}"
-    if name == "Write":
-        found = re.match(r"(Wrote|Updated) .*\((\d+) chars, (\d+) lines\)",
-                         text)
-        count = int(found.group(3)) if found else 0
-        path = _display_path(cwd, data.get("file_path"))
-        if found and found.group(1) == "Wrote":
-            body = _preview(data.get("content") or "", width,
-                            MAX_WRITE_PREVIEW_LINES)
-            return f"Wrote {_plural(count, 'line')} to {path}\n{body}"
-        return f"Updated {path} \u00b7 {_plural(count, 'line')}"
-    if name in ("Edit", "MultiEdit"):
-        added = removed = 0
-        if name == "MultiEdit":
-            for entry in data.get("edits") or []:
-                if not isinstance(entry, dict):
-                    continue
-                new = str(entry.get("new_string") or "")
-                old = str(entry.get("old_string") or "")
-                added += len(new.split("\n")) if new else 0
-                removed += len(old.split("\n")) if old else 0
-        elif "\n- " in text and "\n+ " in text:
-            _, _, rest = text.partition("\n- ")
-            old_part, _, new_part = rest.partition("\n+ ")
-            removed = len(old_part.split("\n"))
-            added = len(new_part.split("\n"))
-        return _edit_summary(added, removed)
     if name == "Bash":
         return _preview(text, width)
     if name == "create_agent":
@@ -498,6 +615,13 @@ class _ToolBlock(Static):
             rows = escape(body).replace("\n", "\n" + RESULT_HANG)
             self.update(f"{head}\n{RESULT_PREFIX}{rows}")
             return
+        diff = _diff_block(self._name, self._input, self._output, self._cwd,
+                           self._width())
+        if diff is not None:
+            self.add_class("diff")
+            self.update(f"{head}\n{diff}")
+            return
+        self.remove_class("diff")
         summary = _result_summary(self._name, self._input, self._output,
                                   self._cwd, self._width())
         rows = escape(summary).replace("\n", "\n" + RESULT_HANG)
@@ -528,6 +652,10 @@ class TranscriptScreen(Screen):
         head = block._head()
         if block._output is None:
             return head
+        diff = _diff_block(block._name, block._input, block._output,
+                           block._cwd, block._width())
+        if diff is not None:
+            return head + "\n" + diff
         body = escape(str(block._output)) or "(no output)"
         return (head + "\n" + RESULT_PREFIX
                 + body.replace("\n", "\n" + RESULT_HANG))
@@ -808,6 +936,8 @@ class PyClawApp(App[None]):
             scrollbar-gutter: stable; padding: 0 1; }
     #conv > Static { width: 100%; margin-bottom: 1; }
     .user { background: $user-message; }
+    .diff { border-top: dashed $subtle; border-bottom: dashed $subtle;
+            border-left: none; border-right: none; padding: 0 1; }
     .logo { width: auto; margin-bottom: 1; color: $claude; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }

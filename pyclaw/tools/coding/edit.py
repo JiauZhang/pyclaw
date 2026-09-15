@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import difflib
 from pathlib import Path
 
 from chatchat.tool import tool
@@ -23,6 +24,15 @@ def _read_text(path: Path) -> tuple[str | None, str | None]:
         return None, f'Error reading {path}: {e}'
 
 
+def _diff(rel: str, before: str, after: str) -> str:
+    lines = difflib.unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        fromfile=f'a/{rel}', tofile=f'b/{rel}',
+    )
+    return ''.join(lines).rstrip('\n')
+
+
 def make_write(cwd: str):
     @tool(
         name='Write',
@@ -44,15 +54,20 @@ def make_write(cwd: str):
             return f'Error: path is outside the workspace: {file_path}'
         if path.exists() and path.is_dir():
             return f'Error: is a directory: {file_path}'
+        rel = _rel(Path(cwd).resolve(), path)
+        old_text, err = _read_text(path) if path.exists() else (None, None)
+        if path.exists() and old_text is None:
+            return err
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
             existed = path.exists()
             path.write_text(content, encoding='utf-8')
         except OSError as e:
             return f'Error writing {file_path}: {e}'
-        verb = 'Updated' if existed else 'Wrote'
-        return (f'{verb} {_rel(Path(cwd).resolve(), path)} '
-                f'({len(content)} chars, {content.count(chr(10)) + 1} lines)')
+        if existed:
+            return (f'The file {rel} has been updated successfully.\n\n'
+                    + _diff(rel, old_text or '', content))
+        return f'File created successfully at: {rel}'
     return write
 
 
@@ -87,13 +102,14 @@ def make_edit(cwd: str):
         if count > 1:
             return (f'Error: old_string is not unique ({count} matches) in '
                     f'{file_path}. Provide more surrounding context.')
-        text = text.replace(old_string, new_string, 1)
+        after = text.replace(old_string, new_string, 1)
         try:
-            path.write_text(text, encoding='utf-8')
+            path.write_text(after, encoding='utf-8')
         except OSError as e:
             return f'Error writing {file_path}: {e}'
         rel = _rel(Path(cwd).resolve(), path)
-        return (f'Edited {rel}:\n- {old_string}\n+ {new_string}')
+        return (f'The file {rel} has been updated successfully.\n\n'
+                + _diff(rel, text, after))
     return edit
 
 
@@ -148,5 +164,6 @@ def make_multi_edit(cwd: str):
         except OSError as e:
             return f'Error writing {file_path}: {e}'
         rel = _rel(Path(cwd).resolve(), path)
-        return f'Edited {rel} ({len(edits)} replacements).'
+        return (f'The file {rel} has been updated successfully.\n\n'
+                + _diff(rel, text, working))
     return multi_edit
