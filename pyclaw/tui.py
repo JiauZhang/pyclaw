@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import random
 import re
 import sys
 from pathlib import Path
@@ -27,6 +28,7 @@ from chatchat.hooks.events import (
 )
 
 from pyclaw.agents import Session, append_conv
+from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
 
@@ -61,6 +63,73 @@ DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
                  "Glob": "Search", "LS": "List", "create_agent": "Task"}
 PATH_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "LS")
 SEARCH_TOOLS = ("Grep", "Glob")
+
+BASH_SEARCH_COMMANDS = frozenset({'find', 'grep', 'rg', 'ag', 'ack', 'locate',
+                                  'which', 'whereis'})
+BASH_READ_COMMANDS = frozenset({'cat', 'head', 'tail', 'less', 'more', 'wc',
+                                'stat', 'file', 'strings', 'jq', 'awk', 'cut',
+                                'sort', 'uniq', 'tr'})
+BASH_LIST_COMMANDS = frozenset({'ls', 'tree', 'du'})
+BASH_NEUTRAL_COMMANDS = frozenset({'echo', 'printf', 'true', 'false', ':'})
+MEMORY_FILE_NAME = 'PYCLAW.md'
+
+GROUP_PARTS = (
+    ('search', 'Searching for', 'Searched for', 'pattern', 'patterns'),
+    ('read', 'Reading', 'Read', 'file', 'files'),
+    ('list', 'Listing', 'Listed', 'directory', 'directories'),
+    ('bash', 'Running', 'Ran', 'bash command', 'bash commands'),
+    ('memory_read', 'Recalling', 'Recalled', 'memory', 'memories'),
+    ('memory_write', 'Writing', 'Wrote', 'memory', 'memories'),
+)
+
+
+def _is_memory_path(value) -> bool:
+    return Path(str(value or '')).name == MEMORY_FILE_NAME
+
+
+def _bash_kinds(command) -> set:
+    from pyclaw.tools.coding.shell_rules import base_command, split_commands
+    try:
+        parts = [p for p in split_commands(str(command or ''))
+                 if base_command(p) not in BASH_NEUTRAL_COMMANDS]
+    except Exception:
+        return set()
+    if not parts:
+        return set()
+    kinds = set()
+    for part in parts:
+        base = base_command(part)
+        if base in BASH_SEARCH_COMMANDS:
+            kinds.add('search')
+        elif base in BASH_READ_COMMANDS:
+            kinds.add('read')
+        elif base in BASH_LIST_COMMANDS:
+            kinds.add('list')
+        else:
+            return {'bash'}
+    return kinds
+
+
+def _collapsible_kinds(name, tool_input) -> set:
+    data = tool_input if isinstance(tool_input, dict) else {}
+    raw_path = data.get('file_path') or data.get('path') or ''
+    if name == 'Read':
+        return {'memory_read' if _is_memory_path(raw_path) else 'read'}
+    if name in ('Grep', 'Glob'):
+        return {'search'}
+    if name == 'LS':
+        return {'list'}
+    if name in ('Write', 'Edit', 'MultiEdit'):
+        return {'memory_write'} if _is_memory_path(raw_path) else set()
+    if name == 'Bash':
+        return _bash_kinds(data.get('command'))
+    return set()
+
+
+def _read_key(name, tool_input) -> str:
+    data = tool_input if isinstance(tool_input, dict) else {}
+    return str(data.get('file_path') or data.get('path') or name)
+
 
 
 def _summarize(value, limit: int = 60) -> str:
@@ -233,9 +302,6 @@ class _JumpToBottom(Static):
         await self.app.action_jump_to_bottom()
 
 
-THINKING_TTL = 30.0
-
-
 def _hang(prefix: str, body: str) -> str:
     return prefix + body.replace("\n", "\n" + " " * len(prefix))
 
@@ -262,40 +328,66 @@ class _TextBlock(Static):
                     else escape(text))
 
 
+class _GroupBlock(Static):
+
+    def __init__(self, **kw):
+        super().__init__(markup=True, **kw)
+        self.counts = {kind: 0 for kind, *_ in GROUP_PARTS}
+        self.entries = []
+        self.active = True
+        self._frame = BULLET
+        self._read_keys = set()
+        self._draw()
+
+    def add(self, kinds, key, uid):
+        self.entries.append((kinds, key, uid))
+        for kind in kinds:
+            if kind == 'read':
+                if key in self._read_keys:
+                    continue
+                self._read_keys.add(key)
+            self.counts[kind] = self.counts.get(kind, 0) + 1
+        self._draw()
+
+    def tick(self, char: str):
+        self._frame = char
+        if self.active:
+            self._draw()
+
+    def finish(self):
+        if not self.active:
+            return
+        self.active = False
+        self._draw()
+
+    def _parts(self) -> str:
+        chunks = []
+        for kind, active_verb, done_verb, noun, plural in GROUP_PARTS:
+            count = self.counts.get(kind, 0)
+            if not count:
+                continue
+            verb = active_verb if self.active else done_verb
+            verb = verb[0].upper() + verb[1:] if not chunks else \
+                verb[0].lower() + verb[1:]
+            word = noun if count == 1 else plural
+            chunks.append(f"{verb} [bold]{count}[/] {word}")
+        return ", ".join(chunks)
+
+    def _draw(self):
+        body = self._parts()
+        if not body:
+            self.update("")
+            return
+        color = '#D77757' if self.active else '#4EBA65'
+        marker = self._frame if self.active else BULLET
+        hint = "" if self.active else " [dim](ctrl+o to expand)[/]"
+        self.update(f"[{color}]{marker}[/] {body}{hint}")
+
+
 class _UserBlock(Static):
 
     def __init__(self, text: str, **kw):
         super().__init__(escape(text), markup=True, classes="user", **kw)
-
-
-class _ThinkingBlock(Static):
-
-    def __init__(self, **kw):
-        super().__init__(markup=True, **kw)
-        self._thinking = ""
-        self._expanded = False
-
-    def set_thinking(self, text: str):
-        self._thinking = text
-        self._draw()
-
-    def set_expanded(self, on: bool):
-        self._expanded = on
-        self._draw()
-
-    def on_click(self):
-        self._expanded = not self._expanded
-        self._draw()
-
-    def _draw(self):
-        if not self._thinking:
-            self.update("")
-        elif self._expanded:
-            self.update(f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
-                        f"{_hang(RESULT_HANG, escape(self._thinking))}")
-        else:
-            self.update(f"[#9A9A9A]{ASTERISK} Thinking"
-                        f" (ctrl+o to expand)[/]")
 
 
 class _ToolBlock(Static):
@@ -371,13 +463,11 @@ class TranscriptScreen(Screen):
     BINDINGS = [("escape", "exit_transcript", "Back"),
                 ("q", "exit_transcript", "Back"),
                 ("ctrl+o", "exit_transcript", "Back"),
-                ("ctrl+c", "exit_transcript", "Back"),
-                ("ctrl+e", "toggle_show_all", "Show all")]
+                ("ctrl+c", "exit_transcript", "Back")]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
         self._owner = owner
-        self._show_all = False
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="transcript"):
@@ -387,58 +477,48 @@ class TranscriptScreen(Screen):
     def on_mount(self):
         self.query_one("#transcript", VerticalScroll).focus()
 
+    @staticmethod
+    def _tool_entry(block) -> str:
+        head = block._head()
+        if block._output is None:
+            return head
+        body = escape(str(block._output)) or "(no output)"
+        return (head + "\n" + RESULT_PREFIX
+                + body.replace("\n", "\n" + RESULT_HANG))
+
+    @staticmethod
+    def _thinking_entry(text: str) -> str:
+        return (f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
+                + _hang(RESULT_HANG, escape(text)))
+
     def _entries(self) -> list[str]:
         app = self._owner
-        blocks = list(app._conv().children)
         entries: list[str] = []
-        last_text_index = None
-        for widget in blocks:
+        thinking_map = app._thinking_map()
+        for widget in app._conv().children:
             if isinstance(widget, (_PermissionPrompt, _JumpToBottom)):
                 continue
             if isinstance(widget, _TextBlock):
-                entries.append(_hang(BULLET_PREFIX,
-                                     escape(widget._body or "")))
-                last_text_index = len(entries) - 1
+                body = widget._body or ""
+                thought = thinking_map.get(body)
+                if thought:
+                    entries.append(self._thinking_entry(thought))
+                entries.append(_hang(BULLET_PREFIX, escape(body)))
             elif isinstance(widget, _UserBlock):
                 entries.append(escape(str(widget.content)))
+            elif isinstance(widget, _GroupBlock):
+                for _kinds, _key, uid in widget.entries:
+                    block = app._tools.get(uid)
+                    if block is not None:
+                        entries.append(self._tool_entry(block))
             elif isinstance(widget, _ToolBlock):
-                head = widget._head()
-                output = widget._output
-                if output is None:
-                    entries.append(head)
-                    continue
-                if self._show_all:
-                    body = escape(str(output)) or "(no output)"
-                else:
-                    body = escape(_result_summary(
-                        widget._name, widget._input, output, widget._cwd,
-                        self.size.width - len(RESULT_PREFIX) - 4))
-                entries.append(
-                    head + "\n[dim]" + RESULT_PREFIX
-                    + body.replace("\n", "\n" + RESULT_HANG) + "[/]")
-            elif isinstance(widget, _ThinkingBlock):
-                continue
+                entries.append(self._tool_entry(widget))
             else:
                 entries.append(escape(str(widget.content)))
-        thinking = app._turn_thinking()
-        if thinking:
-            entry = (f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
-                     f"{_hang(RESULT_HANG, escape(thinking))}")
-            if last_text_index is None:
-                entries.append(entry)
-            else:
-                entries.insert(last_text_index, entry)
         return entries
 
     def action_exit_transcript(self):
         self.app.pop_screen()
-
-    async def action_toggle_show_all(self):
-        self._show_all = not self._show_all
-        scroll = self.query_one("#transcript", VerticalScroll)
-        await scroll.remove_children()
-        for entry in self._entries():
-            await scroll.mount(Static(entry, markup=True))
 
 
 class PermissionsScreen(Screen):
@@ -615,7 +695,7 @@ class PyClawApp(App[None]):
     $selection: #264F78;
 
     Screen { layout: vertical; background: $background; }
-    #conv { width: 1fr; background: $background; overflow-y: auto;
+    #conv { width: 1fr; height: 1fr; background: $background; overflow-y: auto;
             scrollbar-gutter: stable; padding: 0 1; }
     #conv > Static { width: 100%; margin-bottom: 1; }
     .user { background: $user-message; }
@@ -629,6 +709,7 @@ class PyClawApp(App[None]):
              border-top: round $prompt-border; border-bottom: round $prompt-border; }
     #input:focus { border-top: round $prompt-border;
                    border-bottom: round $prompt-border; }
+    #footer { height: 1; }
     #status { height: 1; width: auto; background: $background;
               color: $inactive; padding: 0 1; }
     #status-right { height: 1; width: 1fr; text-align: right;
@@ -679,8 +760,9 @@ class PyClawApp(App[None]):
         self._live: _TextBlock | None = None
         self._turn_start = 0
         self._live_text = ""
-        self._thought: _ThinkingBlock | None = None
-        self._thought_timer = None
+        self._work_block: Static | None = None
+        self._turn_started_at = 0.0
+        self._turn_verb = SPINNER_VERBS[0]
         self._tools: dict[str, _ToolBlock] = {}
         self._spin_timer = None
         self._spin_i = 0
@@ -690,9 +772,7 @@ class PyClawApp(App[None]):
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
         self._suggest_dismissed: str | None = None
-        self._group_tool = ''
-        self._group_count = 0
-        self._group_block: Static | None = None
+        self._group: _GroupBlock | None = None
         self._last_interrupt = 0.0
 
     def compose(self) -> ComposeResult:
@@ -725,9 +805,6 @@ class PyClawApp(App[None]):
     async def on_unmount(self):
         if self._spin_timer is not None:
             self._spin_timer.stop()
-        if self._thought_timer is not None:
-            self._thought_timer.stop()
-            self._thought_timer = None
         if self._unreg is not None:
             self._unreg()
             self._unreg = None
@@ -886,7 +963,7 @@ class PyClawApp(App[None]):
             if name == self._team.lead.name:
                 await self._frozen()
                 self._sync_tool_states()
-                await self._show_turn_thinking()
+                await self._finish_work()
                 self._log_turn()
         elif ev.kind == AGENT_STATE:
             self._note(name, busy=bool(ev.data.get("busy", False)))
@@ -907,36 +984,26 @@ class PyClawApp(App[None]):
                                ev.data.get("input", ""),
                                ev.data.get("tool_use_id", ""))
 
-    _GROUP_TOOLS = frozenset({'Read', 'Glob', 'Grep', 'LS'})
-    _GROUP_LIMIT = 3
-
     def _reset_tool_group(self):
-        self._group_tool = ''
-        self._group_count = 0
-        self._group_block = None
+        if self._group is not None:
+            self._group.finish()
+            self._group = None
 
     async def _mount_tool(self, name, raw_input, tool_use_id):
-        if name in self._GROUP_TOOLS and name == self._group_tool:
-            self._group_count += 1
-            if self._group_count > self._GROUP_LIMIT:
-                extra = self._group_count - self._GROUP_LIMIT
-                label = f"[#9A9A9A]\u22ef {extra} more {name} calls[/]"
-                if self._group_block is None:
-                    self._group_block = Static(label)
-                    await self._conv().mount(self._group_block)
-                else:
-                    self._group_block.update(label)
-                await self._after_mount()
-                return
-        else:
-            self._reset_tool_group()
-            if name in self._GROUP_TOOLS:
-                self._group_tool = name
-                self._group_count = 1
         uid = tool_use_id or name
         block = _ToolBlock(name, raw_input, cwd=self._cwd())
-        await self._conv().mount(block)
         self._tools[uid] = block
+        kinds = _collapsible_kinds(name, raw_input)
+        if kinds:
+            if self._group is None:
+                self._group = _GroupBlock()
+                self._group._frame = self._SPIN[self._spin_i % len(self._SPIN)]
+                await self._conv().mount(self._group)
+            self._group.add(kinds, _read_key(name, raw_input), uid)
+            await self._after_mount()
+            return
+        self._reset_tool_group()
+        await self._conv().mount(block)
         await self._after_mount()
 
     async def _render_history(self):
@@ -963,16 +1030,19 @@ class PyClawApp(App[None]):
                 await self._conv().mount(text_block)
                 text_block.set_body(text)
                 await self._after_mount()
-            thinking = message.get("thinking")
-            if thinking:
-                await self._mount_thinking(thinking)
+
+        self._reset_tool_group()
         self._sync_tool_states()
 
     async def _add_think(self, ev):
+        await self._mount_spinner()
+
+    async def _mount_spinner(self):
         self._discard_think()
         widget = Static("", markup=True)
         await self._conv().mount(widget)
-        self._think = {"widget": widget, "agent": ev.agent or ""}
+        self._think = {"widget": widget, "agent": ""}
+        await self._after_mount()
 
     def _discard_think(self):
         if self._think is None:
@@ -982,37 +1052,43 @@ class PyClawApp(App[None]):
             widget.remove()
         self._think = None
 
-    def _turn_thinking(self) -> str:
-        text = ""
-        for m in self._team.transcript()[self._turn_start:]:
-            if m.get('role') == 'assistant' and m.get('thinking'):
-                text = m['thinking']
-        return text
+    def _thinking_map(self) -> dict:
+        pairs = {}
+        for message in self._team.transcript():
+            if message.get('role') != 'assistant' or not message.get('thinking'):
+                continue
+            text = _content_text(message.get('content'))
+            if text:
+                pairs[text] = message['thinking']
+        return pairs
 
-    async def _mount_thinking(self, text: str) -> _ThinkingBlock:
-        block = _ThinkingBlock()
-        await self._conv().mount(block)
-        block.set_thinking(text)
-        return block
+    def _spinner_text(self, char: str) -> str:
+        suffix = 'esc to interrupt'
+        if self._session is not None:
+            tokens = int(getattr(self._session.usage, 'total_tokens', 0) or 0)
+            if tokens:
+                suffix += f' \u00b7 \u2193 {self._fmt(tokens)} tokens'
+        return (f"[#D77757]{char}[/] {self._turn_verb}\u2026 "
+                f"[dim]({suffix})[/]")
 
-    async def _show_turn_thinking(self):
-        text = self._turn_thinking()
-        if not text:
-            return
-        if self._thought is None:
-            self._thought = await self._mount_thinking(text)
-            await self._after_mount()
+    @staticmethod
+    def _duration(seconds: int) -> str:
+        if seconds < 60:
+            return f'{seconds}s'
+        return f'{seconds // 60}m {seconds % 60}s'
+
+    async def _finish_work(self):
+        self._discard_think()
+        elapsed = 0
+        if self._turn_started_at:
+            elapsed = max(0, int(asyncio.get_running_loop().time()
+                                 - self._turn_started_at))
+        text = (f"[#9A9A9A]{ASTERISK} Worked for "
+                f"{self._duration(elapsed)}[/]")
+        if self._work_block is None or self._work_block.parent is None:
+            self._work_block = await self._append_block(text)
         else:
-            self._thought.set_thinking(text)
-        if self._thought_timer is not None:
-            self._thought_timer.stop()
-        self._thought_timer = self.set_timer(THINKING_TTL, self._hide_thinking)
-
-    def _hide_thinking(self):
-        self._thought_timer = None
-        block, self._thought = self._thought, None
-        if block is not None and block.parent is not None:
-            block.remove()
+            self._work_block.update(text)
 
     def _log_turn(self):
         if self._session is None:
@@ -1072,10 +1148,11 @@ class PyClawApp(App[None]):
         self._spin_i += 1
         char = self._SPIN[self._spin_i % len(self._SPIN)]
         if self._think is not None:
-            self._think["widget"].update(
-                f"[dim]{char} {self._think['agent']}… thinking[/dim]")
+            self._think["widget"].update(self._spinner_text(char))
         self._sync_tool_states()
-        for block in self._tools.values():
+        if self._group is not None and self._group.active:
+            self._group.tick(char)
+        for block in self.query(_ToolBlock):
             block.tick(char)
         if self._follow:
             conv.scroll_end(animate=False)
@@ -1226,6 +1303,7 @@ class PyClawApp(App[None]):
                 await self._render_queued()
                 await self._append_user(text)
                 self._begin_turn()
+                await self._mount_spinner()
                 await self._converse(text)
                 await self._settle_paint()
                 self._processing = None
@@ -1277,6 +1355,8 @@ class PyClawApp(App[None]):
         self._live_text = ""
         self._wrote_body = False
         self._turn_start = len(self._team.transcript())
+        self._turn_verb = random.choice(SPINNER_VERBS)
+        self._turn_started_at = asyncio.get_running_loop().time()
 
     async def _settle_paint(self):
         done = asyncio.Event()

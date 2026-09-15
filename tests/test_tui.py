@@ -1,4 +1,5 @@
 import asyncio
+import re
 
 import pytest
 
@@ -212,6 +213,12 @@ def _flatten(app) -> str:
     return "".join(str(w.content) for w in app.query_one("#conv").children)
 
 
+def _plain(text) -> str:
+    if not isinstance(text, str):
+        text = _flatten(text)
+    return re.sub(r"\[?/?[^\]\[\n]*\]", "", text).replace("\\[", "[")
+
+
 def test_ui_launches_and_renders_panels():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -262,7 +269,7 @@ def test_slash_renders_block():
     asyncio.run(scenario())
 
 
-def test_consecutive_read_calls_collapse_after_three():
+def test_consecutive_reads_collapse_into_one_line():
     async def scenario():
         async with PyClawApp(
                 builder=lambda: _ManyReadsTeam()).run_test() as pilot:
@@ -272,9 +279,11 @@ def test_consecutive_read_calls_collapse_after_three():
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
-            flat = _flatten(app)
-            assert "2 more Read calls" in flat
-    asyncio.run(scenario())
+            return _flatten(app)
+
+    flat = asyncio.run(scenario())
+    assert "Read [bold]5[/] files" in flat
+    assert "(ctrl+o to expand)" in flat
 
 
 class _ReadBodyTeam(_FakeTeam):
@@ -291,7 +300,7 @@ class _ReadBodyTeam(_FakeTeam):
         return "read it"
 
 
-def test_transcript_ctrl_e_toggles_show_all():
+def test_transcript_expands_every_tool_call():
     async def scenario():
         async with PyClawApp(
                 builder=lambda: _ReadBodyTeam()).run_test() as pilot:
@@ -301,15 +310,11 @@ def test_transcript_ctrl_e_toggles_show_all():
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
+            assert "alpha" not in _flatten(app)
             await pilot.press("ctrl+o")
             await pilot.pause()
-            collapsed = _transcript_text(app)
-            assert "Read 2 lines" in collapsed
-            assert "alpha" not in collapsed
-
-            await pilot.press("ctrl+e")
-            await pilot.pause()
-            expanded = _transcript_text(app)
+            expanded = _plain(_transcript_text(app))
+            assert "Read(a.txt)" in expanded
             assert "alpha" in expanded
     asyncio.run(scenario())
 
@@ -352,9 +357,7 @@ def test_tool_card_resolves_to_done_from_transcript():
     asyncio.run(scenario())
 
 
-def test_thinking_is_a_trailing_element_after_the_answer():
-    from pyclaw.tui import _ThinkingBlock
-
+def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
     async def scenario():
         async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
             app = pilot.app
@@ -365,38 +368,27 @@ def test_thinking_is_a_trailing_element_after_the_answer():
                 await pilot.pause()
             conv = app.query_one("#conv")
             blocks = [str(w.content) for w in conv.children]
-            assert isinstance(conv.children[-1], _ThinkingBlock)
-            assert "\u273b Thinking" in blocks[-1]
-            assert "inner monologue" not in blocks[-1]
-            assert "answer" in blocks[-2]
+            assert "\u273b Worked for" in blocks[-1]
+            assert "inner monologue" not in "".join(blocks)
+            assert "answer" in "".join(blocks)
     asyncio.run(scenario())
 
 
-def test_thinking_auto_hides_after_ttl(monkeypatch):
-    from pyclaw import tui
-    monkeypatch.setattr(tui, "THINKING_TTL", 0.2)
+def test_spinner_row_shows_a_verb_and_the_interrupt_hint():
+    from pyclaw.spinner_verbs import SPINNER_VERBS
 
     async def scenario():
-        async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
+        async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
-            await pilot.press("enter")
-            seen = gone = False
-            for _ in range(60):
-                await pilot.pause()
-                await asyncio.sleep(0.05)
-                if app._thought is not None:
-                    seen = True
-                elif seen:
-                    gone = True
-                    break
-            return seen, gone, app._thought, _flatten(app)
+            app._turn_verb = "Thinking"
+            return app._spinner_text("\u273b")
 
-    seen, gone, thought, flat = asyncio.run(scenario())
-    assert seen
-    assert gone and thought is None
-    assert "\u273b Thinking" not in flat
+    text = asyncio.run(scenario())
+    assert "Thinking\u2026" in text
+    assert "esc to interrupt" in text
+    assert "\u2193 2.4k tokens" in text
+    assert len(SPINNER_VERBS) > 100
 
 
 def test_status_shows_shortcut_hint_and_context_usage():
@@ -669,14 +661,11 @@ def test_ctrl_o_opens_transcript_and_q_exits():
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
-            assert "y" * 80 not in _flatten(app)
+            assert "y" * 400 not in _flatten(app)
             await pilot.press("ctrl+o")
             await pilot.pause()
             assert type(app.screen).__name__ == "TranscriptScreen"
-            assert "y" * 80 not in _transcript_text(app)
-            await pilot.press("ctrl+e")
-            await pilot.pause()
-            assert "y" * 80 in _transcript_text(app)
+            assert "y" * 400 in _transcript_text(app)
             assert "x" * 80 in _transcript_text(app)
             await pilot.press("q")
             await pilot.pause()
@@ -871,7 +860,8 @@ def test_blank_deltas_do_not_create_empty_blocks():
             for _ in range(6):
                 await pilot.pause()
             blocks = [str(w.content) for w in app.query_one("#conv").children]
-            assert "answer" in blocks[-1]
+            assert "answer" in blocks[-2]
+            assert "Worked for" in blocks[-1]
             assert all(b.strip() for b in blocks)
     asyncio.run(scenario())
 
@@ -951,16 +941,19 @@ class _TwoTurnTeam(_FakeTeam):
         return text
 
 
-def test_second_turn_thinking_replaces_the_trailing_element():
+def test_second_turn_reuses_the_single_work_line():
+    def work_lines(app):
+        return [str(w.content) for w in app.query_one("#conv").children
+                if "Worked for" in str(w.content)]
+
     async def scenario():
         async with PyClawApp(builder=lambda: _TwoTurnTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
             await _submit_and_wait(pilot, "one", 6)
-            assert app._thought is not None
-            assert app._thought._thinking == "think1"
+            assert len(work_lines(app)) == 1
             await _submit_and_wait(pilot, "two", 6)
-            assert app._thought._thinking == "think2"
+            assert len(work_lines(app)) == 1
             assert "answer1" in _flatten(app)
             assert "answer2" in _flatten(app)
     asyncio.run(scenario())
@@ -1023,8 +1016,8 @@ def test_resume_renders_saved_history(tmp_path, monkeypatch):
             flat = _flatten(app)
             assert "old question" in flat
             assert "old answer" in flat
-            assert "Read 1 line" in flat
-            assert "\u273b Thinking" in flat
+            assert "Read 1 file" in _plain(flat)
+            assert "old thought" not in flat
             assert app._tools["t1"]._done is True
     asyncio.run(scenario())
 
@@ -1253,3 +1246,83 @@ def test_permission_prompt_resolves_through_the_app():
             return await task
 
     assert asyncio.run(scenario()) == "approved"
+
+
+def test_conversation_fills_and_input_sits_at_the_bottom():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            return (app.size.height,
+                    app.query_one("#conv").size.height,
+                    app.query_one("#footer").size.height,
+                    app.query_one(Input).region.y)
+
+    height, conv, footer, input_y = asyncio.run(scenario())
+    assert footer == 1
+    assert conv == height - 4
+    assert input_y == height - 4
+
+
+def test_bash_collapsible_classification():
+    from pyclaw.tui import _bash_kinds
+
+    assert _bash_kinds("grep -rn foo .") == {"search"}
+    assert _bash_kinds("rg --files") == {"search"}
+    assert _bash_kinds("cat a.txt") == {"read"}
+    assert _bash_kinds("cat a.txt | wc -l") == {"read"}
+    assert _bash_kinds("ls -la") == {"list"}
+    assert _bash_kinds("tree") == {"list"}
+    assert _bash_kinds("echo hi") == set()
+    assert _bash_kinds("ls dir && echo ---") == {"list"}
+    assert _bash_kinds("npm test") == {"bash"}
+    assert _bash_kinds("grep x a | sort") == {"search", "read"}
+
+
+def test_tool_collapsible_classification():
+    from pyclaw.tui import _collapsible_kinds
+
+    assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
+    assert _collapsible_kinds("Read", {"file_path": "PYCLAW.md"}) == {
+        "memory_read"}
+    assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
+    assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
+    assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
+    assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
+    assert _collapsible_kinds("Write", {"file_path": "PYCLAW.md"}) == {
+        "memory_write"}
+    assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
+    assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
+    assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
+
+
+def test_bash_collapsible_classification():
+    from pyclaw.tui import _bash_kinds
+
+    assert _bash_kinds("grep -rn foo .") == {"search"}
+    assert _bash_kinds("rg --files") == {"search"}
+    assert _bash_kinds("cat a.txt") == {"read"}
+    assert _bash_kinds("cat a.txt | wc -l") == {"read"}
+    assert _bash_kinds("ls -la") == {"list"}
+    assert _bash_kinds("tree") == {"list"}
+    assert _bash_kinds("echo hi") == set()
+    assert _bash_kinds("ls dir && echo ---") == {"list"}
+    assert _bash_kinds("npm test") == {"bash"}
+    assert _bash_kinds("grep x a | sort") == {"search", "read"}
+
+
+def test_tool_collapsible_classification():
+    from pyclaw.tui import _collapsible_kinds
+
+    assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
+    assert _collapsible_kinds("Read", {"file_path": "PYCLAW.md"}) == {
+        "memory_read"}
+    assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
+    assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
+    assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
+    assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
+    assert _collapsible_kinds("Write", {"file_path": "PYCLAW.md"}) == {
+        "memory_write"}
+    assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
+    assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
+    assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
