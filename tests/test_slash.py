@@ -80,6 +80,33 @@ def test_status_command():
     assert "agent" in out
 
 
+def test_status_reports_version_and_directory():
+    out = asyncio.run(_call("/status", _fake_session(), session_key="k1"))
+    assert "pyclaw:" in out
+    assert "Directory:" in out
+
+
+def test_plan_with_description_queues_the_goal():
+    class _S:
+        permission_mode = "default"
+
+        def set_permission_mode(self, mode):
+            self.permission_mode = mode
+
+        def permission_rules(self):
+            return []
+
+    s = _S()
+    reply = asyncio.run(_call("/plan write a parser", s))
+    assert isinstance(reply, tuple)
+    _text, goal = reply
+    assert goal == "write a parser"
+    assert s.permission_mode == "plan"
+
+    assert "No plan file" in asyncio.run(_call("/plan open", s))
+    assert "plan" in asyncio.run(_call("/plan", s)).lower()
+
+
 def test_status_includes_usage_and_cost():
     session = _fake_session(usage=_Usage(1200, 300, 1500))
     out = asyncio.run(_call("/status", session, session_key="k1"))

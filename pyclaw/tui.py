@@ -713,10 +713,15 @@ class PyClawApp(App[None]):
 
             reply = await handle_slash(text, self._session)
             await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+            follow = None
+            if isinstance(reply, tuple):
+                reply, follow = reply
             if reply:
                 await self._append_block(escape(reply))
             self._render_status()
             await self._render_queued()
+            if follow:
+                self._pending_inputs.put_nowait(follow)
             return
         self._pending_inputs.put_nowait(text)
         self._render_status()

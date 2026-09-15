@@ -64,9 +64,12 @@ def _cost_of(session):
 
 def _status(session, session_key: str) -> str:
     from pyclaw.cost import format_cost
+    from pyclaw.version import __version__
     usage = session.usage
     return (
+        f"pyclaw: {__version__}\n"
         f"Session: {session_key or session.name}\n"
+        f"Directory: {getattr(session, 'cwd', '')}\n"
         f"Mode: {session.mode}\n"
         f"Provider: {session.provider}\n"
         f"Model: {session.model}\n"
@@ -120,6 +123,15 @@ def _handle_resume(session, arg: str) -> str:
     if not count:
         return f'No transcript found for session: {arg}'
     return f'Resumed {count} messages from {arg}.'
+
+
+def _handle_plan(session, arg: str):
+    if arg == 'open':
+        return 'No plan file to open: pyclaw keeps the plan in the conversation.'
+    message = _handle_permissions(session, 'plan')
+    if arg:
+        return f'{message}\nPlan goal: {arg}', arg
+    return message
 
 
 def _handle_model(session, arg: str) -> str:
@@ -183,7 +195,7 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
     if cmd == 'permissions':
         return _handle_permissions(session, arg)
     if cmd == 'plan':
-        return _handle_permissions(session, 'plan')
+        return _handle_plan(session, arg)
     if cmd == 'model':
         return _handle_model(session, arg)
     if cmd == 'cost':
