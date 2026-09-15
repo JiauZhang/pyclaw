@@ -324,7 +324,8 @@ def build_team(
     team._pyclaw_gate = gate
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
-    from .agent_memory import load_project_memory
+    from .agent_memory import load_instruction_files, load_project_memory
+    team.set_instruction_files(load_instruction_files(cwd))
     memory = load_project_memory(cwd)
     if memory:
         team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)

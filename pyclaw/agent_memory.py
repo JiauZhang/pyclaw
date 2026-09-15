@@ -17,25 +17,35 @@ def _user_memory_file() -> Path:
     return Path(__pyclaw_home__) / 'PYCLAW.md'
 
 
+def load_instruction_files(cwd: str) -> list[dict]:
+    files: list[dict] = []
+    user = _user_memory_file()
+    if user.exists():
+        try:
+            files.append({'path': str(user),
+                          'content': user.read_text(encoding='utf-8'),
+                          'load_reason': 'user'})
+        except OSError:
+            pass
+    current = Path(cwd).resolve()
+    for directory in [current, *current.parents]:
+        candidate = directory / 'PYCLAW.md'
+        if not candidate.exists():
+            continue
+        try:
+            content = candidate.read_text(encoding='utf-8')
+        except OSError:
+            continue
+        files.append({'path': str(candidate), 'content': content,
+                      'load_reason': 'project'})
+    return files
+
+
 def load_project_memory(cwd: str) -> str:
     """claude CLAUDE.md 的等价物：用户级 ~/.pyclaw/PYCLAW.md 在前，
     项目级由 cwd 向上收集、由近及远拼接（越近越贴上下文）。"""
-    parts: list[str] = []
-    user = _user_memory_file()
-    if user.exists():
-        parts.append(user.read_text(encoding='utf-8'))
-    current = Path(cwd).resolve()
-    files = []
-    for directory in [current, *current.parents]:
-        candidate = directory / 'PYCLAW.md'
-        if candidate.exists():
-            files.append(candidate)
-    for candidate in files:
-        try:
-            parts.append(candidate.read_text(encoding='utf-8'))
-        except OSError:
-            continue
-    return '\n\n'.join(parts)
+    return '\n\n'.join(item['content']
+                       for item in load_instruction_files(cwd))
 
 
 def init_project_memory(cwd: str) -> str:

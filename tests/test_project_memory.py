@@ -2,7 +2,8 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from pyclaw.agent_memory import init_project_memory, load_project_memory
+from pyclaw.agent_memory import (init_project_memory, load_instruction_files,
+                                 load_project_memory)
 from pyclaw.agents import build_team
 
 
@@ -50,3 +51,35 @@ def test_build_team_appends_project_memory(tmp_path, monkeypatch):
 
     assert 'PROJECT MEMORY MARKER' in asyncio.run(main())
     assert 'capable AI assistant' in asyncio.run(main())
+
+
+def test_load_instruction_files_reports_paths_and_reasons(tmp_path,
+                                                         monkeypatch):
+    user_dir = tmp_path / 'user'
+    user_dir.mkdir()
+    (user_dir / 'PYCLAW.md').write_text('user rules', encoding='utf-8')
+    monkeypatch.setattr('pyclaw.agent_memory._user_memory_file',
+                        lambda: user_dir / 'PYCLAW.md')
+
+    project = tmp_path / 'proj'
+    nested = project / 'a'
+    nested.mkdir(parents=True)
+    (project / 'PYCLAW.md').write_text('root rules', encoding='utf-8')
+    (nested / 'PYCLAW.md').write_text('nested rules', encoding='utf-8')
+
+    files = load_instruction_files(str(nested))
+    assert [f['load_reason'] for f in files] == ['user', 'project', 'project']
+    assert [f['content'] for f in files] == ['user rules', 'nested rules',
+                                             'root rules']
+    assert files[0]['path'] == str(user_dir / 'PYCLAW.md')
+
+
+def test_build_team_registers_instruction_files(tmp_path):
+    (tmp_path / 'PYCLAW.md').write_text('rules', encoding='utf-8')
+
+    async def main():
+        team = build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
+        return team.instruction_files
+
+    files = asyncio.run(main())
+    assert any(item['content'] == 'rules' for item in files)
