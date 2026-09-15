@@ -136,3 +136,6 @@ dmypy.json
 .trae/
 .codebuddy/
 .pyclaw/
+
+# pytest temp
+.pytest_tmp/
