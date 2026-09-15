@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
+import sys
+from pathlib import Path
 
 from rich.markup import escape
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
-from textual.screen import ModalScreen, Screen
+from textual.screen import Screen
 from textual.widgets import Input, Static
 
 
@@ -28,11 +31,179 @@ from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
 
 
+BULLET = "\u23fa" if sys.platform == "darwin" else "\u25cf"
+POINTER = "\u276f"
+RESULT_GLYPH = "\u23bf"
+ASTERISK = "\u273b"
+BULLET_PREFIX = f"{BULLET} "
+BULLET_HANG = " " * len(BULLET_PREFIX)
+RESULT_PREFIX = f"  {RESULT_GLYPH}  "
+RESULT_HANG = " " * len(RESULT_PREFIX)
+
+MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5",
+                "bypassPermissions": "\u23f5\u23f5", "plan": "\u23f8"}
+MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode",
+               "bypassPermissions": "bypass permissions"}
+MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C",
+               "bypassPermissions": "#FF6B80"}
+
+SPINNER_CHARS = ["\u00b7", "\u2722", "\u2733", "\u2736", "\u273b", "\u273d"]
+SPINNER_FRAMES = SPINNER_CHARS + list(reversed(SPINNER_CHARS))
+SPINNER_INTERVAL = 0.05
+
+MAX_COMMAND_LINES = 2
+MAX_COMMAND_CHARS = 160
+MAX_RESULT_LINES = 3
+MAX_USE_ARG_CHARS = 80
+MAX_WRITE_PREVIEW_LINES = 10
+
+DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
+                 "Glob": "Search", "LS": "List", "create_agent": "Task"}
+PATH_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "LS")
+SEARCH_TOOLS = ("Grep", "Glob")
+
+
 def _summarize(value, limit: int = 60) -> str:
     if value is None:
         return ""
     text = str(value).replace("\n", " ")
     return text if len(text) <= limit else text[:limit] + "…"
+
+
+def _plural(count: int, word: str) -> str:
+    return f"{count} {word}" + ("" if count == 1 else "s")
+
+
+def _display_name(name: str) -> str:
+    return DISPLAY_NAMES.get(name, name)
+
+
+def _clip_lines(value, max_lines: int, max_chars: int) -> str:
+    lines = str(value if value is not None else "").strip("\n").split("\n")
+    clipped = "\n".join(lines[:max_lines]).strip()
+    if len(lines) > max_lines or len(clipped) > max_chars:
+        clipped = clipped[:max_chars].rstrip() + "…"
+    return clipped
+
+
+def _display_path(cwd, value) -> str:
+    raw = str(value if value is not None else "")
+    if not raw:
+        return ""
+    path = Path(raw)
+    if not path.is_absolute():
+        path = Path(cwd or ".") / path
+    try:
+        path = path.resolve()
+        return str(path.relative_to(Path(cwd or ".").resolve()))
+    except (ValueError, OSError):
+        pass
+    try:
+        return "~/" + str(path.relative_to(Path.home()))
+    except ValueError:
+        return str(path)
+
+
+def _preview(text, width: int, limit: int = MAX_RESULT_LINES) -> str:
+    rows: list[str] = []
+    for raw in str(text if text is not None else "").rstrip("\n").split("\n"):
+        if not raw:
+            rows.append("")
+            continue
+        for start in range(0, len(raw), max(20, width)):
+            rows.append(raw[start:start + max(20, width)])
+    if len(rows) <= limit + 1:
+        return "\n".join(rows)
+    return "\n".join(rows[:limit]
+                     + [f"\u2026 +{len(rows) - limit} lines "
+                        f"(ctrl+o to expand)"])
+
+
+def _edit_summary(added: int, removed: int) -> str:
+    if added and removed:
+        return (f"Added {_plural(added, 'line')}, "
+                f"removed {_plural(removed, 'line')}")
+    if added:
+        return f"Added {_plural(added, 'line')}"
+    return f"Removed {_plural(removed, 'line')}"
+
+
+def _tool_use_args(name: str, tool_input, cwd) -> str:
+    if not isinstance(tool_input, dict):
+        return _clip_lines(tool_input, MAX_COMMAND_LINES, MAX_COMMAND_CHARS)
+    data = tool_input
+    if name == "Bash":
+        return _clip_lines(data.get("command", ""), MAX_COMMAND_LINES,
+                           MAX_COMMAND_CHARS)
+    if name in PATH_TOOLS:
+        return _display_path(cwd, data.get("file_path") or data.get("path"))
+    if name in SEARCH_TOOLS:
+        parts = [f'pattern: "{data.get("pattern", "")}"']
+        target = data.get("path")
+        if target:
+            parts.append(f'path: "{_display_path(cwd, target)}"')
+        return ", ".join(parts)
+    if name == "create_agent":
+        return _summarize(data.get("prompt") or data.get("name") or "",
+                          MAX_USE_ARG_CHARS)
+    if name == "send_message":
+        return _summarize(f'{data.get("to", "")}: {data.get("message", "")}',
+                          MAX_USE_ARG_CHARS)
+    pairs = ", ".join(f"{k}: {v}" for k, v in data.items())
+    return _clip_lines(pairs, MAX_COMMAND_LINES, MAX_COMMAND_CHARS)
+
+
+def _result_summary(name: str, tool_input, output, cwd, width: int) -> str:
+    text = str(output if output is not None else "")
+    if not text:
+        return "Done"
+    if text.startswith("Error"):
+        return text.split("\n")[0]
+    data = tool_input if isinstance(tool_input, dict) else {}
+    if name == "Read":
+        rows = text.split("\n")
+        body = rows[1:] if rows and rows[0].endswith(":") else rows
+        return f"Read {_plural(len([r for r in body if r.strip()]), 'line')}"
+    if name in SEARCH_TOOLS:
+        hits = [r for r in text.split("\n") if r.strip()]
+        if name == "Glob" or hits and ":" not in hits[0]:
+            return f"Found {_plural(len(hits), 'file')}"
+        return f"Found {_plural(len(hits), 'line')}"
+    if name == "LS":
+        rows = [r for r in text.split("\n")[1:] if r.strip()]
+        noun = "entry" if len(rows) == 1 else "entries"
+        return f"Listed {len(rows)} {noun}"
+    if name == "Write":
+        found = re.match(r"(Wrote|Updated) .*\((\d+) chars, (\d+) lines\)",
+                         text)
+        count = int(found.group(3)) if found else 0
+        path = _display_path(cwd, data.get("file_path"))
+        if found and found.group(1) == "Wrote":
+            body = _preview(data.get("content") or "", width,
+                            MAX_WRITE_PREVIEW_LINES)
+            return f"Wrote {_plural(count, 'line')} to {path}\n{body}"
+        return f"Updated {path} \u00b7 {_plural(count, 'line')}"
+    if name in ("Edit", "MultiEdit"):
+        added = removed = 0
+        if name == "MultiEdit":
+            for entry in data.get("edits") or []:
+                if not isinstance(entry, dict):
+                    continue
+                new = str(entry.get("new_string") or "")
+                old = str(entry.get("old_string") or "")
+                added += len(new.split("\n")) if new else 0
+                removed += len(old.split("\n")) if old else 0
+        elif "\n- " in text and "\n+ " in text:
+            _, _, rest = text.partition("\n- ")
+            old_part, _, new_part = rest.partition("\n+ ")
+            removed = len(old_part.split("\n"))
+            added = len(new_part.split("\n"))
+        return _edit_summary(added, removed)
+    if name == "Bash":
+        return _preview(text, width)
+    if name == "create_agent":
+        return "Done"
+    return _preview(text, width)
 
 
 def _content_text(content) -> str:
@@ -65,21 +236,42 @@ class _JumpToBottom(Static):
 THINKING_TTL = 30.0
 
 
+def _hang(prefix: str, body: str) -> str:
+    return prefix + body.replace("\n", "\n" + " " * len(prefix))
+
+
+def _input_text(value) -> str:
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, ensure_ascii=False, indent=2)
+    except (TypeError, ValueError):
+        return str(value)
+
+
 class _TextBlock(Static):
 
-    def __init__(self, **kw):
-        super().__init__(**kw)
+    def __init__(self, bullet: str = BULLET_PREFIX, **kw):
+        super().__init__(markup=True, **kw)
         self._body = ""
+        self._bullet = bullet
 
     def set_body(self, text: str):
         self._body = text
-        self.update(escape(text))
+        self.update(_hang(self._bullet, escape(text)) if self._bullet
+                    else escape(text))
+
+
+class _UserBlock(Static):
+
+    def __init__(self, text: str, **kw):
+        super().__init__(escape(text), markup=True, classes="user", **kw)
 
 
 class _ThinkingBlock(Static):
 
     def __init__(self, **kw):
-        super().__init__(**kw)
+        super().__init__(markup=True, **kw)
         self._thinking = ""
         self._expanded = False
 
@@ -99,49 +291,79 @@ class _ThinkingBlock(Static):
         if not self._thinking:
             self.update("")
         elif self._expanded:
-            self.update(f"[#9A9A9A]\u2234 Thinking\u2026[/]\n{escape(self._thinking)}")
+            self.update(f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
+                        f"{_hang(RESULT_HANG, escape(self._thinking))}")
         else:
-            self.update("[#9A9A9A]\u2234 Thinking (ctrl+o to expand)[/]")
+            self.update(f"[#9A9A9A]{ASTERISK} Thinking"
+                        f" (ctrl+o to expand)[/]")
 
 
 class _ToolBlock(Static):
 
-    def __init__(self, name: str, input_text: str, **kw):
-        super().__init__(**kw)
+    def __init__(self, name: str, tool_input, cwd: str = ".", **kw):
+        super().__init__(markup=True, **kw)
         self._name = name
-        self._input = input_text
+        self._input = tool_input
+        self._cwd = cwd
         self._output = None
         self._done = False
         self._expanded = False
+        self._failed = False
+        self._frame = BULLET
         self._draw()
 
     def tick(self, char: str):
         if not self._done:
-            self.update(f"[#9A9A9A]{char} {self._name} "
-                        f"({escape(_summarize(self._input))})[/]")
+            self._frame = char
+            self._draw()
 
-    def set_result(self, output: str):
+    def set_result(self, output):
         self._done = True
         self._output = output
+        self._failed = str(output or "").startswith("Error")
         self._draw()
 
     def on_click(self):
         self._expanded = not self._expanded
         self._draw()
 
+    def on_resize(self):
+        self._draw()
+
+    def _width(self) -> int:
+        width = self.size.width or 0
+        if width <= 0:
+            try:
+                width = self.app.size.width
+            except Exception:
+                width = 0
+        return max(20, (width or 80) - len(RESULT_PREFIX) - 2)
+
+    def _head(self) -> str:
+        name = escape(_display_name(self._name))
+        args = escape(_tool_use_args(self._name, self._input, self._cwd))
+        color = "#FF6B80" if self._failed else (
+            "#4EBA65" if self._done else "#D77757")
+        marker = BULLET if (self._done or self._failed) else self._frame
+        return f"[{color}]{marker}[/] [bold]{name}[/]({args})"
+
     def _draw(self):
+        head = self._head()
+        if self._output is None:
+            self.update(head)
+            return
         if self._expanded:
-            parts = [f"[#D77757]{self._name}[/]"]
-            if self._input:
-                parts.append(f"input: {escape(self._input)}")
-            if self._output is not None:
-                parts.append(f"output: {escape(self._output)}")
-            self.update("\n".join(parts))
-        elif self._done:
-            self.update(f"[#4EBA65]\u2713[/#4EBA65] {self._name}: "
-                        f"{escape(_summarize(self._output))}")
-        else:
-            self.update(f"[#9A9A9A]\u2026 {self._name} ({_summarize(self._input)})[/]")
+            body = str(self._output)
+            if not body.strip():
+                self.update(f"{head}\n[dim]{RESULT_PREFIX}(no output)[/]")
+                return
+            rows = escape(body).replace("\n", "\n" + RESULT_HANG)
+            self.update(f"{head}\n{RESULT_PREFIX}{rows}")
+            return
+        summary = _result_summary(self._name, self._input, self._output,
+                                  self._cwd, self._width())
+        rows = escape(summary).replace("\n", "\n" + RESULT_HANG)
+        self.update(f"{head}\n[dim]{RESULT_PREFIX}{rows}[/]")
 
 
 class TranscriptScreen(Screen):
@@ -174,28 +396,34 @@ class TranscriptScreen(Screen):
             if isinstance(widget, (_PermissionPrompt, _JumpToBottom)):
                 continue
             if isinstance(widget, _TextBlock):
-                entries.append(escape(widget._body or str(widget.content)))
+                entries.append(_hang(BULLET_PREFIX,
+                                     escape(widget._body or "")))
                 last_text_index = len(entries) - 1
+            elif isinstance(widget, _UserBlock):
+                entries.append(escape(str(widget.content)))
             elif isinstance(widget, _ToolBlock):
+                head = widget._head()
+                output = widget._output
+                if output is None:
+                    entries.append(head)
+                    continue
                 if self._show_all:
-                    parts = [f"[#D77757]{widget._name}[/]"]
-                    if widget._input:
-                        parts.append(f"input: {escape(widget._input)}")
-                    if widget._output is not None:
-                        parts.append(f"output: {escape(widget._output)}")
-                    entries.append("\n".join(parts))
+                    body = escape(str(output)) or "(no output)"
                 else:
-                    summary = _summarize(widget._input or '')
-                    entries.append(f"[#D77757]{widget._name}[/] "
-                                   f"{escape(summary)}")
+                    body = escape(_result_summary(
+                        widget._name, widget._input, output, widget._cwd,
+                        self.size.width - len(RESULT_PREFIX) - 4))
+                entries.append(
+                    head + "\n[dim]" + RESULT_PREFIX
+                    + body.replace("\n", "\n" + RESULT_HANG) + "[/]")
             elif isinstance(widget, _ThinkingBlock):
                 continue
             else:
                 entries.append(escape(str(widget.content)))
         thinking = app._turn_thinking()
         if thinking:
-            entry = (f"[#9A9A9A]\u2234 Thinking\u2026[/]\n"
-                     f"{escape(thinking)}")
+            entry = (f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
+                     f"{_hang(RESULT_HANG, escape(thinking))}")
             if last_text_index is None:
                 entries.append(entry)
             else:
@@ -285,40 +513,75 @@ class _PermissionPrompt(Static):
 
     can_focus = True
     BINDINGS = [
-        ("y", "approve", "Approve"),
-        ("n", "deny", "Deny"),
-        ("a", "always", "Always allow in this session"),
+        ("y", "pick_yes", "Yes"),
+        ("n", "pick_no", "No"),
+        ("up", "move_up", "Previous option"),
+        ("down", "move_down", "Next option"),
+        ("enter", "choose", "Confirm"),
+        ("escape", "cancel", "Cancel"),
     ]
 
-    def __init__(self, tool_name: str, input_text: str,
+    def __init__(self, tool_name: str, tool_input, cwd: str = ".",
                  rememberable: bool = True, rule: str = "", **kw):
-        super().__init__(**kw)
+        super().__init__(markup=True, **kw)
         self._tool = tool_name
-        self._input = input_text
+        self._input = tool_input
+        self._cwd = cwd
         self._rememberable = rememberable
         self._rule = rule
+        self._selected = 0
         self.on_choice = None
 
     def on_mount(self):
-        options = "[#D77757]y[/] approve  [#9A9A9A]n[/] deny"
-        if self._rememberable:
-            options += f"  [#4EBA65]a[/] don't ask again ({self._rule or self._tool})"
-        else:
-            options += "\n[#FFC107]cannot be remembered: unsafe command[/]"
-        self.update(
-            f"[#B1B9F9][bold]\u276f Permission needed: {self._tool}[/bold][/]\n"
-            f"    {escape(self._input)}\n{options}"
-        )
+        self._draw()
         self.focus()
 
-    async def action_approve(self):
+    def _options(self) -> list:
+        options = [('approved', 'Yes')]
+        if self._rememberable:
+            if self._rule:
+                label = f"Yes, and don't ask again for: {self._rule}"
+            else:
+                label = (f"Yes, and don't ask again for {self._tool} "
+                         f"commands in {self._cwd}")
+            options.append(('dont_ask', label))
+        options.append(('denied', 'No'))
+        return options
+
+    def _draw(self):
+        args = _tool_use_args(self._tool, self._input, self._cwd)
+        lines = [f"[#B1B9F9]{BULLET}[/] [bold]Tool use[/bold]",
+                 f"  {escape(_display_name(self._tool))}"
+                 f"({escape(args)})",
+                 "  Do you want to proceed?"]
+        for index, (_value, label) in enumerate(self._options()):
+            marker = POINTER if index == self._selected else ' '
+            row = escape(f"  {marker} {index + 1}. {label}")
+            lines.append(f"[#B1B9F9]{row}[/]" if index == self._selected
+                         else f"[dim]{row}[/]")
+        lines.append("[dim]  Esc to cancel \u00b7 enter to confirm[/]")
+        self.update("\n".join(lines))
+
+    def action_move_up(self):
+        self._selected = max(0, self._selected - 1)
+        self._draw()
+
+    def action_move_down(self):
+        self._selected = min(len(self._options()) - 1, self._selected + 1)
+        self._draw()
+
+    async def action_choose(self):
+        options = self._options()
+        await self._finish(options[min(self._selected, len(options) - 1)][0])
+
+    async def action_pick_yes(self):
         await self._finish('approved')
 
-    async def action_deny(self):
+    async def action_pick_no(self):
         await self._finish('denied')
 
-    async def action_always(self):
-        await self._finish('dont_ask' if self._rememberable else 'approved')
+    async def action_cancel(self):
+        await self._finish('denied')
 
     async def _finish(self, decision: str):
         if self.on_choice is not None:
@@ -331,33 +594,49 @@ class PyClawApp(App[None]):
     TITLE = "PyClaw"
     CSS = """
     $background: #101010;
-    $surface: #171717;
-    $panel: #222222;
-    $primary: #D77757;
-    $secondary: #B1B9F9;
-    $success: #4EBA65;
-    $warning: #FFC107;
-    $error: #FF6B80;
+    $claude: #D77757;
+    $shimmer: #EB9F7F;
     $text: #FFFFFF;
-    $text-muted: #9A9A9A;
+    $inactive: #999999;
+    $subtle: #505050;
+    $success: #4EBA65;
+    $error: #FF6B80;
+    $warning: #FFC107;
+    $suggestion: #B1B9F9;
+    $permission: #B1B9F9;
+    $plan-mode: #48968C;
+    $auto-accept: #AF87FF;
+    $bash-border: #FD5DB1;
+    $prompt-border: #888888;
+    $ide: #4782C8;
+    $diff-added: #225C2B;
+    $diff-removed: #7A2936;
+    $user-message: #373737;
+    $selection: #264F78;
 
     Screen { layout: vertical; background: $background; }
-    #status { height: 1; background: #2b2b2b; color: #c9c9c9; padding: 0 1; }
-    #body { height: 1fr; }
-    #conv { width: 1fr; border: round $primary 40%; background: $surface; overflow-y: auto;
-            scrollbar-gutter: stable; padding-right: 1; }
-    /* 块填满容器宽，超长文本自动换行而非撑宽；右侧留 1 列空隙吸收 emoji
-       二义宽度（wcwidth 判 1、终端画 2）的 1 列溢出，避免压到边框/滚动条。 */
-    #conv > Static { width: 100%; }
+    #conv { width: 1fr; background: $background; overflow-y: auto;
+            scrollbar-gutter: stable; padding: 0 1; }
+    #conv > Static { width: 100%; margin-bottom: 1; }
+    .user { background: $user-message; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #transcript > Static { width: 100%; margin-bottom: 1; }
-    #suggest { display: none; height: auto; max-height: 7; background: $panel;
+    #suggest { display: none; height: auto; max-height: 8; background: $background;
                margin: 0 1; padding: 0 1; }
-    #tasks { width: 36; border: round $secondary 40%; background: $surface; overflow-y: auto; }
-    #input { height: 3; background: $panel; border: round $primary; color: $text-muted; }
-    #input:focus { border: round $primary; }
+    #tasks { display: none; height: auto; max-height: 12; background: $background;
+             border-top: round $permission; margin: 0 1; padding: 0 1; }
+    #input { height: 3; background: $background; color: $text;
+             border-top: round $prompt-border; border-bottom: round $prompt-border; }
+    #input:focus { border-top: round $prompt-border;
+                   border-bottom: round $prompt-border; }
+    #status { height: 1; width: auto; background: $background;
+              color: $inactive; padding: 0 1; }
+    #status-right { height: 1; width: 1fr; text-align: right;
+                    background: $background; color: $subtle; padding: 0 1; }
     """
-    BINDINGS = [("ctrl+q", "quit", "Quit"),
+    BINDINGS = [("ctrl+d", "quit", "Exit"),
+                ("ctrl+t", "toggle_tasks", "Show/hide tasks"),
+                ("ctrl+l", "redraw", "Redraw"),
                 ("ctrl+o", "toggle_transcript", "Transcript"),
                 ("ctrl+c", "interrupt", "Stop current work"),
                 ("pageup", "conv_page_up", "Scroll up"),
@@ -414,14 +693,16 @@ class PyClawApp(App[None]):
         self._group_tool = ''
         self._group_count = 0
         self._group_block: Static | None = None
+        self._last_interrupt = 0.0
 
     def compose(self) -> ComposeResult:
-        with Horizontal(id="body"):
-            yield _Conv(id="conv")
-            yield VerticalScroll(id="tasks")
+        yield _Conv(id="conv")
         yield Static('', id='suggest')
-        yield Input(placeholder="Message PyClaw, or '/help'…  (ctrl+q to quit)", id="input")
-        yield Static(id="status")
+        yield VerticalScroll(id="tasks")
+        yield Input(placeholder="Message PyClaw\u2026", id="input")
+        with Horizontal(id="footer"):
+            yield Static(id="status")
+            yield Static(id="status-right")
 
     async def on_mount(self):
         self._team = self._builder()
@@ -433,7 +714,7 @@ class PyClawApp(App[None]):
         await self.query_one("#tasks", VerticalScroll).mount(self._tasks_pane)
         asyncio.create_task(self._pump())
         asyncio.create_task(self._drive())
-        self._spin_timer = self.set_interval(0.08, self._tool_spin_tick)
+        self._spin_timer = self.set_interval(SPINNER_INTERVAL, self._tool_spin_tick)
         if self._resume:
             self._session.restore_transcript()
             await self._render_history()
@@ -456,6 +737,23 @@ class PyClawApp(App[None]):
 
     def _conv(self) -> _Conv:
         return self.query_one("#conv", _Conv)
+
+    def _cwd(self) -> str:
+        if self._session is None:
+            return "."
+        return getattr(self._session, "cwd", "") or "."
+
+    async def _append_widget(self, widget):
+        await self._conv().mount(widget)
+        await self._after_mount()
+        return widget
+
+    async def _append_user(self, text: str):
+        return await self._append_widget(_UserBlock(text))
+
+    async def _append_error(self, text: str):
+        return await self._append_block(
+            f"[#FF6B80]{BULLET}[/] [#FF6B80]{escape(str(text))}[/]")
 
     def _follow_scroll(self):
         if self._follow:
@@ -517,7 +815,7 @@ class PyClawApp(App[None]):
         self._live_text = ""
 
     async def _start_live(self):
-        self._live = _TextBlock(markup=True)
+        self._live = _TextBlock()
         await self._conv().mount(self._live)
         self._live_text = ""
         await self._after_mount()
@@ -536,8 +834,8 @@ class PyClawApp(App[None]):
                 self._render_tasks()
             except Exception as exc:
                 try:
-                    await self._append_block(
-                        f"[#FF6B80]\u26a0\ufe0f render error: {escape(str(exc))}[/]")
+                    await self._append_error(
+                        f"render error: {exc}")
                 except Exception:
                     pass
             finally:
@@ -580,8 +878,7 @@ class PyClawApp(App[None]):
             self._note_progress(ev)
         elif ev.kind == AGENT_WARN:
             await self._frozen()
-            await self._append_block(f"[#FF6B80]\u26a0\ufe0f "
-                                     f"{escape(ev.data.get('text', ''))}[/]")
+            await self._append_error(ev.data.get('text', ''))
         elif ev.kind == AGENT_TURN_FINISHED:
             self._note(name, think=False, busy=False)
             self._discard_think()
@@ -594,7 +891,7 @@ class PyClawApp(App[None]):
         elif ev.kind == AGENT_STATE:
             self._note(name, busy=bool(ev.data.get("busy", False)))
 
-    _SPIN = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+    _SPIN = "".join(SPINNER_FRAMES)
 
     @staticmethod
     def _fmt(n: int) -> str:
@@ -619,7 +916,6 @@ class PyClawApp(App[None]):
         self._group_block = None
 
     async def _mount_tool(self, name, raw_input, tool_use_id):
-        input_text = raw_input if isinstance(raw_input, str) else str(raw_input)
         if name in self._GROUP_TOOLS and name == self._group_tool:
             self._group_count += 1
             if self._group_count > self._GROUP_LIMIT:
@@ -638,7 +934,7 @@ class PyClawApp(App[None]):
                 self._group_tool = name
                 self._group_count = 1
         uid = tool_use_id or name
-        block = _ToolBlock(name, input_text)
+        block = _ToolBlock(name, raw_input, cwd=self._cwd())
         await self._conv().mount(block)
         self._tools[uid] = block
         await self._after_mount()
@@ -649,7 +945,7 @@ class PyClawApp(App[None]):
             if role == "user":
                 text = _content_text(message.get("content"))
                 if text:
-                    await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+                    await self._append_user(text)
                 continue
             if role != "assistant":
                 continue
@@ -663,7 +959,7 @@ class PyClawApp(App[None]):
                                                block.get("id", ""))
             text = _content_text(content)
             if text:
-                text_block = _TextBlock(markup=True)
+                text_block = _TextBlock()
                 await self._conv().mount(text_block)
                 text_block.set_body(text)
                 await self._after_mount()
@@ -694,7 +990,7 @@ class PyClawApp(App[None]):
         return text
 
     async def _mount_thinking(self, text: str) -> _ThinkingBlock:
-        block = _ThinkingBlock(markup=True)
+        block = _ThinkingBlock()
         await self._conv().mount(block)
         block.set_thinking(text)
         return block
@@ -801,8 +1097,7 @@ class PyClawApp(App[None]):
         text = event.value.strip()
         if text == '/permissions':
             self.query_one("#input", Input).value = ""
-            await self._append_block(
-                f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+            await self._append_user(text)
             self.push_screen(PermissionsScreen(self._session))
             return
         if self._suggest_items and text.startswith('/'):
@@ -821,7 +1116,7 @@ class PyClawApp(App[None]):
             from pyclaw.slash import handle_slash
 
             reply = await handle_slash(text, self._session)
-            await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+            await self._append_user(text)
             follow = None
             if isinstance(reply, tuple):
                 reply, follow = reply
@@ -864,15 +1159,16 @@ class PyClawApp(App[None]):
         except Exception:
             return
         items = self._suggest_items
-        start = max(0, min(self._suggest_selected - 2, len(items) - 5))
-        window = items[start:start + 5]
+        start = max(0, min(self._suggest_selected - 2, len(items) - 6))
+        window = items[start:start + 6]
+        width = max((len(f"/{i['name']}") for i in window), default=0)
         lines = []
         for i, item in enumerate(window):
             index = start + i
-            marker = '\u203a' if index == self._suggest_selected else ' '
-            line = f"{marker} /{item['name']}  {item['desc']}"
-            lines.append(f'[reverse]{line}[/]' if index == self._suggest_selected
-                         else f'[dim]{line}[/]')
+            row = escape(f"/{item['name']}".ljust(width)
+                         + f"  {item['desc']}")
+            lines.append(f"[#B1B9F9]{row}[/]" if index == self._suggest_selected
+                         else f"[dim]{row}[/]")
         widget.update('\n'.join(lines))
 
     def action_suggest_next(self):
@@ -900,18 +1196,17 @@ class PyClawApp(App[None]):
 
     async def _render_queued(self):
         inp = self.query_one("#input", Input)
-        inp.placeholder = (f"\u23f3 {self._processing}" if self._processing
-                           else "Message PyClaw, or '/help'\u2026  (ctrl+q to quit)")
-        items = [f"[#7AB4E8]You:[/#7AB4E8] {escape(t)}"
-                 for t in self._peek_queue()]
-        if not items:
+        queued = self._peek_queue()
+        inp.placeholder = ("Press up to edit queued messages" if queued
+                           else "Message PyClaw\u2026")
+        if not queued:
             if self._queued is not None:
                 self._queued.remove()
                 self._queued = None
             return
-        text = "\n".join(f"[bold]#{i + 1}[/] {it}" for i, it in enumerate(items))
+        text = "\n\n".join(escape(str(t)) for t in queued)
         if self._queued is None:
-            self._queued = Static(text, markup=True)
+            self._queued = Static(text, markup=True, classes="user")
             await self.screen.mount(self._queued, before=inp)
         else:
             self._queued.update(text)
@@ -929,7 +1224,7 @@ class PyClawApp(App[None]):
                 self._processing = text
                 self._render_status()
                 await self._render_queued()
-                await self._append_block(f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+                await self._append_user(text)
                 self._begin_turn()
                 await self._converse(text)
                 await self._settle_paint()
@@ -941,14 +1236,14 @@ class PyClawApp(App[None]):
 
     async def _ask_permission(self, tool_name: str, tool_input) -> str:
         inp = tool_input if isinstance(tool_input, dict) else {}
-        summary = _summarize(json.dumps(inp, ensure_ascii=False), 120)
         rule = ""
         if tool_name == 'Bash':
             from pyclaw.tools.coding.shell_rules import suggested_rule
             rule = suggested_rule(str(inp.get('command') or '')) or ""
-        prompt = _PermissionPrompt(tool_name, summary,
+        prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
                                    rememberable=bool(rule) or tool_name != 'Bash',
-                                   rule=rule if tool_name == 'Bash' else tool_name)
+                                   rule=rule)
+        fut = asyncio.get_running_loop().create_future()
         prompt.on_choice = fut.set_result
         conv = self._conv()
         await conv.mount(prompt)
@@ -964,12 +1259,18 @@ class PyClawApp(App[None]):
         self._render_status()
 
     async def action_interrupt(self):
+        now = asyncio.get_running_loop().time()
+        if self._processing is None and now - self._last_interrupt < 2.0:
+            self.exit()
+            return
+        self._last_interrupt = now
         if self._team is not None:
             self._team.lead.abort_work()
         if self._processing and not self._wrote_body:
             self.query_one("#input", Input).value = self._processing
             self._processing = None
-        await self._append_block("[#FFC107]Interrupted by user[/]")
+        await self._append_block(
+            "[#9A9A9A]Interrupted \u00b7 What should Claude do instead?[/]")
 
     def _begin_turn(self):
         self._live = None
@@ -994,7 +1295,7 @@ class PyClawApp(App[None]):
         try:
             out = await self._session.chat(text)
         except Exception as exc:
-            await self._append_block(f"[#FF6B80]\u26a0\ufe0f {escape(str(exc))}[/]")
+            await self._append_error(str(exc))
             return
         await self._wait_session_idle()
         await self._queue.join()
@@ -1012,26 +1313,41 @@ class PyClawApp(App[None]):
         if busy is not None:
             st["busy"] = busy
 
+    def _context_percent(self) -> int | None:
+        if self._session is None:
+            return None
+        try:
+            limit = int(getattr(self._session, "compact_threshold", 0) or 0)
+        except Exception:
+            return None
+        if limit <= 0:
+            return None
+        total = int(getattr(self._session.usage, "total_tokens", 0) or 0)
+        return max(0, min(100, round(total * 100 / limit)))
+
     def _render_status(self):
         s = self._session
         if s is None:
             return
-        u = s.usage
-        cached = (u.prompt_tokens_details or {}).get('cached_tokens', 0)
-        think = "[#D77757]on[/]" if s.thinking else "off"
+        left = ["esc to interrupt" if self._processing is not None
+                else "? for shortcuts"]
         perm = s.permission_mode
-        perm_color = {"plan": "#B1B9F9", "acceptEdits": "#4EBA65",
-                      "bypassPermissions": "#FF6B80"}.get(perm, "#9A9A9A")
-        cache_display = (f"[#4EBA65]{self._fmt(cached)}[/] cached"
-                         if cached else f"{self._fmt(cached)} cached")
+        symbol = MODE_SYMBOLS.get(perm)
+        if symbol:
+            color = MODE_COLORS.get(perm, "#9A9A9A")
+            left.append(f"[{color}]{symbol} {MODE_TITLES[perm]} on[/] "
+                        f"[dim](shift+tab to cycle)[/]")
         self.query_one("#status", Static).update(
-            f"  [bold][#D77757]{s.mode}[/][/]  |  {s.provider}/{s.model}"
-            f"  |  thinking {think}"
-            f"  |  [{perm_color}]perm {perm}[/]"
-            f"  |  [#D77757]{self._fmt(u.prompt_tokens)}[/] in · "
-            f"[#D77757]{self._fmt(u.completion_tokens)}[/] out · "
-            f"[#D77757]{self._fmt(u.total_tokens)}[/] total · {cache_display}"
-        )
+            "  [dim]\u00b7[/]  ".join(left))
+        used = self._context_percent()
+        if used is None:
+            right = ""
+        elif used < 80:
+            right = f"[dim]{used}% context used[/]"
+        else:
+            right = (f"[#FFC107]{used}% context used \u00b7 "
+                     f"run /compact to compact & continue[/]")
+        self.query_one("#status-right", Static).update(right)
 
     def _render_tasks(self):
         if self._team is None:
@@ -1046,7 +1362,8 @@ class PyClawApp(App[None]):
             marker = "\u2514\u2500" if is_last else "\u251c\u2500"
             status = ("working\u2026" if st.get("think")
                       else ("busy" if st.get("busy") else "idle"))
-            lines.append(f"{prefix}{marker} {a.name} \u00b7 {st.get('tools', 0)} tools [{status}]")
+            lines.append(f"{prefix}{marker} {escape(a.name)} \u00b7 "
+                         f"{st.get('tools', 0)} tools ({status})")
             kids = sorted(self._team.children.get(agent_id, ()))
             sub = prefix + ("   " if is_last else "\u2502  ")
             for i, k in enumerate(kids):
@@ -1066,13 +1383,24 @@ class PyClawApp(App[None]):
                 status = ("Done" if st['done']
                           else (st['last_tool'] or "Initializing\u2026"))
                 stat_pre = "   " if is_last else "\u2502  "
-                lines.append(f"{tc} [{st['type']}] \u00b7 {st['tools']} tool {uses}"
-                             f"{tokens}")
-                lines.append(f"{stat_pre}\u23bf  {status}")
+                label = escape(str(st['type'])) or "Task"
+                lines.append(f"{tc} [bold]{label}[/] \u00b7 {st['tools']} "
+                             f"tool {uses}{tokens}")
+                lines.append(f"{stat_pre}{RESULT_GLYPH}  {escape(status)}")
         lines.append("")
         lines.append(f"[bold]Tools[/bold] {len(self._session.available_tools)}")
-        lines += [f"  {t['name']}" for t in self._team.tool_schemas()[:40]]
+        lines += [f"  {escape(str(t['name']))}"
+                  for t in self._team.tool_schemas()[:40]]
         self._tasks_pane.update("\n".join(lines))
+
+    async def action_toggle_tasks(self):
+        pane = self.query_one("#tasks", VerticalScroll)
+        pane.display = not pane.display
+        if pane.display:
+            self._render_tasks()
+
+    def action_redraw(self):
+        self.refresh()
 
     def action_toggle_transcript(self):
         self.push_screen(TranscriptScreen(self))

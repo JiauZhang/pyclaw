@@ -436,6 +436,10 @@ class Session:
     def cwd(self) -> str:
         return str(self._gate.cwd) if self._gate is not None else os.getcwd()
 
+    @property
+    def compact_threshold(self) -> int:
+        return int(getattr(self._team, 'compact_threshold', 0) or 0)
+
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:
             raise ValueError('Permission gate not available for this session.')
