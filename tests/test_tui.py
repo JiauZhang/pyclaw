@@ -1384,8 +1384,9 @@ def test_question_mark_opens_the_shortcut_panel():
 
     opened, body, closed = asyncio.run(scenario())
     assert opened == "HelpScreen"
-    assert "? for shortcuts" not in body
-    assert "shift+tab" in body
+    for key in ("ctrl+d", "ctrl+c", "ctrl+q", "ctrl+o", "ctrl+t", "escape",
+                "shift+tab"):
+        assert key in body
     assert "/compact" in body
     assert closed != "HelpScreen"
 
@@ -1435,3 +1436,84 @@ def test_leading_blank_lines_do_not_orphan_the_bullet():
     shown, body = asyncio.run(scenario())
     assert shown == "\u23fa hello there"
     assert body == "\n\nhello there"
+
+
+def test_app_keys_beat_the_input_widget():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            return {key: app.active_bindings[key].binding.action
+                    for key in ("ctrl+c", "ctrl+d", "escape", "up", "down")}
+
+    actions = asyncio.run(scenario())
+    assert actions["ctrl+c"] == "interrupt"
+    assert actions["ctrl+d"] == "quit"
+    assert actions["escape"] == "escape"
+    assert actions["up"] == "prompt_prev"
+    assert actions["down"] == "prompt_next"
+
+
+def test_escape_closes_modal_screens():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press("?")
+            await pilot.pause()
+            help_open = type(app.screen).__name__
+            await pilot.press("escape")
+            await pilot.pause()
+            help_closed = type(app.screen).__name__
+            app.action_toggle_transcript()
+            await pilot.pause()
+            transcript_open = type(app.screen).__name__
+            await pilot.press("escape")
+            await pilot.pause()
+            return (help_open, help_closed, transcript_open,
+                    type(app.screen).__name__)
+
+    help_open, help_closed, transcript_open, transcript_closed = \
+        asyncio.run(scenario())
+    assert help_open == "HelpScreen" and help_closed != "HelpScreen"
+    assert transcript_open == "TranscriptScreen"
+    assert transcript_closed != "TranscriptScreen"
+
+
+def test_permission_screen_keeps_its_own_arrow_keys():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "/permissions"
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.pause()
+            return (app.screen._selected,
+                    app.active_bindings["down"].binding.action)
+
+    selected, action = asyncio.run(scenario())
+    assert selected == 0
+    assert action == "move_down"
+
+
+def test_escape_interrupts_a_running_turn():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "hi"
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            assert app._processing == "hi"
+            await pilot.press("escape")
+            await pilot.pause()
+            return app._processing, _flatten(app)
+
+    processing, flat = asyncio.run(scenario())
+    assert processing is None
+    assert "Interrupted" in flat

@@ -528,16 +528,17 @@ class HelpScreen(Screen):
     BINDINGS = [("escape", "close", "Close"), ("q", "close", "Close"),
                 ("ctrl+o", "close", "Close"), ("?", "close", "Close")]
 
-    @staticmethod
-    def _body() -> str:
+    def _body(self) -> str:
         from pyclaw.slash import COMMANDS
         lines = ["[bold]Shortcuts[/bold]"]
         seen = set()
         for entry in PyClawApp.BINDINGS:
             if isinstance(entry, Binding):
-                key, description = entry.key, entry.description
+                key, action, description = (entry.key, entry.action,
+                                            entry.description)
             else:
-                key, description = entry[0], entry[2]
+                key, action, description = (entry[0], entry[1],
+                                            entry[2] if len(entry) > 2 else '')
             if key in seen or not description:
                 continue
             seen.add(key)
@@ -560,6 +561,29 @@ class HelpScreen(Screen):
         self.app.pop_screen()
 
 
+class _RuleList(VerticalScroll):
+
+    BINDINGS = [("up", "move_up", "Up"), ("down", "move_down", "Down"),
+                ("d", "remove_rule", "Remove rule"),
+                ("escape", "close", "Close"), ("q", "close", "Close")]
+
+    def __init__(self, screen, **kw):
+        super().__init__(**kw)
+        self._screen = screen
+
+    def action_move_up(self):
+        self._screen.action_move_up()
+
+    def action_move_down(self):
+        self._screen.action_move_down()
+
+    def action_remove_rule(self):
+        self._screen.action_remove_rule()
+
+    def action_close(self):
+        self._screen.action_close()
+
+
 class PermissionsScreen(Screen):
 
     BINDINGS = [("escape", "close", "Close"),
@@ -574,10 +598,11 @@ class PermissionsScreen(Screen):
         self._selected = 0
 
     def compose(self) -> ComposeResult:
-        with VerticalScroll(id="permissions"):
+        with _RuleList(self, id="permissions"):
             yield Static('...', id="permissions-body")
 
     def on_mount(self):
+        self.query_one("#permissions", _RuleList).focus()
         self._refresh_body()
 
     def _rules(self) -> list:
@@ -757,11 +782,14 @@ class PyClawApp(App[None]):
     #status-right { height: 1; width: 1fr; text-align: right;
                     background: $background; color: $subtle; padding: 0 1; }
     """
-    BINDINGS = [("ctrl+d", "quit", "Exit"),
+    BINDINGS = [Binding("ctrl+d", "quit", "Exit", priority=True),
+                Binding("ctrl+c", "interrupt", "Stop current work",
+                        priority=True),
+                Binding("escape", "escape", "Cancel / dismiss"),
+                ("ctrl+q", "quit", "Exit (fallback)"),
                 ("ctrl+t", "toggle_tasks", "Show/hide tasks"),
                 ("ctrl+l", "redraw", "Redraw"),
                 ("ctrl+o", "toggle_transcript", "Transcript"),
-                ("ctrl+c", "interrupt", "Stop current work"),
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
                 ("ctrl+home", "conv_scroll_top", "Scroll to top"),
@@ -770,13 +798,14 @@ class PyClawApp(App[None]):
                         priority=True),
                 Binding("down", "prompt_next", "Next", priority=True),
                 Binding("up", "prompt_prev", "Previous", priority=True),
-                Binding("tab", "suggest_tab", "Complete suggestion", priority=True),
-                Binding("escape", "suggest_dismiss", "Dismiss suggestions",
+                Binding("tab", "suggest_tab", "Complete suggestion",
                         priority=True)]
 
     def check_action(self, action: str, parameters) -> bool:
         if action in ('suggest_tab', 'suggest_dismiss'):
             return bool(self._suggest_items)
+        if action in ('prompt_next', 'prompt_prev'):
+            return len(self.screen_stack) <= 1
         return True
 
     def __init__(self, *, builder, session_id=None, resume=False,
@@ -1418,12 +1447,23 @@ class PyClawApp(App[None]):
         self._session.set_permission_mode(nxt.value)
         self._render_status()
 
+    async def action_escape(self):
+        if self._suggest_items:
+            self.action_suggest_dismiss()
+            return
+        if self._processing is None:
+            return
+        await self._interrupt()
+
     async def action_interrupt(self):
         now = asyncio.get_running_loop().time()
         if self._processing is None and now - self._last_interrupt < 2.0:
             self.exit()
             return
         self._last_interrupt = now
+        await self._interrupt()
+
+    async def _interrupt(self):
         if self._team is not None:
             self._team.lead.abort_work()
         if self._processing and not self._wrote_body:
