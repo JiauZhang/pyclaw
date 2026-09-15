@@ -11,9 +11,9 @@ from rich.markup import escape
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
-from textual.widgets import Input, Static
+from textual.widgets import Input, Markdown, Static
 
 
 from chatchat.hooks.events import (
@@ -315,18 +315,42 @@ def _input_text(value) -> str:
         return str(value)
 
 
-class _TextBlock(Static):
+class _TextBlock(Vertical):
 
     def __init__(self, bullet: str = BULLET_PREFIX, **kw):
-        super().__init__(markup=True, **kw)
+        super().__init__(classes="text-block", **kw)
         self._body = ""
         self._bullet = bullet
+        self._md: Markdown | None = None
+        self._flush_scheduled = False
+
+    def _display(self) -> str:
+        return self._body.strip("\n")
 
     def set_body(self, text: str):
         self._body = text
-        shown = text.strip("\n")
-        self.update(_hang(self._bullet, escape(shown)) if self._bullet
-                    else escape(shown))
+        if self._md is None:
+            if self.is_mounted:
+                self._mount_children()
+            else:
+                return
+        if not self._flush_scheduled:
+            self._flush_scheduled = True
+            self.call_later(self._flush)
+
+    async def _flush(self):
+        self._flush_scheduled = False
+        if self._md is not None:
+            self._md.update(self._display())
+
+    def on_mount(self):
+        if self._md is None:
+            self._mount_children()
+
+    def _mount_children(self):
+        bullet = Static(self._bullet, markup=True, classes="text-bullet")
+        self._md = Markdown(self._display(), classes="text-body")
+        self.mount(Horizontal(bullet, self._md, classes="text-row"))
 
 
 class _GroupBlock(Static):
@@ -383,6 +407,27 @@ class _GroupBlock(Static):
         marker = self._frame if self.active else BULLET
         hint = "" if self.active else " [dim](ctrl+o to expand)[/]"
         self.update(f"[{color}]{marker}[/] {body}{hint}")
+
+
+CLAWD_BODY = "#D77757"
+CLAWD_BG = "#000000"
+
+
+def _logo_markup() -> str:
+    row1 = (f"[{CLAWD_BODY}] \u2590[/]"
+            f"[{CLAWD_BODY} on {CLAWD_BG}]\u259b\u2588\u2588\u2588\u259c[/]"
+            f"[{CLAWD_BODY}]\u258c[/]")
+    row2 = f"[{CLAWD_BODY}]\u259d\u259c\u259b\u2598[/]"
+    return f"{row1}\n{row2}"
+
+
+class _LogoBlock(Static):
+
+    def __init__(self, model: str = "", **kw):
+        lines = [_logo_markup()]
+        if model:
+            lines.append(f"\n[dim]{escape(model)}[/]")
+        super().__init__("\n".join(lines), markup=True, classes="logo", **kw)
 
 
 class _UserBlock(Static):
@@ -497,7 +542,7 @@ class TranscriptScreen(Screen):
         entries: list[str] = []
         thinking_map = app._thinking_map()
         for widget in app._conv().children:
-            if isinstance(widget, (_PermissionPrompt, _JumpToBottom)):
+            if isinstance(widget, (_PermissionPrompt, _JumpToBottom, _LogoBlock)):
                 continue
             if isinstance(widget, _TextBlock):
                 body = widget._body or ""
@@ -763,6 +808,11 @@ class PyClawApp(App[None]):
             scrollbar-gutter: stable; padding: 0 1; }
     #conv > Static { width: 100%; margin-bottom: 1; }
     .user { background: $user-message; }
+    .logo { width: auto; margin-bottom: 1; color: $claude; }
+    .text-block { width: 100%; height: auto; margin-bottom: 1; }
+    .text-row { width: 100%; height: auto; }
+    .text-bullet { width: 2; height: 1; color: $claude; }
+    .text-body { width: 1fr; height: auto; color: $text; background: $background; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #help { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #help > Static { width: 100%; margin-bottom: 1; }
@@ -846,7 +896,8 @@ class PyClawApp(App[None]):
         self._last_interrupt = 0.0
         self._history: list[str] = []
         self._history_index: int | None = None
-        self._draft = '' 
+        self._draft = ''
+        self._logo: _LogoBlock | None = None
 
     def compose(self) -> ComposeResult:
         yield _Conv(id="conv")
@@ -870,6 +921,8 @@ class PyClawApp(App[None]):
         asyncio.create_task(self._pump())
         asyncio.create_task(self._drive())
         self._spin_timer = self.set_interval(SPINNER_INTERVAL, self._tool_spin_tick)
+        self._logo = _LogoBlock(model=getattr(self._session, "model", ""))
+        await self._conv().mount(self._logo)
         if self._resume:
             self._session.restore_transcript()
             await self._render_history()
@@ -935,11 +988,17 @@ class PyClawApp(App[None]):
             self._hint.update(text)
 
     async def _after_mount(self):
+        self._drop_logo()
         if self._follow:
             self._follow_scroll()
         else:
             self._new_messages += 1
         await self._refresh_follow_hint()
+
+    def _drop_logo(self):
+        logo, self._logo = self._logo, None
+        if logo is not None and logo.parent is not None:
+            logo.remove()
 
     async def action_jump_to_bottom(self):
         self._follow = True

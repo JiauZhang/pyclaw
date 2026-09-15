@@ -12,7 +12,7 @@ from chatchat.hooks.events import (
     AGENT_TOOL_CALL,
     AGENT_TURN_FINISHED,
 )
-from pyclaw.tui import PyClawApp
+from pyclaw.tui import PyClawApp, _TextBlock
 
 
 @pytest.fixture(autouse=True)
@@ -209,8 +209,16 @@ def test_shift_tab_cycles_permission_mode():
     asyncio.run(scenario())
 
 
+def _block_text(w) -> str:
+    if isinstance(w, _TextBlock):
+        return w._body
+    if isinstance(w, Static):
+        return str(w.content)
+    return "".join(_block_text(c) for c in w.children)
+
+
 def _flatten(app) -> str:
-    return "".join(str(w.content) for w in app.query_one("#conv").children)
+    return "".join(_block_text(w) for w in app.query_one("#conv").children)
 
 
 def _plain(text) -> str:
@@ -250,7 +258,7 @@ def test_submit_streams_single_block_and_no_duplicate():
             flat = _flatten(app)
             assert "hello" in flat
             assert flat.count("hi there") == 1
-            blocks = [str(w.content) for w in app.query_one("#conv").children]
+            blocks = [_block_text(w) for w in app.query_one("#conv").children]
             body_blocks = [b for b in blocks if "hi there" in b]
             assert len(body_blocks) == 1
     asyncio.run(scenario())
@@ -369,7 +377,7 @@ def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
             for _ in range(5):
                 await pilot.pause()
             conv = app.query_one("#conv")
-            blocks = [str(w.content) for w in conv.children]
+            blocks = [_block_text(w) for w in conv.children]
             assert "\u273b Worked for" in blocks[-1]
             assert "inner monologue" not in "".join(blocks)
             assert "answer" in "".join(blocks)
@@ -581,7 +589,7 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
                                            data={"delta": "[/bold] [x] data"}))
             await pilot.pause()
-            assert "\\[/bold] \\[x] data" in _flatten(app)
+            assert "[/bold] [x] data" in _flatten(app)
             from pyclaw.tui import _ToolBlock
             block = _ToolBlock("Bash", '{"cmd": "[x]"}')
             await app._conv().mount(block)
@@ -740,7 +748,7 @@ def test_body_and_tools_keep_chronological_order():
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
-            children = [str(w.content) for w in app.query_one("#conv").children]
+            children = [_block_text(w) for w in app.query_one("#conv").children]
             part1 = [i for i, c in enumerate(children) if "part1" in c]
             part2 = [i for i, c in enumerate(children) if "part2" in c]
             tool = [i for i, c in enumerate(children) if "[bold]k[/]" in c]
@@ -861,7 +869,7 @@ def test_blank_deltas_do_not_create_empty_blocks():
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
-            blocks = [str(w.content) for w in app.query_one("#conv").children]
+            blocks = [_block_text(w) for w in app.query_one("#conv").children]
             assert "answer" in blocks[-2]
             assert "Worked for" in blocks[-1]
             assert all(b.strip() for b in blocks)
@@ -945,8 +953,8 @@ class _TwoTurnTeam(_FakeTeam):
 
 def test_second_turn_reuses_the_single_work_line():
     def work_lines(app):
-        return [str(w.content) for w in app.query_one("#conv").children
-                if "Worked for" in str(w.content)]
+        return [t for w in app.query_one("#conv").children
+                if "Worked for" in (t := _block_text(w))]
 
     async def scenario():
         async with PyClawApp(builder=lambda: _TwoTurnTeam()).run_test() as pilot:
@@ -1421,8 +1429,6 @@ def test_every_spinner_verb_renders_on_one_line():
 
 
 def test_leading_blank_lines_do_not_orphan_the_bullet():
-    from pyclaw.tui import _TextBlock
-
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
@@ -1431,10 +1437,12 @@ def test_leading_blank_lines_do_not_orphan_the_bullet():
             await app._conv().mount(block)
             block.set_body("\n\nhello there")
             await pilot.pause()
-            return str(block.content), block._body
+            bullet = str(block.query_one(".text-bullet", Static).content)
+            return bullet, block._display(), block._body
 
-    shown, body = asyncio.run(scenario())
-    assert shown == "\u23fa hello there"
+    bullet, shown, body = asyncio.run(scenario())
+    assert bullet.strip() == "\u23fa"
+    assert shown == "hello there"
     assert body == "\n\nhello there"
 
 
