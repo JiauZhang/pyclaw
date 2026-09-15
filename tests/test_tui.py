@@ -1266,7 +1266,7 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
                                        rememberable=False)
             await app._conv().mount(locked)
             await pilot.pause()
-            text = str(locked.content)
+            text = str(locked.query_one("#perm-body", Static).content)
             assert "don't ask again" not in text
             assert "2. No" in text
             assert locked._rememberable is False
@@ -1275,7 +1275,7 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
                                        rule="Edit")
             await app._conv().mount(normal)
             await pilot.pause()
-            text = str(normal.content)
+            text = str(normal.query_one("#perm-body", Static).content)
             assert "don't ask again" in text
             assert "Edit" in text
     asyncio.run(scenario())
@@ -1384,6 +1384,86 @@ def test_subagent_output_with_brackets_does_not_break_the_tasks_pane():
     assert "render error" not in flat
     assert "Grep" in tasks
     assert "\\[/bold]" in tasks
+
+
+def test_permission_amend_saves_edited_rule():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task = asyncio.ensure_future(
+                app._ask_permission("Bash",
+                                    {"command": "git commit -m x"}))
+            for _ in range(4):
+                await pilot.pause()
+            prompt = next(w for w in app._conv().children
+                          if isinstance(w, _PermissionPrompt))
+            await pilot.press("tab")
+            await pilot.pause()
+            inp = prompt.query_one("#perm-amend", Input)
+            assert inp.display
+            assert inp.value == "Bash(git commit:*)"
+            inp.value = "Bash(git commit --amend:*)"
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice == ("dont_ask", "Bash(git commit --amend:*)")
+
+
+def test_permission_amend_escape_returns_to_options():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task = asyncio.ensure_future(
+                app._ask_permission("Edit", {"file_path": "a.txt"}))
+            for _ in range(4):
+                await pilot.pause()
+            prompt = next(w for w in app._conv().children
+                          if isinstance(w, _PermissionPrompt))
+            await pilot.press("tab")
+            await pilot.pause()
+            inp = prompt.query_one("#perm-amend", Input)
+            assert inp.display
+            assert inp.value == "Edit(./a.txt)"
+            await pilot.press("escape")
+            await pilot.pause()
+            assert not inp.display
+            await pilot.press("y")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()) == "approved"
+
+
+def test_permission_amend_empty_rule_approves_without_saving():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task = asyncio.ensure_future(
+                app._ask_permission("Bash", {"command": "npm ci"}))
+            for _ in range(4):
+                await pilot.pause()
+            prompt = next(w for w in app._conv().children
+                          if isinstance(w, _PermissionPrompt))
+            await pilot.press("tab")
+            await pilot.pause()
+            inp = prompt.query_one("#perm-amend", Input)
+            inp.value = ""
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()) == "approved"
 
 
 def test_permission_prompt_resolves_through_the_app():

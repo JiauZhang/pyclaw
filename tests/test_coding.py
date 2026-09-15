@@ -456,10 +456,35 @@ def test_dont_ask_persists_allow():
 
         g = PermissionController(mode="default", cwd=d, request=once)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
-        assert "Edit" in g._allow
+        assert "Edit(./a.txt)" in g._allow
         assert g.decide("Edit", {"file_path": "a.txt"}) == "allow"
         data = json.read(Path(d) / ".pyclaw" / "settings.local.json")
-        assert data["permissions"]["allow"] == ["Edit"]
+        assert data["permissions"]["allow"] == ["Edit(./a.txt)"]
+
+
+def test_suggested_path_rule():
+    from pyclaw.tools.coding.permission import suggested_path_rule
+    assert suggested_path_rule("Edit", {"file_path": "a.txt"},
+                               "/w") == "Edit(./a.txt)"
+    assert suggested_path_rule("Read", {"path": "./docs/x.md"},
+                               "/w") == "Read(./docs/x.md)"
+    assert suggested_path_rule("Edit", {}, "/w") is None
+    assert suggested_path_rule("Edit", {"file_path": "."}, "/w") is None
+
+
+def test_authorize_accepts_amended_rule():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def amend(name, inp):
+            return ("dont_ask", "Bash(git commit --amend:*)")
+
+        g = PermissionController(mode="default", cwd=d, request=amend)
+        ok = asyncio.run(g.authorize(
+            "Bash", {"command": "git commit --amend -m x"}))
+        assert ok is True
+        assert "Bash(git commit --amend:*)" in g._allow
+        assert g.decide("Bash",
+                        {"command": "git commit --amend -m x"}) == "allow"
 
 
 def test_suggested_rule_prefers_two_word_prefix():

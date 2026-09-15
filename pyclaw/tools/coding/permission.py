@@ -124,6 +124,22 @@ def _path_fields(input) -> list[str]:
     return fields
 
 
+def suggested_path_rule(tool_name: str, tool_input, cwd) -> str | None:
+    fields = _path_fields(tool_input)
+    if not fields:
+        return None
+    raw = str(fields[0]).strip()
+    if raw.startswith(('~', '/')):
+        try:
+            raw = os.path.relpath(os.path.expanduser(raw), str(cwd))
+        except (OSError, ValueError):
+            return None
+    rel = raw.lstrip('./')
+    if not rel:
+        return None
+    return f'{tool_name}(./{rel})'
+
+
 def _user_settings_file() -> Path:
     from pyclaw import __pyclaw_home__
     return Path(__pyclaw_home__) / 'settings.json'
@@ -226,13 +242,20 @@ class PermissionController:
         except OSError:
             pass
 
-    def remember_allow(self, tool_name: str, tool_input=None):
-        rule = tool_name
-        if tool_name == BASH_TOOL:
-            command = _command_of(tool_input)
-            if not command:
-                return
-            rule = suggested_rule(command) or f'Bash({" ".join(command.split())})'
+    def remember_allow(self, tool_name: str, tool_input=None, rule=None):
+        if rule is None:
+            rule = tool_name
+            if tool_name == BASH_TOOL:
+                command = _command_of(tool_input)
+                if not command:
+                    return
+                rule = (suggested_rule(command)
+                        or f'Bash({" ".join(command.split())})')
+            else:
+                path_rule = suggested_path_rule(tool_name, tool_input,
+                                                self.cwd)
+                if path_rule:
+                    rule = path_rule
         if rule not in self._allow:
             self._allow.append(rule)
             self._layers.append(('allow', rule, 'session'))
@@ -302,8 +325,14 @@ class PermissionController:
                     'reason': f'{tool_name} needs approval but no app is '
                               f'present to ask.'}
         choice = await self.request(tool_name, tool_input)
-        if choice == 'dont_ask' and self._rememberable(tool_name, tool_input):
-            self.remember_allow(tool_name, tool_input)
+        rule = None
+        if isinstance(choice, tuple):
+            choice, rule = choice
+        if choice == 'dont_ask':
+            if rule:
+                self.remember_allow(tool_name, tool_input, rule=rule)
+            elif self._rememberable(tool_name, tool_input):
+                self.remember_allow(tool_name, tool_input)
         if choice in ('approved', 'dont_ask'):
             return True
         return {'decision': 'block', 'reason': f'{tool_name} was not approved.'}

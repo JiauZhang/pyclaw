@@ -962,7 +962,7 @@ class PermissionsScreen(Screen):
         self._refresh_body()
 
 
-class _PermissionPrompt(Static):
+class _PermissionPrompt(Vertical):
 
     can_focus = True
     BINDINGS = [
@@ -972,18 +972,24 @@ class _PermissionPrompt(Static):
         ("down", "move_down", "Next option"),
         ("enter", "choose", "Confirm"),
         ("escape", "cancel", "Cancel"),
+        ("tab", "amend", "Amend rule"),
     ]
 
     def __init__(self, tool_name: str, tool_input, cwd: str = ".",
                  rememberable: bool = True, rule: str = "", **kw):
-        super().__init__(markup=True, **kw)
+        super().__init__(classes="permission", **kw)
         self._tool = tool_name
         self._input = tool_input
         self._cwd = cwd
         self._rememberable = rememberable
         self._rule = rule
         self._selected = 0
+        self._amending = False
         self.on_choice = None
+
+    def compose(self) -> ComposeResult:
+        yield Static("", id="perm-body", markup=True)
+        yield Input("", id="perm-amend")
 
     def on_mount(self):
         self._draw()
@@ -1002,6 +1008,13 @@ class _PermissionPrompt(Static):
         return options
 
     def _draw(self):
+        body = self.query_one("#perm-body", Static)
+        if self._amending:
+            body.update(
+                f"[#B1B9F9]{BULLET}[/] [bold]Amend rule[/bold]\n"
+                f"[dim]  Esc to cancel \u00b7 enter to approve "
+                f"with this rule[/]")
+            return
         args = _tool_use_args(self._tool, self._input, self._cwd)
         lines = [f"[#B1B9F9]{BULLET}[/] [bold]Tool use[/bold]",
                  f"  {escape(_display_name(self._tool))}"
@@ -1012,29 +1025,66 @@ class _PermissionPrompt(Static):
             row = escape(f"  {marker} {index + 1}. {label}")
             lines.append(f"[#B1B9F9]{row}[/]" if index == self._selected
                          else f"[dim]{row}[/]")
-        lines.append("[dim]  Esc to cancel \u00b7 enter to confirm[/]")
-        self.update("\n".join(lines))
+        lines.append("[dim]  Esc to cancel \u00b7 enter to confirm"
+                     + (" \u00b7 tab to amend" if self._rememberable else "")
+                     + "[/]")
+        body.update("\n".join(lines))
 
     def action_move_up(self):
+        if self._amending:
+            return
         self._selected = max(0, self._selected - 1)
         self._draw()
 
     def action_move_down(self):
+        if self._amending:
+            return
         self._selected = min(len(self._options()) - 1, self._selected + 1)
         self._draw()
 
     async def action_choose(self):
+        if self._amending:
+            return
         options = self._options()
         await self._finish(options[min(self._selected, len(options) - 1)][0])
 
     async def action_pick_yes(self):
-        await self._finish('approved')
+        if not self._amending:
+            await self._finish('approved')
 
     async def action_pick_no(self):
-        await self._finish('denied')
+        if not self._amending:
+            await self._finish('denied')
 
     async def action_cancel(self):
+        if self._amending:
+            self._set_amend(False)
+            return
         await self._finish('denied')
+
+    def action_amend(self):
+        if not self._rememberable:
+            return
+        self._set_amend(not self._amending)
+
+    def _set_amend(self, on: bool):
+        self._amending = on
+        inp = self.query_one("#perm-amend", Input)
+        inp.display = on
+        if on:
+            inp.value = self._rule
+            inp.focus()
+        else:
+            self.focus()
+        self._draw()
+
+    async def on_input_submitted(self, event: Input.Submitted):
+        event.stop()
+        rule = event.value.strip()
+        if rule:
+            await self._finish(('dont_ask', rule))
+        else:
+            await self._finish('approved')
 
     async def _finish(self, decision: str):
         if self.on_choice is not None:
@@ -1074,6 +1124,10 @@ class PyClawApp(App[None]):
     .user { background: $user-message; }
     .diff { border-top: dashed $subtle; border-bottom: dashed $subtle;
             border-left: none; border-right: none; padding: 0 1; }
+    .permission { width: 100%; margin-bottom: 1; }
+    #perm-amend { display: none; width: 100%; height: 1; margin-top: 1;
+                  border: round $permission; background: $background;
+                  color: $text; padding: 0 1; }
     .logo { width: auto; margin-bottom: 1; color: $claude; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }
@@ -1784,6 +1838,9 @@ class PyClawApp(App[None]):
         if tool_name == 'Bash':
             from pyclaw.tools.coding.shell_rules import suggested_rule
             rule = suggested_rule(str(inp.get('command') or '')) or ""
+        else:
+            from pyclaw.tools.coding.permission import suggested_path_rule
+            rule = suggested_path_rule(tool_name, inp, self._cwd()) or ""
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
                                    rememberable=bool(rule) or tool_name != 'Bash',
                                    rule=rule)
