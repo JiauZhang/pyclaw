@@ -1,14 +1,46 @@
 from __future__ import annotations
 
 import os
+import secrets
 import signal
 import subprocess
+import tempfile
+from pathlib import Path
 
 from chatchat.tool import tool
 
-BASH_DEFAULT_TIMEOUT_MS = 120_000
-BASH_MAX_TIMEOUT_MS = 600_000
-BASH_MAX_OUTPUT_CHARS = 30_000
+from .shell_rules import split_commands
+
+DEFAULT_TIMEOUT_MS = 120_000
+MAX_TIMEOUT_MS = 600_000
+MAX_OUTPUT_DEFAULT = 30_000
+MAX_OUTPUT_UPPER_LIMIT = 150_000
+
+
+def _env_int(name: str, fallback: int, upper: int | None = None) -> int:
+    raw = os.environ.get(name)
+    if raw:
+        try:
+            parsed = int(str(raw).strip())
+        except ValueError:
+            parsed = 0
+        if parsed > 0:
+            return min(parsed, upper) if upper else parsed
+    return fallback
+
+
+def get_default_timeout_ms() -> int:
+    return _env_int('BASH_DEFAULT_TIMEOUT_MS', DEFAULT_TIMEOUT_MS)
+
+
+def get_max_timeout_ms() -> int:
+    return max(_env_int('BASH_MAX_TIMEOUT_MS', MAX_TIMEOUT_MS),
+               get_default_timeout_ms())
+
+
+def get_max_output_chars() -> int:
+    return _env_int('BASH_MAX_OUTPUT_LENGTH', MAX_OUTPUT_DEFAULT,
+                    MAX_OUTPUT_UPPER_LIMIT)
 
 EXIT_CODE_MESSAGES = {
     'grep': (1, 'No matches found'),
@@ -21,7 +53,9 @@ EXIT_CODE_MESSAGES = {
 
 
 def _base_name(command: str) -> str:
-    tokens = str(command).strip().split()
+    parts = split_commands(str(command))
+    text = parts[-1] if parts else str(command)
+    tokens = text.strip().split()
     return os.path.basename(tokens[0]) if tokens else ''
 
 
@@ -32,12 +66,27 @@ def _exit_message(command: str, code: int) -> str | None:
     return None
 
 
+def _persist_output(text: str) -> str | None:
+    try:
+        directory = Path(tempfile.gettempdir()) / 'pyclaw-bash-output'
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f'{secrets.token_hex(8)}.txt'
+        path.write_text(text, encoding='utf-8')
+        return str(path)
+    except OSError:
+        return None
+
+
 def _truncate(text: str) -> str:
-    if len(text) <= BASH_MAX_OUTPUT_CHARS:
+    limit = get_max_output_chars()
+    if len(text) <= limit:
         return text
-    head = text[:BASH_MAX_OUTPUT_CHARS]
-    rest = text[BASH_MAX_OUTPUT_CHARS:]
-    return f'{head}\n\n... [{rest.count(chr(10)) + 1} lines truncated] ...'
+    rest = text[limit:]
+    note = f'{rest.count(chr(10)) + 1} lines truncated'
+    path = _persist_output(text)
+    if path:
+        note += f', full output: {path}'
+    return f'{text[:limit]}\n\n... [{note}] ...'
 
 
 def _clean(text: str) -> str:
@@ -64,8 +113,8 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
     text = str(command).strip()
     if not text:
         return 'Error: empty command.'
-    limit = BASH_DEFAULT_TIMEOUT_MS if not timeout_ms else int(timeout_ms)
-    limit = max(1, min(limit, BASH_MAX_TIMEOUT_MS))
+    limit = get_default_timeout_ms() if not timeout_ms else int(timeout_ms)
+    limit = max(1, min(limit, get_max_timeout_ms()))
     try:
         process = subprocess.Popen(
             text, shell=True, cwd=cwd, stdout=subprocess.PIPE,
@@ -105,7 +154,7 @@ def make_bash(cwd: str):
                 'timeout': {
                     'type': 'integer',
                     'description': 'Optional timeout in milliseconds '
-                                   f'(max {BASH_MAX_TIMEOUT_MS}).',
+                                   f'(max {get_max_timeout_ms()}).',
                 },
                 'description': {
                     'type': 'string',

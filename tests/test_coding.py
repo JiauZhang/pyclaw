@@ -220,6 +220,38 @@ def test_bash_truncates_large_output():
         assert len(out) < 40000
 
 
+def test_bash_exit_code_semantics_use_the_last_subcommand():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.txt").write_text("alpha\n")
+        t = _tools(d)
+        out = t["Bash"](command="cd . && grep zzz a.txt")
+        assert "No matches found" in out
+        assert "Exit code" not in out
+
+
+def test_bash_timeout_and_output_env_overrides(monkeypatch):
+    from pyclaw.tools.coding import shell
+    monkeypatch.setenv("BASH_DEFAULT_TIMEOUT_MS", "5000")
+    monkeypatch.setenv("BASH_MAX_TIMEOUT_MS", "1000")
+    assert shell.get_default_timeout_ms() == 5000
+    assert shell.get_max_timeout_ms() == 5000
+    monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", "999999999")
+    assert shell.get_max_output_chars() == shell.MAX_OUTPUT_UPPER_LIMIT
+
+
+def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
+    from pyclaw.tools.coding import shell
+    monkeypatch.setattr(shell.tempfile, "gettempdir",
+                        lambda: str(tmp_path / "scratch"))
+    monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", "200")
+    t = _tools(str(tmp_path))
+    out = t["Bash"](command="python3 -c \"print('y' * 500)\"")
+    assert "truncated" in out and "full output:" in out
+    path = out.split("full output: ")[1].split("]")[0]
+    assert len(Path(path).read_text(encoding="utf-8")) == 500
+
+
 def test_bash_rule_parse_and_match():
     assert parse_bash_rule("Bash(npm run test:*)") == ("prefix", "npm run test")
     assert parse_bash_rule("Bash(ls)") == ("exact", "ls")
