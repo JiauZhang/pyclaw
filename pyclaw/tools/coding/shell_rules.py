@@ -320,9 +320,6 @@ _SUBCOMMAND = re.compile(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 
 
 def suggested_rule(command) -> str | None:
-    """claude 的 don't-ask-again 建议规则：单命令优先两词前缀
-    （`git commit -m x` → `Bash(git commit:*)`），否则精确命令。
-    危险删除 / 无法安全解析 / 不安全 env 前缀 → 不建议保存（None）。"""
     text = _normalize(command)
     if not text or is_dangerous_removal(text):
         return None

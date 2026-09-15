@@ -83,7 +83,6 @@ def test_interaction_collapses_status_bursts_to_latest(tmp_path, monkeypatch):
         max_msg_len=1500, clock=clock,
     ))
 
-    # 两次状态在同一个 drain 周期内到达：只发最新的（思考中 被折叠掉）
     assert adapter.sent == ["🔧 调用工具 search", "done"]
 
 

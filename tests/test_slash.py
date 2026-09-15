@@ -153,7 +153,6 @@ def test_cost_command_with_pricing(monkeypatch):
 
 
 def test_mode_switch_commands_removed():
-    """对齐 claude：agent/team 模式只能由启动 flag 决定，slash 切换已移除。"""
     out = asyncio.run(_call("/agent", _fake_session()))
     assert "Unknown command" in out
     out = asyncio.run(_call("/team", _fake_session()))
@@ -220,16 +219,16 @@ def test_suggest_prefix_hits_first():
 
 def test_suggest_matches_alias_and_description():
     names = [c["name"] for c in slash.suggest("/h")]
-    assert "help" in names                       # 别名 h 前缀命中
+    assert "help" in names
     names = [c["name"] for c in slash.suggest("/tok")]
-    assert "cost" in names                       # 描述子串命中
+    assert "cost" in names
 
 
 def test_suggest_empty_query_lists_all_and_args_hide_menu():
     assert len(slash.suggest("/")) == len(slash.COMMANDS)
-    assert slash.suggest("/model x") == []       # 已输入实参 → 隐藏
+    assert slash.suggest("/model x") == []
     assert slash.suggest("/model ") == []
-    assert slash.suggest("hello") == []          # 非 / 开头
+    assert slash.suggest("hello") == []
 
 
 def test_suggest_case_insensitive():

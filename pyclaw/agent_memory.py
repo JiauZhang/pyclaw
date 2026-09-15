@@ -42,14 +42,11 @@ def load_instruction_files(cwd: str) -> list[dict]:
 
 
 def load_project_memory(cwd: str) -> str:
-    """claude CLAUDE.md 的等价物：用户级 ~/.pyclaw/PYCLAW.md 在前，
-    项目级由 cwd 向上收集、由近及远拼接（越近越贴上下文）。"""
     return '\n\n'.join(item['content']
                        for item in load_instruction_files(cwd))
 
 
 def init_project_memory(cwd: str) -> str:
-    """claude /init：生成项目级 PYCLAW.md 模板，已存在则不覆盖。"""
     target = Path(cwd) / 'PYCLAW.md'
     if target.exists():
         return f'already exists: {target}'

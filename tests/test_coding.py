@@ -408,8 +408,6 @@ def test_build_team_removes_bash_when_denied_by_bare_name():
 
 
 def test_build_team_mode_gating():
-    """对齐 claude：agent/team 模式只能启动时决定（--use-team），
-    instruction 随模式而定，前缀稳定不破坏 KV cache。"""
     from pyclaw import agents as agents_mod
     from pyclaw.agents import build_team
 
@@ -426,14 +424,12 @@ def test_build_team_mode_gating():
     (mode_a, session_a, mode_t, session_t, inst_a, inst_t) = asyncio.run(main())
     assert mode_a == "agent" and session_a == "agent"
     assert mode_t == "team" and session_t == "team"
-    assert "capable AI assistant" in inst_a          # agent_instruction
+    assert "capable AI assistant" in inst_a
     assert "leader of a task-executing team" in inst_t
     assert "create_agent" in inst_t and "create_agent" not in inst_a
 
 
 def test_build_team_tools_differ_by_mode():
-    """对齐 claude：协作工具只在 team 模式；create_agent（一次性 subagent，
-    claude 的 Agent 工具）两种模式都有。"""
     async def names(**kw):
         from pyclaw.agents import build_team
         with tempfile.TemporaryDirectory() as d:
@@ -480,10 +476,10 @@ def test_suggested_rule_exact_fallback():
 
 def test_suggested_rule_refuses_risky_commands():
     from pyclaw.tools.coding.shell_rules import suggested_rule
-    assert suggested_rule('rm -rf /') is None            # 危险删除
-    assert suggested_rule('FOO=bar npm test') is None    # 不安全 env 前缀
-    assert suggested_rule('echo `whoami`') is None       # 无法安全解析
-    assert suggested_rule('sudo rm x') == 'Bash(sudo rm x)'  # 裸 shell 只给精确
+    assert suggested_rule('rm -rf /') is None
+    assert suggested_rule('FOO=bar npm test') is None
+    assert suggested_rule('echo `whoami`') is None
+    assert suggested_rule('sudo rm x') == 'Bash(sudo rm x)'
 
 
 def test_dont_ask_saves_rule_to_local_settings():
@@ -497,7 +493,6 @@ def test_dont_ask_saves_rule_to_local_settings():
             g.authorize("Bash", {"command": "git commit -m x"})) is True
         data = json.read(Path(d) / ".pyclaw" / "settings.local.json")
         assert data["permissions"]["allow"] == ["Bash(git commit:*)"]
-        # 重启（新 controller）后不再问
         g2 = PermissionController(mode="default", cwd=d)
         assert g2.decide("Bash", {"command": "git commit -m x"}) == "allow"
 
@@ -514,7 +509,6 @@ def test_rules_load_from_user_and_local_settings(tmp_path, monkeypatch):
         local.parent.mkdir(parents=True)
         json.write(local, {"permissions": {"deny": ["Bash(npm run:*)"]}})
         g = perm.PermissionController(mode="default", cwd=d)
-        # local 层的 deny 覆盖 user 层的 allow（later source wins，deny 优先求值）
         assert g.decide("Bash", {"command": "npm run test"}) == "deny"
         assert g.decide("Bash", {"command": "curl http://x"}) == "deny"
         assert g.decide("Bash", {"command": "node server.js"}) == "ask"
@@ -545,7 +539,6 @@ def test_rules_load_project_shared_layer(tmp_path, monkeypatch):
         shared.parent.mkdir(parents=True)
         json.write(shared, {"permissions": {"deny": ["Bash(npm run:*)"]}})
         g = perm.PermissionController(mode="default", cwd=d)
-        # project 共享层在 user 之后加载：deny 覆盖 user 的 allow
         assert g.decide("Bash", {"command": "npm run test"}) == "deny"
         assert ('deny', 'Bash(npm run:*)', 'project') in g.rule_listing()
 
@@ -561,10 +554,8 @@ def test_remove_rule_deletes_from_saved_layer(tmp_path):
         assert g.remove_rule("Bash(a:*)") is True
         assert json.read(local)["permissions"]["allow"] == ["Bash(b:*)"]
         assert ('allow', 'Bash(a:*)', 'local') not in g.rule_listing()
-        assert g.decide("Bash", {"command": "a x"}) == "ask"   # 内存同步移除
-        # cli 层只读，不可删
+        assert g.decide("Bash", {"command": "a x"}) == "ask"
         assert g.remove_rule("Bash(curl:*)") is False
-        # 不存在的规则
         assert g.remove_rule("Bash(zzz:*)") is False
 
 
@@ -585,7 +576,6 @@ def test_session_remove_rule(tmp_path):
     assert asyncio.run(main()) is True
 
 
-# --- 后台任务（claude run_in_background / TaskOutput / TaskStop） ---
 
 def test_bash_run_in_background_returns_immediately():
     import time as _time
@@ -594,7 +584,7 @@ def test_bash_run_in_background_returns_immediately():
     started = _time.monotonic()
     out = bash(command="echo bg-done-42", run_in_background=True)
     elapsed = _time.monotonic() - started
-    assert elapsed < 5                       # 不等命令结束
+    assert elapsed < 5
     match = re.search(r"ID: (b[0-9a-z]{8})", out)
     assert match, out
     task_id = match.group(1)
@@ -657,7 +647,7 @@ def test_task_stop_kills_process_group():
         if task["process"].poll() is not None:
             break
         _time.sleep(0.1)
-    assert task["process"].poll() is not None   # 进程已死
+    assert task["process"].poll() is not None
     assert task["killed"] is True
 
 
@@ -716,7 +706,6 @@ def test_build_team_wires_task_notifications_to_lead():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             background.spawn(d, "exit 3")
-            # 唤醒语义：附件入队即驱动 turn，注入进 lead.messages
             for _ in range(50):
                 msgs = [m for m in team.lead.messages
                         if isinstance(m, dict)

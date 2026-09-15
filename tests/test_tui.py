@@ -513,8 +513,6 @@ def _transcript_text(app) -> str:
 
 
 def test_dynamic_text_with_brackets_renders_without_crash():
-    """回归：模型/工具输出里的 [] 会被当 markup 解析，直接把 TUI 炸退
-    （真机：MarkupError closing tag '[/bold]'）。动态内容必须 escape。"""
     from chatchat.hooks.events import RuntimeEvent
 
     async def scenario():
@@ -524,7 +522,6 @@ def test_dynamic_text_with_brackets_renders_without_crash():
             await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
                                            data={"delta": "[/bold] [x] data"}))
             await pilot.pause()
-            # rich 的 escape 把 [ 转成 \[：屏幕显示原文，但不再被解析为 markup
             assert "\\[/bold] \\[x] data" in _flatten(app)
             from pyclaw.tui import _ToolBlock
             block = _ToolBlock("Bash", '{"cmd": "[x]"}')
@@ -548,7 +545,7 @@ def test_slash_menu_shows_and_tab_completes():
             await pilot.press("tab")
             await pilot.pause()
             assert app.query_one("#input", Input).value == "/model "
-            assert not suggest.display          # 命令名 + 空格后菜单隐藏
+            assert not suggest.display
     asyncio.run(scenario())
 
 
@@ -562,13 +559,12 @@ def test_slash_menu_enter_executes_noarg_and_waits_for_args():
             await pilot.press("enter")
             for _ in range(4):
                 await pilot.pause()
-            assert app._session.permission_mode == "plan"   # 无参命令直接执行
+            assert app._session.permission_mode == "plan"
             assert app.query_one("#input", Input).value == ""
             await pilot.press(*"/model")
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            # 带参命令：Enter 只补全，停在输入框等参数
             assert app.query_one("#input", Input).value == "/model "
             assert not app.query_one("#suggest", Static).display
     asyncio.run(scenario())
@@ -587,13 +583,13 @@ def test_slash_menu_navigates_and_hides_for_plain_text():
             await pilot.press("down")
             await pilot.pause()
             assert app._suggest_selected == first + 1
-            await pilot.press("x")                # /cx 无匹配 → 隐藏
+            await pilot.press("x")
             await pilot.pause()
             assert not suggest.display
             await pilot.press("backspace", "backspace", "backspace")
             await pilot.pause()
-            assert not suggest.display            # 空输入 → 隐藏
-            await pilot.press("h", "i")           # 非 / 开头 → 不出现
+            assert not suggest.display
+            await pilot.press("h", "i")
             await pilot.pause()
             assert not suggest.display
     asyncio.run(scenario())
@@ -608,19 +604,18 @@ def test_ctrl_o_opens_transcript_and_q_exits():
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
-            assert "y" * 80 not in _flatten(app)      # 普通模式工具输出折叠
+            assert "y" * 80 not in _flatten(app)
             await pilot.press("ctrl+o")
             await pilot.pause()
             assert type(app.screen).__name__ == "TranscriptScreen"
-            assert "y" * 80 not in _transcript_text(app)   # 默认折叠为摘要
+            assert "y" * 80 not in _transcript_text(app)
             await pilot.press("ctrl+e")
             await pilot.pause()
-            assert "y" * 80 in _transcript_text(app)   # show all：输出全文
-            assert "x" * 80 in _transcript_text(app)   # input 全文
+            assert "y" * 80 in _transcript_text(app)
+            assert "x" * 80 in _transcript_text(app)
             await pilot.press("q")
             await pilot.pause()
             assert type(app.screen).__name__ != "TranscriptScreen"
-            # esc 同样可退出
             await pilot.press("ctrl+o")
             await pilot.pause()
             await pilot.press("escape")

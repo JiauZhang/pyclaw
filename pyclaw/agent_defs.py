@@ -26,8 +26,6 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
 
 
 def _parse_tools_field(raw: str) -> list[str] | None:
-    """claude 语义：省略/'' 视为继承全部由调用方决定，'*' = 全部，
-    其余按逗号拆分。返回 None 表示未指定。"""
     raw = (raw or '').strip()
     if not raw:
         return None
@@ -40,7 +38,7 @@ def _definition_from_md(text: str, all_tools: list):
     meta, body = _parse_frontmatter(text)
     name = meta.get('name')
     if not name:
-        return None      # claude：无 name 视为同目录参考文档，静默跳过
+        return None
     description = meta.get('description', '')
     raw_tools = _parse_tools_field(meta.get('tools', ''))
     by_name = {t.name: t for t in all_tools}
@@ -54,8 +52,6 @@ def _definition_from_md(text: str, all_tools: list):
 
 
 def load_agent_defs(cwd: str, all_tools: list) -> list[AgentDefinition]:
-    """加载 ~/.pyclaw/agents 与 <cwd>/.pyclaw/agents 下的 *.md 定义。
-    user 先、project 后（后注册者覆盖前者，claude 同序）；解析失败的文件跳过。"""
     defs: list[AgentDefinition] = []
     seen: set[Path] = set()
     for directory in (_user_agents_dir(), Path(cwd) / '.pyclaw' / 'agents'):

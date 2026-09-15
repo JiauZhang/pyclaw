@@ -73,7 +73,6 @@ class _TextBlock(Static):
 
     def set_body(self, text: str):
         self._body = text
-        # 模型输出是不可信文本：[] 会被当成 markup 解析炸掉渲染
         self.update(escape(text))
 
 
@@ -146,11 +145,6 @@ class _ToolBlock(Static):
 
 
 class TranscriptScreen(Screen):
-    """claude ctrl+o：独立 transcript 阅读屏。
-
-    verbose 渲染全部消息（工具 input/output 全文），thinking 只显示最后
-    一条 assistant 的（hidePastThinking）；q/esc/ctrl+o/ctrl+c 退出，
-    退出不改动主屏状态（claude 亦不恢复滚动位置）。"""
 
     BINDINGS = [("escape", "exit_transcript", "Back"),
                 ("q", "exit_transcript", "Back"),
@@ -195,7 +189,7 @@ class TranscriptScreen(Screen):
                     entries.append(f"[#D77757]{widget._name}[/] "
                                    f"{escape(summary)}")
             elif isinstance(widget, _ThinkingBlock):
-                continue          # thinking 统一取 transcript 最后一条
+                continue
             else:
                 entries.append(escape(str(widget.content)))
         thinking = app._turn_thinking()
@@ -304,7 +298,6 @@ class PyClawApp(App[None]):
                 ("ctrl+end", "jump_to_bottom", "Jump to bottom"),
                 Binding("shift+tab", "cycle_permission", "Cycle permission mode",
                         priority=True),
-                # slash 建议菜单打开时接管方向键/tab/esc（claude 的 typeahead）。
                 Binding("down", "suggest_next", "Next suggestion", priority=True),
                 Binding("up", "suggest_prev", "Previous suggestion", priority=True),
                 Binding("tab", "suggest_tab", "Complete suggestion", priority=True),
@@ -738,8 +731,6 @@ class PyClawApp(App[None]):
 
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
-        # claude：菜单打开时 Enter 补全选中项——带参命令停在输入框等参数，
-        # 无参命令直接执行。
         if self._suggest_items and text.startswith('/'):
             item = self._suggest_items[min(self._suggest_selected,
                                            len(self._suggest_items) - 1)]
@@ -881,7 +872,6 @@ class PyClawApp(App[None]):
         if tool_name == 'Bash':
             from pyclaw.tools.coding.shell_rules import suggested_rule
             rule = suggested_rule(str(inp.get('command') or '')) or ""
-        # 与 PermissionController._rememberable 同口径：建议规则存在才可记住
         prompt = _PermissionPrompt(tool_name, summary,
                                    rememberable=bool(rule) or tool_name != 'Bash',
                                    rule=rule if tool_name == 'Bash' else tool_name)
@@ -905,8 +895,6 @@ class PyClawApp(App[None]):
         if self._processing and not self._wrote_body:
             self.query_one("#input", Input).value = self._processing
             self._processing = None
-        # claude 语义：无 emoji 的纯文本，避免 emoji 宽度歧义把会话区/任务区
-        # 边框顶偏（U+26A0 U+FE0F 终端画 2 列，wcwidth 判宽不一致）。
         await self._append_block("[#FFC107]Interrupted by user[/]")
 
     def _begin_turn(self):

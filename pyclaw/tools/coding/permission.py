@@ -150,9 +150,6 @@ class PermissionController:
                  ask=(), deny=(), request=None):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
-        # claude 五层的最小子集：user → local（项目）→ cli；数组按序合并去重，
-        # 求值时 deny > ask > allow。runtime 里 "don't ask again" 记到 session 层
-        # 并持久化进 local 文件（claude 的 destination=localSettings）。
         self._layers: list[tuple[str, str, str]] = []
         self._layer_files = {
             'user': _user_settings_file(),
@@ -187,7 +184,6 @@ class PermissionController:
         return list(self._layers)
 
     def remove_rule(self, rule: str) -> bool:
-        """删除已保存层（user/project/local）里的规则；cli/session 只读。"""
         entry = next((e for e in self._layers
                       if e[1] == rule and e[2] in self._layer_files), None)
         if entry is None:

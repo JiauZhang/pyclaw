@@ -21,7 +21,6 @@ def test_load_user_then_project_nearest_first(tmp_path, monkeypatch):
     (nested / 'PYCLAW.md').write_text('nested rules', encoding='utf-8')
 
     text = load_project_memory(str(nested))
-    # user 在前；项目内由近及远（cwd 的最贴上下文，claude 同序）
     assert text.index('user rules') < text.index('nested rules')
     assert text.index('nested rules') < text.index('project root rules')
 

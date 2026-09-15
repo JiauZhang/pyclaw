@@ -303,8 +303,6 @@ def build_team(
     resolved = [t for t in resolved if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get('timeout', 120)
-    # 对齐 claude：agent/team 模式启动时定死（--use-team），不可运行时切换，
-    # 否则 instruction 变化会使请求前缀（KV cache）整体失效。
     inst = instruction or (team_instruction(names) if use_team
                            else agent_instruction(names))
     if gate.mode is PermissionMode.plan:

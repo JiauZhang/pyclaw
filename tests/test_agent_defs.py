@@ -2,7 +2,7 @@ import asyncio
 import tempfile
 from pathlib import Path
 
-from conippets import json  # noqa: F401  (保持与其它测试一致的导入习惯)
+from conippets import json  # noqa: F401
 
 from pyclaw.agent_defs import load_agent_defs
 from pyclaw.agents import build_team
@@ -50,14 +50,10 @@ def test_load_agent_defs_parses_and_resolves_tools():
         all_tools = build_coding_tools(d)
         defs = {x.agent_type: x for x in load_agent_defs(d, all_tools=all_tools)}
         assert set(defs) >= {'reviewer', 'researcher', 'planner'}
-        # tools 逗号列表按名匹配到真实工具
         assert {t.name for t in defs['reviewer'].tools} <= {t.name for t in all_tools}
         assert 'Read' in {t.name for t in defs['reviewer'].tools}
-        # '*' = 全部工具
         assert len(defs['researcher'].tools) == len(all_tools)
-        # 省略 tools = 继承全部
         assert len(defs['planner'].tools) == len(all_tools)
-        # body 是 system prompt
         assert 'strict code reviewer' in defs['reviewer'].system_prompt
         assert defs['reviewer'].description == \
             'Reviews code changes for correctness and style'
@@ -78,7 +74,6 @@ def test_load_agent_defs_skips_invalid_and_project_overrides_user(tmp_path,
                      REVIEWER.replace('strict code reviewer',
                                       'project-level reviewer'))
         defs = {x.agent_type: x for x in load_agent_defs(d, all_tools=[])}
-        # project 覆盖 user（later source wins，claude 同序）
         assert 'project-level reviewer' in defs['reviewer'].system_prompt
         assert 'reviewer' in defs and 'no-name' not in defs
 
@@ -93,6 +88,5 @@ def test_build_team_registers_agent_defs_and_lists_in_tool_description(tmp_path)
 
     defn, description = asyncio.run(main())
     assert defn.agent_type == 'reviewer'
-    # claude formatAgentLine：agent 列表（type + when-to-use）进工具描述供主模型选择
     assert 'reviewer' in description
     assert 'Reviews code changes' in description

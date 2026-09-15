@@ -22,7 +22,6 @@ _notifier = None
 
 
 def set_notifier(cb) -> None:
-    """注册任务完成回调（pyclaw 用它把 <task-notification> 排进 lead 附件）。"""
     global _notifier
     _notifier = cb
 
@@ -68,8 +67,6 @@ def adopt(command: str, process, output: Path) -> str:
 
 
 def spawn(cwd: str, command: str) -> str:
-    """claude Shell.ts 的对齐：任务 id 先生成，stdout/stderr 指向同一个
-    追加写文件（O_APPEND 原子交错），父进程随即释放句柄。"""
     task_id = _new_task_id()
     path = _output_path(task_id)
     handle = open(path, 'ab')
@@ -97,7 +94,6 @@ def _tail(path: Path, limit: int = TASK_OUTPUT_TAIL_CHARS) -> str:
 
 
 def cleanup_background_tasks():
-    """claude gracefulShutdown 语义：进程优雅退出时全部后台 shell SIGKILL。"""
     for task in _tasks.values():
         process = task['process']
         if process.poll() is None:

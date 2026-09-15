@@ -28,9 +28,6 @@ HELP = _help_text()
 
 
 def suggest(text: str) -> list[dict]:
-    """claude 的命令建议（最小子集）：输入以 / 开头且未带实参时，按
-    精确名 > 精确别名 > 前缀名 > 前缀别名 > 名字/描述子串排序返回。
-    大小写不敏感；命令后已输入实参则隐藏菜单。"""
     if not text.startswith('/'):
         return []
     query = text[1:]
