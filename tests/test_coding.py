@@ -212,6 +212,16 @@ def test_bash_timeout_kills_command():
         assert "timed out" in out
 
 
+def test_bash_timeout_moves_running_command_to_background():
+    with tempfile.TemporaryDirectory() as d:
+        t = _tools(d)
+        out = t["Bash"](command="echo start; sleep 2; echo done", timeout=300)
+        assert "background" in out
+        task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+        final = t["TaskOutput"](task_id=task_id, timeout=8000)
+        assert "done" in final
+
+
 def test_bash_truncates_large_output():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)

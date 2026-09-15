@@ -69,7 +69,8 @@ def _exit_message(command: str, code: int) -> str | None:
 def _persist_output(text: str) -> str | None:
     try:
         directory = Path(tempfile.gettempdir()) / 'pyclaw-bash-output'
-        directory.mkdir(parents=True, exist_ok=True)
+        if not directory.exists():
+            directory.mkdir(parents=True, exist_ok=True)
         path = directory / f'{secrets.token_hex(8)}.txt'
         path.write_text(text, encoding='utf-8')
         return str(path)
@@ -109,25 +110,60 @@ def _kill(process) -> None:
         process.kill()
 
 
+DISALLOWED_AUTO_BACKGROUND = frozenset({'sleep'})
+
+
+def _first_command(command: str) -> str:
+    parts = split_commands(str(command))
+    text = parts[0] if parts else str(command)
+    tokens = text.strip().split()
+    return os.path.basename(tokens[0]) if tokens else ''
+
+
+def autobackground_allowed(command: str) -> bool:
+    return _first_command(command) not in DISALLOWED_AUTO_BACKGROUND
+
+
+def _read_output(path) -> str:
+    try:
+        return path.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return ''
+
+
 def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
     text = str(command).strip()
     if not text:
         return 'Error: empty command.'
     limit = get_default_timeout_ms() if not timeout_ms else int(timeout_ms)
     limit = max(1, min(limit, get_max_timeout_ms()))
+    from .background import adopt, scratch_path
+    output_path = scratch_path()
     try:
-        process = subprocess.Popen(
-            text, shell=True, cwd=cwd, stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT, text=True, start_new_session=True)
+        handle = open(output_path, 'wb')
     except OSError as e:
         return f'Error: cannot run command: {e}'
     try:
-        output, _ = process.communicate(timeout=limit / 1000)
+        process = subprocess.Popen(
+            text, shell=True, cwd=cwd, stdout=handle,
+            stderr=subprocess.STDOUT, start_new_session=True)
+    except OSError as e:
+        return f'Error: cannot run command: {e}'
+    finally:
+        handle.close()
+    try:
+        process.wait(timeout=limit / 1000)
     except subprocess.TimeoutExpired:
+        if autobackground_allowed(text):
+            task_id = adopt(text, process, output_path)
+            return (f'Command timed out after {limit}ms and was moved to the '
+                    f'background with ID: {task_id}. Read its output with '
+                    f'TaskOutput.')
         _kill(process)
-        output, _ = process.communicate()
-        return _join(f'Error: command timed out after {limit}ms', _clean(output))
-    body = _clean(output)
+        process.wait()
+        return _join(f'Error: command timed out after {limit}ms',
+                     _clean(_read_output(output_path)))
+    body = _clean(_read_output(output_path))
     code = process.returncode
     if code == 0:
         return body or '(no output)'

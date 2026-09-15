@@ -44,10 +44,27 @@ def _new_task_id() -> str:
     return 'b' + ''.join(secrets.choice(_TASK_ID_ALPHABET) for _ in range(8))
 
 
-def _output_path(task_id: str) -> Path:
+def _tasks_dir() -> Path:
     directory = Path(tempfile.gettempdir()) / 'pyclaw-tasks'
-    directory.mkdir(exist_ok=True)
-    return directory / f'{task_id}.output'
+    if not directory.exists():
+        directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def scratch_path() -> Path:
+    return _tasks_dir() / f'{secrets.token_hex(8)}.output'
+
+
+def _output_path(task_id: str) -> Path:
+    return _tasks_dir() / f'{task_id}.output'
+
+
+def adopt(command: str, process, output: Path) -> str:
+    task_id = _new_task_id()
+    _tasks[task_id] = {'command': command, 'process': process,
+                       'output': output, 'killed': False}
+    threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
+    return task_id
 
 
 def spawn(cwd: str, command: str) -> str:
