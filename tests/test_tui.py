@@ -714,6 +714,73 @@ def test_at_typeahead_shows_files_and_tab_applies():
         asyncio.run(scenario(d))
 
 
+def test_ctrl_r_history_picker_filters_and_executes():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._history = ["explain this", "git status", "run tests"]
+            await pilot.press("ctrl+r")
+            await pilot.pause()
+            await pilot.pause()
+            from pyclaw.tui import HistorySearchScreen
+            assert isinstance(app.screen, HistorySearchScreen)
+            hs = app.screen.query_one("#hs-input", Input)
+            hs.value = "git"
+            await pilot.pause()
+            lst = app.screen.query_one("#hs-list", Static)
+            assert "git status" in str(lst.content)
+            assert "explain this" not in str(lst.content)
+            await pilot.press("enter")
+            for _ in range(6):
+                await pilot.pause()
+            assert not isinstance(app.screen, HistorySearchScreen)
+            assert "git status" in _flatten(app)
+
+    asyncio.run(scenario())
+
+
+def test_ctrl_r_history_picker_tab_accepts_without_submit():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._history = ["run tests", "git status"]
+            await pilot.press("ctrl+r")
+            await pilot.pause()
+            await pilot.pause()
+            hs = app.screen.query_one("#hs-input", Input)
+            hs.value = "run"
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            from pyclaw.tui import HistorySearchScreen
+            assert not isinstance(app.screen, HistorySearchScreen)
+            assert app.query_one("#input", Input).value == "run tests"
+            assert "run tests" not in _flatten(app)
+
+    asyncio.run(scenario())
+
+
+def test_ctrl_r_history_picker_escape_cancels():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._history = ["run tests"]
+            inp = app.query_one("#input", Input)
+            inp.value = "my draft"
+            await pilot.press("ctrl+r")
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            from pyclaw.tui import HistorySearchScreen
+            assert not isinstance(app.screen, HistorySearchScreen)
+            assert inp.value == "my draft"
+
+    asyncio.run(scenario())
+
+
 def test_at_typeahead_dir_keeps_navigating():
     from pathlib import Path
 

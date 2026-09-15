@@ -783,6 +783,93 @@ class HelpScreen(Screen):
         self.app.pop_screen()
 
 
+class HistorySearchScreen(Screen):
+
+    BINDINGS = [Binding("up", "prev", "Previous", priority=True),
+                Binding("down", "next", "Next", priority=True),
+                ("escape", "close", "Close"),
+                ("ctrl+c", "close", "Close"),
+                ("tab", "accept", "Accept")]
+
+    def __init__(self, owner, **kw):
+        super().__init__(**kw)
+        self._owner = owner
+        self._selected = 0
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="history"):
+            yield Input(placeholder="Search history\u2026", id="hs-input")
+            yield Static("", id="hs-list", markup=True)
+
+    def on_mount(self):
+        self.query_one("#hs-input", Input).focus()
+        self._refresh()
+
+    def _matches(self) -> list[str]:
+        query = self.query_one("#hs-input", Input).value
+        return [t for t in reversed(self._owner._history)
+                if not query or query in t]
+
+    def _refresh(self):
+        try:
+            widget = self.query_one("#hs-list", Static)
+        except Exception:
+            return
+        matches = self._matches()
+        if not matches:
+            widget.update("[dim]no matching history[/]")
+            return
+        self._selected = min(self._selected, len(matches) - 1)
+        start = max(0, min(self._selected - 3, len(matches) - 7))
+        window = matches[start:start + 7]
+        lines = []
+        for i, text in enumerate(window):
+            index = start + i
+            row = escape(text)
+            lines.append(f"[#B1B9F9]{row}[/]"
+                         if index == self._selected else f"[dim]{row}[/]")
+        widget.update("\n".join(lines))
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._selected = 0
+        self._refresh()
+
+    async def on_input_submitted(self, event: Input.Submitted) -> None:
+        event.stop()
+        await self._finish(True)
+
+    def action_accept(self):
+        asyncio.get_running_loop().create_task(self._finish(False))
+
+    def action_close(self):
+        self.app.pop_screen()
+
+    def action_prev(self):
+        matches = self._matches()
+        if matches:
+            self._selected = (self._selected - 1) % len(matches)
+            self._refresh()
+
+    def action_next(self):
+        matches = self._matches()
+        if matches:
+            self._selected = (self._selected + 1) % len(matches)
+            self._refresh()
+
+    async def _finish(self, execute: bool):
+        matches = self._matches()
+        if not matches:
+            self.app.pop_screen()
+            return
+        text = matches[self._selected]
+        inp = self._owner.query_one("#input", Input)
+        inp.value = text
+        inp.cursor_position = len(text)
+        self.app.pop_screen()
+        if execute:
+            await inp.action_submit()
+
+
 class _RuleList(VerticalScroll):
 
     BINDINGS = [("up", "move_up", "Up"), ("down", "move_down", "Down"),
@@ -996,6 +1083,11 @@ class PyClawApp(App[None]):
     #help { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #help > Static { width: 100%; margin-bottom: 1; }
     #transcript > Static { width: 100%; margin-bottom: 1; }
+    #history { width: 1fr; height: 1fr; background: $background;
+               padding: 0 1; }
+    #hs-input { height: 1; margin-bottom: 1; border: none;
+                background: $background; color: $text; }
+    #hs-list { width: 100%; height: auto; margin-bottom: 1; }
     #suggest { display: none; height: auto; max-height: 8; background: $background;
                margin: 0 1; padding: 0 1; }
     #tasks { display: none; height: auto; max-height: 12; background: $background;
@@ -1019,6 +1111,7 @@ class PyClawApp(App[None]):
                 ("ctrl+t", "toggle_tasks", "Show/hide tasks"),
                 ("ctrl+l", "redraw", "Redraw"),
                 ("ctrl+o", "toggle_transcript", "Transcript"),
+                ("ctrl+r", "history_search", "Search history"),
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
                 ("ctrl+home", "conv_scroll_top", "Scroll to top"),
@@ -1868,6 +1961,10 @@ class PyClawApp(App[None]):
 
     def action_toggle_transcript(self):
         self.push_screen(TranscriptScreen(self))
+
+    def action_history_search(self):
+        if self._history:
+            self.push_screen(HistorySearchScreen(self))
 
     def action_toggle_help(self):
         if isinstance(self.screen, HelpScreen):
