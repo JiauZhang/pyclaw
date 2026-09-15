@@ -7,8 +7,6 @@ COMMANDS = [
     {'name': 'memory', 'desc': 'Show loaded project memory (PYCLAW.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now (claude /compact)', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
-    {'name': 'tools', 'desc': 'List tools available in this session', 'hint': ''},
-    {'name': 'thinking', 'desc': 'Show or toggle thinking mode (on|off)', 'hint': '[on|off]'},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
     {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
@@ -79,22 +77,6 @@ def _status(session, session_key: str) -> str:
         f"{usage.total_tokens} total\n"
         f"Cost: {format_cost(_cost_of(session))}"
     )
-
-
-_TRUE = {'on', '1', 'true', 'yes'}
-_FALSE = {'off', '0', 'false', 'no'}
-
-
-def _handle_thinking(session, arg: str) -> str:
-    if not arg:
-        return f'Thinking: {"on" if session.thinking else "off"}'
-    if arg.lower() in _TRUE:
-        session.set_thinking(True)
-        return 'Thinking: on'
-    if arg.lower() in _FALSE:
-        session.set_thinking(False)
-        return 'Thinking: off'
-    return f'Invalid value: {arg}. Use on|off or leave empty to show current.'
 
 
 def _handle_permissions(session, arg: str) -> str:
@@ -177,10 +159,6 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
         return 'Conversation history cleared.'
     if cmd == 'status':
         return _status(session, session_key)
-    if cmd == 'tools':
-        return 'Available tools: ' + ', '.join(session.available_tools)
-    if cmd == 'thinking':
-        return _handle_thinking(session, arg)
     if cmd == 'permissions':
         return _handle_permissions(session, arg)
     if cmd == 'plan':

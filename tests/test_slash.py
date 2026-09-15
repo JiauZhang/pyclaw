@@ -5,8 +5,7 @@ import pytest
 from pyclaw import slash
 
 
-HELP_KEYWORDS = ("/help", "/clear", "/status", "/tools",
-                 "/thinking", "/model", "/cost")
+HELP_KEYWORDS = ("/help", "/clear", "/status", "/model", "/cost")
 
 
 class _Usage:
@@ -35,9 +34,6 @@ def _fake_session(**kwargs):
 
         def reset(self):
             self._reset = True
-
-        def set_thinking(self, on):
-            self.thinking = on
 
         def set_model(self, model):
             self.model = model
@@ -71,10 +67,10 @@ def test_clear_command():
     assert "cleared" in out.lower()
 
 
-def test_tools_command():
-    session = _fake_session()
-    out = asyncio.run(_call("/tools", session))
-    assert "a" in out and "b" in out
+def test_tools_and_thinking_commands_removed():
+    assert "/tools" not in slash.HELP and "/thinking" not in slash.HELP
+    assert "Unknown command" in asyncio.run(_call("/tools", _fake_session()))
+    assert "Unknown command" in asyncio.run(_call("/thinking", _fake_session()))
 
 
 def test_status_command():
@@ -82,26 +78,6 @@ def test_status_command():
     out = asyncio.run(_call("/status", session, session_key="k1"))
     assert "k1" in out
     assert "agent" in out
-
-
-def test_thinking_toggle_on_off():
-    session = _fake_session()
-    assert "on" in asyncio.run(_call("/thinking on", session))
-    assert session.thinking is True
-    assert "off" in asyncio.run(_call("/thinking off", session))
-    assert session.thinking is False
-
-
-def test_thinking_without_arg_reports_state():
-    session = _fake_session(thinking=True)
-    out = asyncio.run(_call("/thinking", session))
-    assert "on" in out
-
-
-def test_thinking_invalid_value():
-    session = _fake_session()
-    out = asyncio.run(_call("/thinking maybe", session))
-    assert "Invalid" in out
 
 
 def test_status_includes_usage_and_cost():

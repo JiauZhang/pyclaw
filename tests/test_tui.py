@@ -231,11 +231,11 @@ def test_slash_renders_block():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "/tools"
+            app.query_one(Input).value = "/status"
             await pilot.press("enter")
             await pilot.pause()
             flat = _flatten(app)
-            assert "k" in flat
+            assert "Provider: p" in flat
     asyncio.run(scenario())
 
 
