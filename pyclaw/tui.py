@@ -842,7 +842,8 @@ class PyClawApp(App[None]):
     async def action_cycle_permission(self):
         if self._session is None:
             return
-        nxt = next_mode(self._session.permission_mode)
+        nxt = next_mode(self._session.permission_mode,
+                        bypass_available=self._session.bypass_available)
         self._session.set_permission_mode(nxt.value)
         self._render_status()
 
@@ -905,8 +906,8 @@ class PyClawApp(App[None]):
         cached = (u.prompt_tokens_details or {}).get('cached_tokens', 0)
         think = "[#D77757]on[/]" if s.thinking else "off"
         perm = s.permission_mode
-        perm_color = {"plan": "#B1B9F9", "acceptEdits": "#4EBA65"
-                      }.get(perm, "#9A9A9A")
+        perm_color = {"plan": "#B1B9F9", "acceptEdits": "#4EBA65",
+                      "bypassPermissions": "#FF6B80"}.get(perm, "#9A9A9A")
         cache_display = (f"[#4EBA65]{self._fmt(cached)}[/] cached"
                          if cached else f"{self._fmt(cached)} cached")
         self.query_one("#status", Static).update(

@@ -76,11 +76,13 @@ def test_write_and_multi_edit():
 
 
 def test_mode_parse_and_cycle():
-    for m in ("default", "acceptEdits", "plan"):
+    for m in ("default", "acceptEdits", "plan", "bypassPermissions"):
         assert parse_mode(m).value == m
     assert next_mode("default").value == "acceptEdits"
     assert next_mode("acceptEdits").value == "plan"
     assert next_mode("plan").value == "default"
+    assert next_mode("plan", bypass_available=True).value == "bypassPermissions"
+    assert next_mode("bypassPermissions").value == "default"
 
 
 def test_decide_matrix():
@@ -90,7 +92,7 @@ def test_decide_matrix():
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Write", {"file_path": "../x"}) == "ask"
         assert g.decide("Read", {"file_path": "../x"}) == "ask"
-        assert g.decide("datetime", {}) == "allow"
+        assert g.decide("datetime", {}) == "ask"
 
         plan = PermissionController(mode="plan", cwd=d)
         assert plan.decide("Edit", {"file_path": "a.txt"}) == "deny"
@@ -98,6 +100,20 @@ def test_decide_matrix():
 
         ae = PermissionController(mode="acceptEdits", cwd=d)
         assert ae.decide("Edit", {"file_path": "a.txt"}) == "allow"
+
+
+def test_bypass_permissions_allows_unless_a_rule_says_otherwise():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="bypassPermissions", cwd=d)
+        assert g.decide("Edit", {"file_path": "../outside"}) == "allow"
+        assert g.decide("Bash", {"command": "python3 x.py"}) == "allow"
+        assert g.decide("datetime", {}) == "allow"
+
+        ruled = PermissionController(mode="bypassPermissions", cwd=d,
+                                     deny=["Bash(rm:*)"],
+                                     ask=["Bash(git push:*)"])
+        assert ruled.decide("Bash", {"command": "rm -rf x"}) == "deny"
+        assert ruled.decide("Bash", {"command": "git push origin"}) == "ask"
 
 
 def test_deny_removes_tool_and_precedence():
@@ -108,6 +124,19 @@ def test_deny_removes_tool_and_precedence():
         g2 = PermissionController(mode="default", cwd=d,
                                   deny=["Edit"], allow=["Edit"])
         assert g2.decide("Edit", {"file_path": "a.txt"}) == "deny"
+
+
+def test_non_bash_tool_rules_match_their_path_argument():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="default", cwd=d,
+                                 deny=["Read(./secret.txt)"])
+        assert g.decide("Read", {"file_path": "secret.txt"}) == "deny"
+        assert g.decide("Read", {"file_path": "notes.txt"}) == "allow"
+
+        scoped = PermissionController(mode="default", cwd=d,
+                                      allow=["Edit(./src/**)"])
+        assert scoped.decide("Edit", {"file_path": "src/a.py"}) == "allow"
+        assert scoped.decide("Edit", {"file_path": "other/a.py"}) == "ask"
 
 
 def test_ask_flow_authorize():
@@ -233,6 +262,14 @@ def test_bash_read_only_detection():
     assert not is_read_only("cd /tmp && git status")
     assert not is_read_only("python3 -c 'x'")
     assert not is_read_only("rm a.txt")
+    assert is_read_only("git branch")
+    assert is_read_only("git tag")
+    assert is_read_only("git reflog")
+    assert not is_read_only("git branch -D main")
+    assert not is_read_only("git tag -d v1")
+    assert not is_read_only("git remote add origin url")
+    assert not is_read_only("git remote set-url origin url")
+    assert not is_read_only("git reflog expire --all")
 
 
 def test_bash_decision_order_deny_ask_allow_readonly():

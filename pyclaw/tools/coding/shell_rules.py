@@ -25,6 +25,15 @@ GIT_READ_ONLY_COMMANDS = frozenset({
     'blame', 'ls-files', 'remote', 'merge-base', 'rev-parse', 'rev-list',
     'describe', 'cat-file', 'for-each-ref', 'grep', 'tag', 'branch',
 })
+GIT_READ_ONLY_SUBCOMMAND_FLAGS = {
+    'branch': frozenset({'-a', '--all', '-r', '--remotes', '-l', '--list',
+                         '-v', '-vv', '--verbose', '--no-color', '--column',
+                         '--merged', '--no-merged', '--points-at'}),
+    'tag': frozenset({'-l', '--list', '-n', '--no-color', '--column',
+                      '--merged', '--no-merged', '--points-at'}),
+    'reflog': frozenset({'show', '--no-color', '--all'}),
+    'remote': frozenset({'-v', '--verbose', 'show', 'get-url'}),
+}
 DOCKER_READ_ONLY_COMMANDS = frozenset({'ps', 'images'})
 EDIT_COMMANDS = frozenset({'mkdir', 'touch', 'rm', 'rmdir', 'mv', 'cp', 'sed'})
 FIND_WRITING_FLAGS = frozenset({
@@ -239,7 +248,10 @@ def _part_read_only(command: str) -> bool:
         return False
     name, args = tokens[0], tokens[1:]
     if name == 'git':
-        return bool(args) and args[0] in GIT_READ_ONLY_COMMANDS
+        if not args or args[0] not in GIT_READ_ONLY_COMMANDS:
+            return False
+        allowed = GIT_READ_ONLY_SUBCOMMAND_FLAGS.get(args[0])
+        return allowed is None or all(a in allowed for a in args[1:])
     if name == 'docker':
         return bool(args) and args[0] in DOCKER_READ_ONLY_COMMANDS
     if name == 'find':

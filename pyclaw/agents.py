@@ -361,6 +361,10 @@ class Session:
     def permission_mode(self) -> str:
         return self._gate.mode.value if self._gate is not None else 'default'
 
+    @property
+    def bypass_available(self) -> bool:
+        return bool(self._gate is not None and self._gate.bypass_available)
+
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:
             raise ValueError('Permission gate not available for this session.')

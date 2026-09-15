@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import fnmatch
+import os
 from enum import Enum
 from pathlib import Path
 
@@ -19,6 +21,8 @@ _MODE_NAMES = {
     'acceptEdits': 'acceptEdits',
     'accept_edits': 'acceptEdits',
     'plan': 'plan',
+    'bypassPermissions': 'bypassPermissions',
+    'bypass_permissions': 'bypassPermissions',
 }
 
 
@@ -26,24 +30,27 @@ class PermissionMode(str, Enum):
     default = 'default'
     accept_edits = 'acceptEdits'
     plan = 'plan'
+    bypass_permissions = 'bypassPermissions'
 
 
 def parse_mode(value) -> PermissionMode:
     key = str(value).strip()
     if key not in _MODE_NAMES:
-        raise ValueError(f'Unknown permission mode: {value}. '
-                         f'Use one of: default, acceptEdits, plan.')
+        raise ValueError(f'Unknown permission mode: {value}. Use one of: '
+                         f'default, acceptEdits, plan, bypassPermissions.')
     return PermissionMode(_MODE_NAMES[key])
 
 
-_MODE_CYCLE = ['default', 'acceptEdits', 'plan']
-
-
-def next_mode(value) -> PermissionMode:
+def next_mode(value, bypass_available: bool = False) -> PermissionMode:
     cur = parse_mode(value)
-    i = _MODE_CYCLE.index(cur.value)
-    nxt = _MODE_CYCLE[(i + 1) % len(_MODE_CYCLE)]
-    return PermissionMode(nxt)
+    if cur is PermissionMode.default:
+        return PermissionMode.accept_edits
+    if cur is PermissionMode.accept_edits:
+        return PermissionMode.plan
+    if cur is PermissionMode.plan:
+        return (PermissionMode.bypass_permissions if bypass_available
+                else PermissionMode.default)
+    return PermissionMode.default
 
 
 def _command_of(tool_input) -> str:
@@ -53,7 +60,7 @@ def _command_of(tool_input) -> str:
 
 
 def _rule_matches(rules, tool_name: str, tool_input=None,
-                  env_all: bool = False) -> bool:
+                  env_all: bool = False, cwd=None) -> bool:
     if not rules:
         return False
     command = _command_of(tool_input) if tool_name == BASH_TOOL else ''
@@ -63,11 +70,49 @@ def _rule_matches(rules, tool_name: str, tool_input=None,
             continue
         if not arg:
             return True
-        if tool_name != BASH_TOOL:
-            return True
-        if command and bash_rule_matches(arg.rstrip(')'), command, env_all):
+        if tool_name == BASH_TOOL:
+            if command and bash_rule_matches(arg.rstrip(')'), command,
+                                            env_all):
+                return True
+            continue
+        if _path_rule_matches(arg.rstrip(')'), tool_input, cwd):
             return True
     return False
+
+
+def _matches_pattern(pattern: str, target: str, cwd) -> bool:
+    if pattern.startswith('./'):
+        pattern = pattern[2:]
+    if pattern.endswith('/**'):
+        pattern = pattern[:-3]
+    pattern = pattern.rstrip('/')
+    if pattern in ('', '.'):
+        return True
+    target = str(target).strip()
+    if target.startswith('./'):
+        target = target[2:]
+    try:
+        absolute = Path(target)
+        if absolute.is_absolute() and cwd is not None:
+            target = os.path.relpath(absolute, cwd)
+    except (OSError, ValueError):
+        pass
+    target = target.lstrip('/')
+    if target == pattern or target.startswith(pattern + '/'):
+        return True
+    if '*' in pattern or '?' in pattern:
+        return (fnmatch.fnmatch(target, pattern)
+                or fnmatch.fnmatch(target, pattern + '/*'))
+    return False
+
+
+def _path_rule_matches(pattern: str, tool_input, cwd) -> bool:
+    if not isinstance(tool_input, dict) or cwd is None:
+        return False
+    fields = _path_fields(tool_input)
+    if not fields:
+        return False
+    return any(_matches_pattern(pattern, f, cwd) for f in fields)
 
 
 def _path_fields(input) -> list[str]:
@@ -132,6 +177,7 @@ class PermissionController:
         self._allow = merged['allow']
         self._ask = merged['ask']
         self._deny = merged['deny']
+        self.bypass_available = self.mode is PermissionMode.bypass_permissions
         self.request = request
 
     def allowed_tool(self, name: str) -> bool:
@@ -210,10 +256,6 @@ class PermissionController:
 
     def _decide_bash(self, tool_input) -> str:
         command = _command_of(tool_input)
-        if _rule_matches(self._deny, BASH_TOOL, tool_input, env_all=True):
-            return 'deny'
-        if _rule_matches(self._ask, BASH_TOOL, tool_input, env_all=True):
-            return 'ask'
         if is_dangerous_removal(command):
             return 'ask'
         if _rule_matches(self._allow, BASH_TOOL, tool_input):
@@ -226,13 +268,16 @@ class PermissionController:
         return 'ask'
 
     def decide(self, tool_name: str, tool_input) -> str:
+        env_all = tool_name == BASH_TOOL
+        if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd):
+            return 'deny'
+        if _rule_matches(self._ask, tool_name, tool_input, env_all, self.cwd):
+            return 'ask'
+        if self.mode is PermissionMode.bypass_permissions:
+            return 'allow'
         if tool_name == BASH_TOOL:
             return self._decide_bash(tool_input)
-        if _rule_matches(self._deny, tool_name, tool_input):
-            return 'deny'
-        if _rule_matches(self._ask, tool_name, tool_input):
-            return 'ask'
-        if _rule_matches(self._allow, tool_name, tool_input):
+        if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd):
             return 'allow'
         if tool_name in WRITE_TOOLS:
             if self.mode is PermissionMode.plan:
@@ -246,7 +291,7 @@ class PermissionController:
             if self._in_workspace(self.cwd, tool_input):
                 return 'allow'
             return 'allow' if self.mode is PermissionMode.plan else 'ask'
-        return 'allow'
+        return 'ask'
 
     async def authorize(self, tool_name: str, tool_input) -> bool | dict:
         decision = self.decide(tool_name, tool_input)
