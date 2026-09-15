@@ -122,18 +122,14 @@ def transcript_path(session_id) -> Path:
     return _session_dir(session_id) / "transcript.jsonl"
 
 
-def save_transcript(session_id, messages) -> None:
-    records = [json.dumps(m, ensure_ascii=False) for m in messages
-               if isinstance(m, dict)]
-    transcript_path(session_id).write_text(
-        "\n".join(records) + ("\n" if records else ""), encoding="utf-8")
+_ENTRY_META = ("uuid", "parentUuid")
 
 
-def load_transcript(session_id) -> list:
+def load_entries(session_id) -> list:
     path = transcript_path(session_id)
     if not path.exists():
         return []
-    records = []
+    entries = []
     for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
@@ -143,8 +139,61 @@ def load_transcript(session_id) -> list:
         except ValueError:
             continue
         if isinstance(record, dict):
-            records.append(record)
+            entries.append(record)
+    return entries
+
+
+def load_transcript(session_id) -> list:
+    return [{key: value for key, value in entry.items()
+             if key not in _ENTRY_META}
+            for entry in load_entries(session_id)]
+
+
+def _content_of(entry) -> dict:
+    return {key: value for key, value in entry.items()
+            if key not in _ENTRY_META}
+
+
+def _chained(payload, parent):
+    records = []
+    for message in payload:
+        record = dict(message)
+        record["uuid"] = uuid.uuid4().hex
+        record["parentUuid"] = parent
+        parent = record["uuid"]
+        records.append(record)
     return records
+
+
+def _append_records(path, records) -> None:
+    with path.open("a", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def _write_records(path, records) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as handle:
+        for record in records:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    os.replace(temporary, path)
+
+
+def save_transcript(session_id, messages) -> None:
+    path = transcript_path(session_id)
+    payload = [m for m in messages if isinstance(m, dict)]
+    entries = load_entries(session_id)
+    written = 0
+    while (written < len(entries) and written < len(payload)
+           and _content_of(entries[written]) == payload[written]):
+        written += 1
+    if written == len(payload) == len(entries):
+        return
+    if written and written == len(entries):
+        _append_records(path, _chained(payload[written:],
+                                       entries[-1].get("uuid")))
+        return
+    _write_records(path, _chained(payload, None))
 
 
 _session_loggers: dict[str, logging.Logger] = {}
@@ -290,7 +339,7 @@ def build_team(
 
 
 class Session:
-    def __init__(self, entity, session_id=None):
+    def __init__(self, entity, session_id=None, resume_from=None):
         self._team: Team = entity
         self._provider = entity.provider
         self._model = entity.model
@@ -300,6 +349,7 @@ class Session:
         self.name = entity.name
         self.deliver = None
         self.conv_session_id = session_id or entity.name
+        self.resume_from = resume_from
         self._conv_reply = ""
         self._conv_thinking = ""
         self._unreg = None
@@ -335,7 +385,7 @@ class Session:
             save_transcript(self.conv_session_id, self._team.transcript())
 
     def restore_transcript(self) -> int:
-        messages = load_transcript(self.conv_session_id)
+        messages = load_transcript(self.resume_from or self.conv_session_id)
         if messages:
             self._team.restore(messages)
         return len(messages)

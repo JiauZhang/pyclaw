@@ -303,11 +303,13 @@ class PyClawApp(App[None]):
             return bool(self._suggest_items)
         return True
 
-    def __init__(self, *, builder, session_id=None, resume=False):
+    def __init__(self, *, builder, session_id=None, resume=False,
+                 resume_from=None):
         super().__init__()
         self._builder = builder
         self._session_id = session_id
         self._resume = resume
+        self._resume_from = resume_from
         self._team = None
         self._session: Session | None = None
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -345,7 +347,8 @@ class PyClawApp(App[None]):
 
     async def on_mount(self):
         self._team = self._builder()
-        self._session = Session(self._team, session_id=self._session_id)
+        self._session = Session(self._team, session_id=self._session_id,
+                                resume_from=self._resume_from)
         self._session.attach_approval(self._ask_permission)
         self._unreg = register_runtime_handler(self._on_event)
         self._tasks_pane = Static("", markup=True)

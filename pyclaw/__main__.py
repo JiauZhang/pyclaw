@@ -75,13 +75,16 @@ async def start_server(args):
         raise
 
 
-def _cli_session_id(args) -> str:
+def _cli_session(args):
     from pyclaw.agents import resolve_session_id
+    key = ["cli", os.getcwd()]
     resume_id = getattr(args, "resume", None)
     if resume_id:
-        return resume_id
-    continue_flag = bool(getattr(args, "continue_session", False))
-    return resolve_session_id(["cli", os.getcwd()], rotate=not continue_flag)
+        return resolve_session_id(key, rotate=True), resume_id
+    if getattr(args, "continue_session", False):
+        previous = resolve_session_id(key, rotate=False)
+        return resolve_session_id(key, rotate=True), previous
+    return resolve_session_id(key, rotate=True), None
 
 
 def _cli_resume(args) -> bool:
@@ -91,11 +94,11 @@ def _cli_resume(args) -> bool:
 
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
-                      resume=False, allow=None, ask=None, deny=None,
-                      use_team=False) -> dict:
+                      resume=False, resume_from=None, allow=None, ask=None,
+                      deny=None, use_team=False) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
                       allow=allow, ask=ask, deny=deny, use_team=use_team)
-    session = Session(team, session_id=session_id)
+    session = Session(team, session_id=session_id, resume_from=resume_from)
     try:
         if resume:
             session.restore_transcript()
@@ -124,10 +127,11 @@ async def run_headless(args):
     if not provider or not model:
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
+    session_id, resume_from = _cli_session(args)
     out = await prompt_once(provider, model, args.print,
                             permission_mode=args.permission_mode,
-                            session_id=_cli_session_id(args),
-                            resume=_cli_resume(args),
+                            session_id=session_id, resume=_cli_resume(args),
+                            resume_from=resume_from,
                             allow=args.allow, ask=args.ask, deny=args.deny,
                             use_team=args.use_team)
     render_output(args.output, out)
@@ -143,12 +147,14 @@ def run_tui(args):
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
     from pyclaw.tui import PyClawApp
+    session_id, resume_from = _cli_session(args)
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
         allow=args.allow, ask=args.ask, deny=args.deny,
         use_team=args.use_team),
-        session_id=_cli_session_id(args),
-        resume=_cli_resume(args)).run()
+        session_id=session_id,
+        resume=_cli_resume(args),
+        resume_from=resume_from).run()
 
 
 async def run_channel_rebind(args):

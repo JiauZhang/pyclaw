@@ -37,9 +37,10 @@ class _FakeSession:
     thinking = False
     usage = _U()
 
-    def __init__(self, team, session_id=None):
+    def __init__(self, team, session_id=None, resume_from=None):
         self.team = team
         self.session_id = session_id
+        self.resume_from = resume_from
         self.restored = False
 
     def restore_transcript(self):

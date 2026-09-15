@@ -23,6 +23,36 @@ def test_transcript_skips_broken_lines(tmp_path, monkeypatch):
     assert agents.load_transcript("s1") == [{"role": "user", "content": "a"}]
 
 
+def test_transcript_appends_and_chains_uuids(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    first = [{"role": "user", "content": "a"},
+             {"role": "assistant", "content": "b"}]
+    agents.save_transcript("s1", first)
+    path = agents.transcript_path("s1")
+    size_after_first = path.stat().st_size
+
+    agents.save_transcript("s1", first + [{"role": "user", "content": "c"}])
+    entries = agents.load_entries("s1")
+    assert [e["content"] for e in entries] == ["a", "b", "c"]
+    assert entries[0]["parentUuid"] is None
+    assert entries[1]["parentUuid"] == entries[0]["uuid"]
+    assert entries[2]["parentUuid"] == entries[1]["uuid"]
+    assert path.stat().st_size > size_after_first
+
+    agents.save_transcript("s1", first + [{"role": "user", "content": "c"}])
+    assert len(agents.load_entries("s1")) == 3
+
+
+def test_transcript_rewrites_when_history_is_compacted(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.save_transcript("s1", [{"role": "user", "content": "a"},
+                                  {"role": "assistant", "content": "b"}])
+    agents.save_transcript("s1", [{"role": "user", "content": "summary"}])
+    entries = agents.load_entries("s1")
+    assert [e["content"] for e in entries] == ["summary"]
+    assert entries[0]["parentUuid"] is None
+
+
 def test_session_persists_and_restores_history(tmp_path, monkeypatch):
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     seen = []
@@ -62,18 +92,25 @@ def test_session_id_rotates_unless_continuing(tmp_path, monkeypatch):
         resume = None
         continue_session = True
 
-    first = __main__._cli_session_id(Fresh())
-    second = __main__._cli_session_id(Fresh())
+    first, source = __main__._cli_session(Fresh())
+    second, source2 = __main__._cli_session(Fresh())
     assert first != second
-    assert __main__._cli_session_id(Continue()) == second
+    assert source is None and source2 is None
+    third, previous = __main__._cli_session(Continue())
+    assert previous == second
+    assert third != second
 
 
-def test_session_id_uses_explicit_resume():
+def test_explicit_resume_forks_a_new_session(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+
     class Explicit:
         resume = "abc123"
         continue_session = False
 
-    assert __main__._cli_session_id(Explicit()) == "abc123"
+    session_id, source = __main__._cli_session(Explicit())
+    assert session_id != "abc123"
+    assert source == "abc123"
     assert __main__._cli_resume(Explicit()) is True
 
 
