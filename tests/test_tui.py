@@ -89,6 +89,20 @@ class _FakeTeam:
         return "\n\nhi there\n"
 
 
+class _ManyReadsTeam(_FakeTeam):
+
+    async def query(self, prompt, timeout=60):
+        from chatchat.hooks.events import emit
+        self.record("user", prompt)
+        for index in range(5):
+            emit(AGENT_TOOL_CALL, agent="lead", tool="Read",
+                 input={"file_path": f"f{index}.py"},
+                 tool_use_id=f"t{index}")
+        self.record("assistant", "done")
+        emit(AGENT_TURN_FINISHED, agent="lead")
+        return "done"
+
+
 class _ThinkTeam(_FakeTeam):
     async def query(self, prompt, timeout=60):
         from chatchat.hooks.events import emit
@@ -236,6 +250,42 @@ def test_slash_renders_block():
             await pilot.pause()
             flat = _flatten(app)
             assert "Provider: p" in flat
+    asyncio.run(scenario())
+
+
+def test_consecutive_read_calls_collapse_after_three():
+    async def scenario():
+        async with PyClawApp(
+                builder=lambda: _ManyReadsTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "go"
+            await pilot.press("enter")
+            for _ in range(8):
+                await pilot.pause()
+            flat = _flatten(app)
+            assert "2 more Read calls" in flat
+    asyncio.run(scenario())
+
+
+def test_transcript_ctrl_e_toggles_show_all():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "go"
+            await pilot.press("enter")
+            for _ in range(8):
+                await pilot.pause()
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            collapsed = _transcript_text(app)
+            assert "output:" not in collapsed
+
+            await pilot.press("ctrl+e")
+            await pilot.pause()
+            expanded = _transcript_text(app)
+            assert "output:" in expanded
     asyncio.run(scenario())
 
 
@@ -562,7 +612,10 @@ def test_ctrl_o_opens_transcript_and_q_exits():
             await pilot.press("ctrl+o")
             await pilot.pause()
             assert type(app.screen).__name__ == "TranscriptScreen"
-            assert "y" * 80 in _transcript_text(app)   # verbose：输出全文
+            assert "y" * 80 not in _transcript_text(app)   # 默认折叠为摘要
+            await pilot.press("ctrl+e")
+            await pilot.pause()
+            assert "y" * 80 in _transcript_text(app)   # show all：输出全文
             assert "x" * 80 in _transcript_text(app)   # input 全文
             await pilot.press("q")
             await pilot.pause()

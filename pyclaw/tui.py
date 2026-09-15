@@ -155,11 +155,13 @@ class TranscriptScreen(Screen):
     BINDINGS = [("escape", "exit_transcript", "Back"),
                 ("q", "exit_transcript", "Back"),
                 ("ctrl+o", "exit_transcript", "Back"),
-                ("ctrl+c", "exit_transcript", "Back")]
+                ("ctrl+c", "exit_transcript", "Back"),
+                ("ctrl+e", "toggle_show_all", "Show all")]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
         self._owner = owner
+        self._show_all = False
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="transcript"):
@@ -181,12 +183,17 @@ class TranscriptScreen(Screen):
                 entries.append(escape(widget._body or str(widget.content)))
                 last_text_index = len(entries) - 1
             elif isinstance(widget, _ToolBlock):
-                parts = [f"[#D77757]{widget._name}[/]"]
-                if widget._input:
-                    parts.append(f"input: {escape(widget._input)}")
-                if widget._output is not None:
-                    parts.append(f"output: {escape(widget._output)}")
-                entries.append("\n".join(parts))
+                if self._show_all:
+                    parts = [f"[#D77757]{widget._name}[/]"]
+                    if widget._input:
+                        parts.append(f"input: {escape(widget._input)}")
+                    if widget._output is not None:
+                        parts.append(f"output: {escape(widget._output)}")
+                    entries.append("\n".join(parts))
+                else:
+                    summary = _summarize(widget._input or '')
+                    entries.append(f"[#D77757]{widget._name}[/] "
+                                   f"{escape(summary)}")
             elif isinstance(widget, _ThinkingBlock):
                 continue          # thinking 统一取 transcript 最后一条
             else:
@@ -203,6 +210,13 @@ class TranscriptScreen(Screen):
 
     def action_exit_transcript(self):
         self.app.pop_screen()
+
+    async def action_toggle_show_all(self):
+        self._show_all = not self._show_all
+        scroll = self.query_one("#transcript", VerticalScroll)
+        await scroll.remove_children()
+        for entry in self._entries():
+            await scroll.mount(Static(entry, markup=True))
 
 
 class _PermissionPrompt(Static):
@@ -336,6 +350,9 @@ class PyClawApp(App[None]):
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
         self._suggest_dismissed: str | None = None
+        self._group_tool = ''
+        self._group_count = 0
+        self._group_block: Static | None = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
@@ -492,6 +509,7 @@ class PyClawApp(App[None]):
             self._live_text += delta
             self._update_live()
             self._wrote_body = True
+            self._reset_tool_group()
         elif ev.kind == AGENT_TOOL_CALL:
             self._note(name, tools=1, think=False)
             self._discard_think()
@@ -506,6 +524,7 @@ class PyClawApp(App[None]):
         elif ev.kind == AGENT_TURN_FINISHED:
             self._note(name, think=False, busy=False)
             self._discard_think()
+            self._reset_tool_group()
             if name == self._team.lead.name:
                 await self._frozen()
                 self._sync_tool_states()
@@ -530,8 +549,33 @@ class PyClawApp(App[None]):
                                ev.data.get("input", ""),
                                ev.data.get("tool_use_id", ""))
 
+    _GROUP_TOOLS = frozenset({'Read', 'Glob', 'Grep', 'LS'})
+    _GROUP_LIMIT = 3
+
+    def _reset_tool_group(self):
+        self._group_tool = ''
+        self._group_count = 0
+        self._group_block = None
+
     async def _mount_tool(self, name, raw_input, tool_use_id):
         input_text = raw_input if isinstance(raw_input, str) else str(raw_input)
+        if name in self._GROUP_TOOLS and name == self._group_tool:
+            self._group_count += 1
+            if self._group_count > self._GROUP_LIMIT:
+                extra = self._group_count - self._GROUP_LIMIT
+                label = f"[#9A9A9A]\u22ef {extra} more {name} calls[/]"
+                if self._group_block is None:
+                    self._group_block = Static(label)
+                    await self._conv().mount(self._group_block)
+                else:
+                    self._group_block.update(label)
+                await self._after_mount()
+                return
+        else:
+            self._reset_tool_group()
+            if name in self._GROUP_TOOLS:
+                self._group_tool = name
+                self._group_count = 1
         uid = tool_use_id or name
         block = _ToolBlock(name, input_text)
         await self._conv().mount(block)
