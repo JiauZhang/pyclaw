@@ -617,6 +617,8 @@ def test_task_output_blocks_until_completion():
     text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=5000)
     assert "finished-data" in text
     assert "<exit_code>0</exit_code>" in text
+    assert "<retrieval_status>success</retrieval_status>" in text
+    assert "<status>completed</status>" in text
 
 
 def test_task_output_timeout_reports_still_running():
@@ -625,8 +627,19 @@ def test_task_output_timeout_reports_still_running():
     out = bash(command="sleep 5", run_in_background=True)
     task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
     text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=300)
-    assert "still running" in text
+    assert "<retrieval_status>timeout</retrieval_status>" in text
+    assert "<status>running</status>" in text
     assert "exit_code" not in text
+    background.cleanup_background_tasks()
+
+
+def test_task_output_non_blocking_reports_not_ready():
+    from pyclaw.tools.coding import background
+    bash = _tools("/tmp")["Bash"]
+    out = bash(command="sleep 5", run_in_background=True)
+    task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=False)
+    assert "<retrieval_status>not_ready</retrieval_status>" in text
     background.cleanup_background_tasks()
 
 

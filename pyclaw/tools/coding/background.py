@@ -148,15 +148,21 @@ def make_task_output(cwd: str):
             if time.monotonic() >= deadline:
                 break
             time.sleep(TASK_BLOCK_POLL_S)
-        body = _tail(task['output']).rstrip('\n')
-        lines = [body if body.strip() else '(no output yet)']
         code = task['process'].poll()
-        if code is None:
-            lines.append('(still running)')
-        elif task['killed']:
-            lines.append(f'<exit_code>{code}</exit_code> (killed)')
+        if code is not None:
+            retrieval, status = 'success', 'completed'
+        elif block:
+            retrieval, status = 'timeout', 'running'
         else:
+            retrieval, status = 'not_ready', 'running'
+        lines = [f'<retrieval_status>{retrieval}</retrieval_status>',
+                 f'<task_id>{task_id}</task_id>',
+                 '<task_type>shell</task_type>',
+                 f'<status>{status}</status>']
+        if code is not None:
             lines.append(f'<exit_code>{code}</exit_code>')
+        body = _tail(task['output']).rstrip('\n')
+        lines.append(body if body.strip() else '(no output yet)')
         return '\n'.join(lines)
     return task_output
 
