@@ -8,7 +8,7 @@ from rich.markup import escape
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
-from textual.screen import Screen
+from textual.screen import ModalScreen, Screen
 from textual.widgets import Input, Static
 
 
@@ -211,6 +211,74 @@ class TranscriptScreen(Screen):
         await scroll.remove_children()
         for entry in self._entries():
             await scroll.mount(Static(entry, markup=True))
+
+
+class PermissionsScreen(Screen):
+
+    BINDINGS = [("escape", "close", "Close"),
+                ("q", "close", "Close"),
+                ("d", "remove_rule", "Remove rule"),
+                ("up", "move_up", "Up"),
+                ("down", "move_down", "Down")]
+
+    def __init__(self, session, **kw):
+        super().__init__(**kw)
+        self._session = session
+        self._selected = 0
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="permissions"):
+            yield Static('...', id="permissions-body")
+
+    def on_mount(self):
+        self._refresh_body()
+
+    def _rules(self) -> list:
+        getter = getattr(self._session, 'permission_rules', None)
+        return list(getter()) if getter else []
+
+    def _refresh_body(self):
+        rules = self._rules()
+        mode = getattr(self._session, 'permission_mode', 'default')
+        bypass = bool(getattr(self._session, 'bypass_available', False))
+        lines = [f'[bold]Permission mode[/bold] [#D77757]{mode}[/]',
+                 f'[#9A9A9A]bypass available: {bypass} · '
+                 f'shift+tab cycles · /permissions <mode> switches[/]', '']
+        if not rules:
+            lines.append('[#9A9A9A]No permission rules.[/]')
+        else:
+            lines.append('[bold]Rules[/bold] '
+                         '[#9A9A9A](up/down to move, d to remove)[/]')
+            for index, (behavior, rule, source) in enumerate(rules):
+                marker = '\u203a' if index == self._selected else ' '
+                body = escape(f'  {marker} [{behavior}] {rule}  ({source})')
+                lines.append(f'[reverse]{body}[/]' if index == self._selected
+                             else body)
+        self.query_one('#permissions-body', Static).update('\n'.join(lines))
+
+    def action_close(self):
+        self.app.pop_screen()
+
+    def action_move_up(self):
+        self._selected = max(0, self._selected - 1)
+        self._refresh_body()
+
+    def action_move_down(self):
+        rules = self._rules()
+        self._selected = min(max(0, len(rules) - 1), self._selected + 1)
+        self._refresh_body()
+
+    def action_remove_rule(self):
+        rules = self._rules()
+        if not rules:
+            return
+        index = min(self._selected, len(rules) - 1)
+        _behavior, rule, _source = rules[index]
+        remover = getattr(self._session, 'remove_rule', None)
+        if remover is None or not remover(rule):
+            return
+        self._selected = max(0, self._selected - 1)
+        self._refresh_body()
 
 
 class _PermissionPrompt(Static):
@@ -731,6 +799,12 @@ class PyClawApp(App[None]):
 
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
+        if text == '/permissions':
+            self.query_one("#input", Input).value = ""
+            await self._append_block(
+                f"[#7AB4E8]You:[/#7AB4E8] {escape(text)}")
+            self.push_screen(PermissionsScreen(self._session))
+            return
         if self._suggest_items and text.startswith('/'):
             item = self._suggest_items[min(self._suggest_selected,
                                            len(self._suggest_items) - 1)]

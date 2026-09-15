@@ -289,6 +289,29 @@ def test_transcript_ctrl_e_toggles_show_all():
     asyncio.run(scenario())
 
 
+def test_permissions_screen_lists_rules_and_closes():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "/permissions"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "PermissionsScreen"
+            body = str(app.screen.query_one("#permissions-body").content)
+            assert "Permission mode" in body
+            assert "No permission rules." in body
+
+            await pilot.press("d")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "PermissionsScreen"
+
+            await pilot.press("escape")
+            await pilot.pause()
+            assert type(app.screen).__name__ != "PermissionsScreen"
+    asyncio.run(scenario())
+
+
 def test_tool_card_resolves_to_done_from_transcript():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
