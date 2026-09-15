@@ -2,7 +2,8 @@ from pathlib import Path
 
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
-    {'name': 'clear', 'desc': 'Clear the current session conversation history and token stats', 'hint': ''},
+    {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
+    {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
     {'name': 'init', 'desc': 'Create a PYCLAW.md project instructions file (claude /init)', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (PYCLAW.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now (claude /compact)', 'hint': ''},
@@ -103,6 +104,24 @@ def _handle_permissions(session, arg: str) -> str:
     return '\n'.join(lines)
 
 
+def _handle_resume(session, arg: str) -> str:
+    from pyclaw.agents import list_sessions
+    if not arg:
+        sessions = list_sessions()
+        if not sessions:
+            return 'No saved sessions.'
+        lines = ['Saved sessions:']
+        for item in sessions[:20]:
+            lines.append(f"  {item['id']}  ({item['messages']} messages)")
+        lines.append('Use /resume <id> to continue one of them.')
+        return '\n'.join(lines)
+    resumed = getattr(session, 'resume_session', None)
+    count = resumed(arg) if resumed else 0
+    if not count:
+        return f'No transcript found for session: {arg}'
+    return f'Resumed {count} messages from {arg}.'
+
+
 def _handle_model(session, arg: str) -> str:
     if not arg:
         return f'Model: {session.model}'
@@ -156,7 +175,9 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
         return '\n'.join(lines)
     if cmd == 'clear':
         session.reset()
-        return 'Conversation history cleared.'
+        return 'Conversation history cleared. Started a new session.'
+    if cmd == 'resume':
+        return _handle_resume(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':

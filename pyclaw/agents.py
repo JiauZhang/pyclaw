@@ -149,6 +149,24 @@ def load_transcript(session_id) -> list:
             for entry in load_entries(session_id)]
 
 
+def list_sessions() -> list:
+    root = _logs_dir()
+    if not root.exists():
+        return []
+    sessions = []
+    for entry in root.iterdir():
+        if not entry.is_dir():
+            continue
+        path = entry / 'transcript.jsonl'
+        if not path.exists():
+            continue
+        sessions.append({'id': entry.name,
+                         'messages': len(load_entries(entry.name)),
+                         'modified': path.stat().st_mtime})
+    sessions.sort(key=lambda item: item['modified'], reverse=True)
+    return sessions
+
+
 def _content_of(entry) -> dict:
     return {key: value for key, value in entry.items()
             if key not in _ENTRY_META}
@@ -430,8 +448,19 @@ class Session:
         self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)
 
     def reset(self):
+        self.conv_session_id = uuid.uuid4().hex
+        self.resume_from = None
         self._team.lead.messages = []
         self._team.reset_usage()
+
+    def resume_session(self, session_id: str) -> int:
+        messages = load_transcript(session_id)
+        if not messages:
+            return 0
+        self._team.restore(messages)
+        self.conv_session_id = uuid.uuid4().hex
+        self.resume_from = None
+        return len(messages)
 
     @property
     def usage(self):

@@ -5,7 +5,7 @@ import pytest
 from pyclaw import slash
 
 
-HELP_KEYWORDS = ("/help", "/clear", "/status", "/model", "/cost")
+HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost")
 
 
 class _Usage:

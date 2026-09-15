@@ -124,3 +124,52 @@ def test_parser_exposes_resume_flags():
     tui = parser.parse_args(["tui", "--resume", "s1"])
     assert tui.resume == "s1"
     assert __main__._cli_resume(tui) is True
+
+
+def test_clear_rotates_session_id_and_keeps_the_old_transcript(tmp_path,
+                                                              monkeypatch):
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+
+    async def handler(messages, tools=None, *, stream_cb=None):
+        return "answer"
+
+    async def main():
+        team = Team("t1",
+                    client_factory=lambda inst: MockClient(handler=handler))
+        session = agents.Session(team, session_id="s1")
+        await session.chat("hi")
+        session.save_transcript()
+        assert agents.transcript_path("s1").exists()
+
+        session.reset()
+        assert session.conv_session_id != "s1"
+        assert agents.transcript_path("s1").exists()
+        assert session.transcript() == []
+
+    asyncio.run(main())
+
+
+def test_slash_resume_lists_and_loads_a_saved_session(tmp_path, monkeypatch):
+    from pyclaw import slash
+    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    agents.save_transcript("old", [{"role": "user", "content": "hi"},
+                                   {"role": "assistant", "content": "ok"}])
+
+    async def handler(messages, tools=None, *, stream_cb=None):
+        return "answer"
+
+    async def main():
+        team = Team("t1",
+                    client_factory=lambda inst: MockClient(handler=handler))
+        session = agents.Session(team, session_id="fresh")
+
+        listed = await slash.handle_slash("/resume", session)
+        assert "old" in listed
+
+        out = await slash.handle_slash("/resume old", session)
+        assert "Resumed 2 messages" in out
+        assert session.transcript() == [{"role": "user", "content": "hi"},
+                                        {"role": "assistant", "content": "ok"}]
+        assert session.conv_session_id != "old"
+
+    asyncio.run(main())
