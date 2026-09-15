@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import difflib
 import json
+import os
 import random
 import re
 import sys
@@ -399,6 +400,54 @@ def _content_text(content) -> str:
         return "".join(b.get("text", "") for b in content
                        if isinstance(b, dict) and b.get("type") == "text")
     return ""
+
+
+def _at_token(value: str) -> str | None:
+    m = re.search(r'(^|\s)@([^\s]*)$', value)
+    return m.group(2) if m else None
+
+
+def _apply_at(value: str, name: str, is_dir: bool) -> str:
+    value = re.sub(r'(^|\s)@[^\s]*$',
+                   lambda m: m.group(1) + '@' + name, value)
+    return value if is_dir else value + ' '
+
+
+def _file_suggest(cwd: str, token: str, limit: int = 6) -> list[dict]:
+    head, _, base = token.rpartition('/')
+    root = Path(cwd or '.').resolve()
+    base_dir = (root / head).resolve() if head else root
+    try:
+        base_dir.relative_to(root)
+    except ValueError:
+        return []
+    try:
+        entries = list(os.scandir(base_dir))
+    except OSError:
+        return []
+    entries.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+    items = []
+    for e in entries:
+        if len(items) >= limit:
+            break
+        name = e.name
+        if name.startswith('.') and not base.startswith('.'):
+            continue
+        if base and not name.lower().startswith(base.lower()):
+            continue
+        is_dir = e.is_dir()
+        rel = f'{head}/{name}' if head else name
+        if is_dir:
+            rel += '/'
+        items.append({'name': rel, 'icon': '+', 'desc': '', 'dir': is_dir})
+    return items
+
+
+def _suggest_label(item: dict) -> str:
+    icon = item.get('icon')
+    if icon:
+        return f"{icon} {item['name']}"
+    return f"/{item['name']}"
 
 
 class _Conv(VerticalScroll):
@@ -1022,6 +1071,7 @@ class PyClawApp(App[None]):
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
         self._suggest_dismissed: str | None = None
+        self._typeahead: str | None = None
         self._group: _GroupBlock | None = None
         self._last_interrupt = 0.0
         self._history: list[str] = []
@@ -1445,9 +1495,15 @@ class PyClawApp(App[None]):
             await self._append_user(text)
             self.push_screen(PermissionsScreen(self._session))
             return
-        if self._suggest_items and text.startswith('/'):
+        if self._suggest_items:
             item = self._suggest_items[min(self._suggest_selected,
                                            len(self._suggest_items) - 1)]
+            if self._typeahead == 'at':
+                inp = self.query_one("#input", Input)
+                inp.value = _apply_at(inp.value, item['name'],
+                                      item.get('dir', False))
+                inp.cursor_position = len(inp.value)
+                return
             if item.get('hint'):
                 self.query_one("#input", Input).value = f"/{item['name']} "
                 self._suggest_items = []
@@ -1483,14 +1539,23 @@ class PyClawApp(App[None]):
             self.action_toggle_help()
             return
         items = []
+        kind = None
         if value.startswith('/'):
             items = slash_suggest(value)
+            kind = 'slash'
+        else:
+            token = _at_token(value[:event.input.cursor_position])
+            if token is not None:
+                items = _file_suggest(self._cwd(), token)
+                kind = 'at'
         if not items or self._suggest_dismissed == value:
             self._suggest_items = []
+            self._typeahead = None
             self._show_suggest_widget(False)
             return
         self._suggest_dismissed = None
         self._suggest_items = items
+        self._typeahead = kind
         self._suggest_selected = 0
         self._show_suggest_widget(True)
 
@@ -1510,12 +1575,13 @@ class PyClawApp(App[None]):
         items = self._suggest_items
         start = max(0, min(self._suggest_selected - 2, len(items) - 6))
         window = items[start:start + 6]
-        width = max((len(f"/{i['name']}") for i in window), default=0)
+        labels = [_suggest_label(i) for i in window]
+        width = max((len(l) for l in labels), default=0)
         lines = []
         for i, item in enumerate(window):
             index = start + i
-            row = escape(f"/{item['name']}".ljust(width)
-                         + f"  {item['desc']}")
+            desc = item.get('desc', '')
+            row = escape(labels[i].ljust(width) + (f"  {desc}" if desc else ''))
             lines.append(f"[#B1B9F9]{row}[/]" if index == self._suggest_selected
                          else f"[dim]{row}[/]")
         widget.update('\n'.join(lines))
@@ -1563,11 +1629,18 @@ class PyClawApp(App[None]):
         if not self._suggest_items:
             return
         item = self._suggest_items[self._suggest_selected]
-        self.query_one("#input", Input).value = f"/{item['name']} "
+        inp = self.query_one("#input", Input)
+        if self._typeahead == 'at':
+            inp.value = _apply_at(inp.value, item['name'],
+                                  item.get('dir', False))
+            inp.cursor_position = len(inp.value)
+            return
+        inp.value = f"/{item['name']} "
 
     def action_suggest_dismiss(self):
         self._suggest_dismissed = self.query_one("#input", Input).value
         self._suggest_items = []
+        self._typeahead = None
         self._show_suggest_widget(False)
 
     async def _render_queued(self):

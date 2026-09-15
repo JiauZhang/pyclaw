@@ -657,6 +657,89 @@ def test_tool_block_renders_edit_diff():
     asyncio.run(scenario())
 
 
+def test_at_token_detects_and_applies():
+    from pyclaw.tui import _at_token, _apply_at
+    assert _at_token("hi @src") == "src"
+    assert _at_token("@") == ""
+    assert _at_token("hi @a/b") == "a/b"
+    assert _at_token("email@example") is None
+    assert _at_token("hi @src more") is None
+    assert _apply_at("hi @src", "src/main.py", False) == "hi @src/main.py "
+    assert _apply_at("@", "src/", True) == "@src/"
+    assert _apply_at("@src", "src/b.py", False) == "@src/b.py "
+
+
+def test_file_suggest_lists_workspace_entries(tmp_path):
+    from pyclaw.tui import _file_suggest
+    (tmp_path / "a.txt").write_text("x")
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "b.py").write_text("y")
+    (tmp_path / ".hidden").write_text("z")
+    items = _file_suggest(str(tmp_path), "")
+    names = [i["name"] for i in items]
+    assert "a.txt" in names and "src/" in names
+    assert all(not n.startswith(".hidden") for n in names)
+    assert all(i["icon"] == "+" for i in items)
+    deeper = _file_suggest(str(tmp_path), "src/")
+    assert deeper[0]["name"] == "src/b.py"
+    assert _file_suggest(str(tmp_path), "../") == []
+
+
+def test_at_typeahead_shows_files_and_tab_applies():
+    from pathlib import Path
+
+    async def scenario(d):
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            app._cwd = lambda: d
+            await pilot.pause()
+            inp = app.query_one(Input)
+            inp.value = "@"
+            await pilot.pause()
+            suggest = app.query_one("#suggest", Static)
+            assert suggest.display
+            assert "+ a.txt" in str(suggest.content)
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.pause()
+            assert inp.value == "@a.txt "
+            assert not suggest.display
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "a.txt").write_text("x")
+        Path(d, "src").mkdir()
+        asyncio.run(scenario(d))
+
+
+def test_at_typeahead_dir_keeps_navigating():
+    from pathlib import Path
+
+    async def scenario(d):
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            app._cwd = lambda: d
+            await pilot.pause()
+            inp = app.query_one(Input)
+            inp.value = "@src/"
+            await pilot.pause()
+            suggest = app.query_one("#suggest", Static)
+            assert suggest.display
+            assert "+ src/b.py" in str(suggest.content)
+            await pilot.press("tab")
+            await pilot.pause()
+            await pilot.pause()
+            assert inp.value == "@src/b.py "
+
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "src").mkdir()
+        Path(d, "src", "b.py").write_text("y")
+        asyncio.run(scenario(d))
+
+
 def test_slash_menu_shows_and_tab_completes():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
