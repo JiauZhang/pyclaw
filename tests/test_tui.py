@@ -758,7 +758,7 @@ class _TimeoutTeam(_FakeTeam):
 
     async def _finish_later(self):
         from chatchat.hooks.events import emit
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(1.0)
         emit(AGENT_TEXT, agent="lead", delta="full answer")
         self.record("assistant", "full answer")
         emit(AGENT_TURN_FINISHED, agent="lead")
@@ -1261,7 +1261,7 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
     height, conv, footer, input_y = asyncio.run(scenario())
     assert footer == 1
     assert conv == height - 4
-    assert input_y == height - 4
+    assert input_y == height - 3
 
 
 def test_bash_collapsible_classification():
@@ -1326,3 +1326,63 @@ def test_tool_collapsible_classification():
     assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
     assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
     assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
+
+
+def test_prompt_has_the_claude_pointer():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            return str(app.query_one("#prompt-pointer").content)
+
+    assert asyncio.run(scenario()) == "\u276f"
+
+
+def test_up_and_down_walk_the_prompt_history():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            for text in ("first", "second"):
+                app.query_one(Input).value = text
+                await pilot.press("enter")
+                for _ in range(3):
+                    await pilot.pause()
+            app.query_one(Input).value = "draft"
+            await pilot.press("up")
+            await pilot.pause()
+            newest = app.query_one(Input).value
+            await pilot.press("up")
+            await pilot.pause()
+            older = app.query_one(Input).value
+            await pilot.press("down", "down")
+            await pilot.pause()
+            return newest, older, app.query_one(Input).value
+
+    newest, older, restored = asyncio.run(scenario())
+    assert newest == "second"
+    assert older == "first"
+    assert restored == "draft"
+
+
+def test_question_mark_opens_the_shortcut_panel():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press("?")
+            await pilot.pause()
+            opened = type(app.screen).__name__
+            body = "".join(str(w.content)
+                           for w in app.screen.query_one("#help").children)
+            assert app.query_one(Input).value == ""
+            await pilot.press("escape")
+            await pilot.pause()
+            return opened, body, type(app.screen).__name__
+
+    opened, body, closed = asyncio.run(scenario())
+    assert opened == "HelpScreen"
+    assert "? for shortcuts" not in body
+    assert "shift+tab" in body
+    assert "/compact" in body
+    assert closed != "HelpScreen"

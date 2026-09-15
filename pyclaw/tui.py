@@ -521,6 +521,43 @@ class TranscriptScreen(Screen):
         self.app.pop_screen()
 
 
+class HelpScreen(Screen):
+
+    BINDINGS = [("escape", "close", "Close"), ("q", "close", "Close"),
+                ("ctrl+o", "close", "Close"), ("?", "close", "Close")]
+
+    @staticmethod
+    def _body() -> str:
+        from pyclaw.slash import COMMANDS
+        lines = ["[bold]Shortcuts[/bold]"]
+        seen = set()
+        for entry in PyClawApp.BINDINGS:
+            if isinstance(entry, Binding):
+                key, description = entry.key, entry.description
+            else:
+                key, description = entry[0], entry[2]
+            if key in seen or not description:
+                continue
+            seen.add(key)
+            lines.append(f"  {escape(key)}  "
+                         f"[dim]{escape(description)}[/]")
+        lines.append("")
+        lines.append("[bold]Slash commands[/bold]")
+        for item in COMMANDS:
+            lines.append(f"  /{escape(item['name'])}  "
+                         f"[dim]{escape(item['desc'])}[/]")
+        lines.append("")
+        lines.append("[dim]esc to close[/]")
+        return "\n".join(lines)
+
+    def compose(self) -> ComposeResult:
+        with VerticalScroll(id="help"):
+            yield Static(self._body(), markup=True)
+
+    def action_close(self):
+        self.app.pop_screen()
+
+
 class PermissionsScreen(Screen):
 
     BINDINGS = [("escape", "close", "Close"),
@@ -700,15 +737,18 @@ class PyClawApp(App[None]):
     #conv > Static { width: 100%; margin-bottom: 1; }
     .user { background: $user-message; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
+    #help { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
+    #help > Static { width: 100%; margin-bottom: 1; }
     #transcript > Static { width: 100%; margin-bottom: 1; }
     #suggest { display: none; height: auto; max-height: 8; background: $background;
                margin: 0 1; padding: 0 1; }
     #tasks { display: none; height: auto; max-height: 12; background: $background;
              border-top: round $permission; margin: 0 1; padding: 0 1; }
-    #input { height: 3; background: $background; color: $text;
-             border-top: round $prompt-border; border-bottom: round $prompt-border; }
-    #input:focus { border-top: round $prompt-border;
-                   border-bottom: round $prompt-border; }
+    #prompt { height: 3; border-top: round $prompt-border;
+              border-bottom: round $prompt-border; }
+    #prompt-pointer { width: 2; height: 1; color: $subtle; }
+    #input { height: 1; width: 1fr; border: none; padding: 0;
+             background: $background; color: $text; }
     #footer { height: 1; }
     #status { height: 1; width: auto; background: $background;
               color: $inactive; padding: 0 1; }
@@ -726,15 +766,14 @@ class PyClawApp(App[None]):
                 ("ctrl+end", "jump_to_bottom", "Jump to bottom"),
                 Binding("shift+tab", "cycle_permission", "Cycle permission mode",
                         priority=True),
-                Binding("down", "suggest_next", "Next suggestion", priority=True),
-                Binding("up", "suggest_prev", "Previous suggestion", priority=True),
+                Binding("down", "prompt_next", "Next", priority=True),
+                Binding("up", "prompt_prev", "Previous", priority=True),
                 Binding("tab", "suggest_tab", "Complete suggestion", priority=True),
                 Binding("escape", "suggest_dismiss", "Dismiss suggestions",
                         priority=True)]
 
     def check_action(self, action: str, parameters) -> bool:
-        if action in ('suggest_next', 'suggest_prev', 'suggest_tab',
-                      'suggest_dismiss'):
+        if action in ('suggest_tab', 'suggest_dismiss'):
             return bool(self._suggest_items)
         return True
 
@@ -774,12 +813,17 @@ class PyClawApp(App[None]):
         self._suggest_dismissed: str | None = None
         self._group: _GroupBlock | None = None
         self._last_interrupt = 0.0
+        self._history: list[str] = []
+        self._history_index: int | None = None
+        self._draft = '' 
 
     def compose(self) -> ComposeResult:
         yield _Conv(id="conv")
         yield Static('', id='suggest')
         yield VerticalScroll(id="tasks")
-        yield Input(placeholder="Message PyClaw\u2026", id="input")
+        with Horizontal(id="prompt"):
+            yield Static(POINTER, id="prompt-pointer")
+            yield Input(placeholder="Message PyClaw\u2026", id="input")
         with Horizontal(id="footer"):
             yield Static(id="status")
             yield Static(id="status-right")
@@ -854,7 +898,8 @@ class PyClawApp(App[None]):
         text = f"[#B1B9F9]\u2193 Jump to bottom \u00b7 {self._new_messages} new[/]"
         if self._hint is None:
             self._hint = _JumpToBottom(text)
-            await self.screen.mount(self._hint, before=inp)
+            await self.screen.mount(self._hint,
+                                    before=self.query_one("#prompt"))
         else:
             self._hint.update(text)
 
@@ -1172,6 +1217,9 @@ class PyClawApp(App[None]):
 
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
+        self._history_index = None
+        if text and (not self._history or self._history[-1] != text):
+            self._history.append(text)
         if text == '/permissions':
             self.query_one("#input", Input).value = ""
             await self._append_user(text)
@@ -1210,6 +1258,10 @@ class PyClawApp(App[None]):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         value = event.value
+        if value == '?':
+            self.query_one("#input", Input).value = ""
+            self.action_toggle_help()
+            return
         items = []
         if value.startswith('/'):
             items = slash_suggest(value)
@@ -1248,6 +1300,33 @@ class PyClawApp(App[None]):
                          else f"[dim]{row}[/]")
         widget.update('\n'.join(lines))
 
+    def action_prompt_prev(self):
+        if self._suggest_items:
+            self.action_suggest_prev()
+            return
+        self._history_step(-1)
+
+    def action_prompt_next(self):
+        if self._suggest_items:
+            self.action_suggest_next()
+            return
+        self._history_step(1)
+
+    def _history_step(self, delta: int):
+        if not self._history:
+            return
+        inp = self.query_one("#input", Input)
+        if self._history_index is None:
+            if delta > 0:
+                return
+            self._draft = inp.value
+            self._history_index = len(self._history)
+        index = min(max(0, self._history_index + delta), len(self._history))
+        self._history_index = index
+        inp.value = (self._draft if index == len(self._history)
+                     else self._history[index])
+        inp.cursor_position = len(inp.value)
+
     def action_suggest_next(self):
         if self._suggest_items:
             self._suggest_selected = ((self._suggest_selected + 1)
@@ -1284,7 +1363,8 @@ class PyClawApp(App[None]):
         text = "\n\n".join(escape(str(t)) for t in queued)
         if self._queued is None:
             self._queued = Static(text, markup=True, classes="user")
-            await self.screen.mount(self._queued, before=inp)
+            await self.screen.mount(self._queued,
+                                    before=self.query_one("#prompt"))
         else:
             self._queued.update(text)
 
@@ -1484,6 +1564,12 @@ class PyClawApp(App[None]):
 
     def action_toggle_transcript(self):
         self.push_screen(TranscriptScreen(self))
+
+    def action_toggle_help(self):
+        if isinstance(self.screen, HelpScreen):
+            self.pop_screen()
+            return
+        self.push_screen(HelpScreen())
 
     async def action_quit(self):
         if self._spin_timer is not None:
