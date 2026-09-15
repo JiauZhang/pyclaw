@@ -234,3 +234,41 @@ def test_suggest_empty_query_lists_all_and_args_hide_menu():
 def test_suggest_case_insensitive():
     names = [c["name"] for c in slash.suggest("/MO")]
     assert names[0] == "model"
+
+
+def test_suggest_fuzzy_matches_typos():
+    names = [c["name"] for c in slash.suggest("/staus")]
+    assert names[0] == "status"
+
+
+def test_suggest_prefix_name_beats_fuzzy():
+    names = [c["name"] for c in slash.suggest("/he")]
+    assert names[0] == "help"
+    prefix_first = [c["name"] for c in slash.suggest("/per")]
+    assert prefix_first[0] == "permissions"
+
+
+def test_suggest_recently_used_commands_sort_first():
+    slash._USAGE.clear()
+    try:
+        slash._USAGE["cost"] = 3
+        slash._USAGE["model"] = 1
+        names = [c["name"] for c in slash.suggest("/")]
+        assert names.index("cost") < names.index("model")
+        assert names.index("model") < names.index("help")
+    finally:
+        slash._USAGE.clear()
+
+
+def test_handle_slash_tracks_usage():
+    slash._USAGE.clear()
+    try:
+        asyncio.run(_call("/cost", _fake_session()))
+        asyncio.run(_call("/model m", _fake_session()))
+        asyncio.run(_call("/cost", _fake_session()))
+        assert slash._USAGE["cost"] == 2
+        assert slash._USAGE["model"] == 1
+        assert asyncio.run(_call("/unknown-zzz", _fake_session()))             .startswith("Unknown command")
+        assert "unknown-zzz" not in slash._USAGE
+    finally:
+        slash._USAGE.clear()

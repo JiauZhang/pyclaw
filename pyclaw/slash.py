@@ -1,3 +1,4 @@
+import difflib
 from pathlib import Path
 
 COMMANDS = [
@@ -26,6 +27,22 @@ def _help_text() -> str:
 
 HELP = _help_text()
 
+_USAGE: dict[str, int] = {}
+
+
+def _fuzzy_score(query: str, text: str) -> float:
+    q, t = query.lower(), text.lower()
+    if not q or len(q) > len(t):
+        return 0.0
+    if q in t:
+        return 1.0
+    if len(q) < 3:
+        return 0.0
+    it = iter(t)
+    if not all(ch in it for ch in q):
+        return 0.0
+    return difflib.SequenceMatcher(None, q, t).ratio()
+
 
 def suggest(text: str) -> list[dict]:
     if not text.startswith('/'):
@@ -35,18 +52,40 @@ def suggest(text: str) -> list[dict]:
         return []
     query = query.strip().lower()
     if not query:
-        return list(COMMANDS)
-    exact = [c for c in COMMANDS if c['name'] == query]
-    prefix_name = [c for c in COMMANDS
-                   if c['name'].startswith(query) and c not in exact]
-    prefix_alias = [c for c in COMMANDS
-                    if c not in exact + prefix_name
-                    and any(a.startswith(query) for a in c.get('aliases', ()))]
-    substring = [c for c in COMMANDS
-                 if c not in exact + prefix_name + prefix_alias
-                 and (query in c['name'].lower()
-                      or query in c['desc'].lower())]
-    return exact + prefix_name + prefix_alias + substring
+        used = [c for c in COMMANDS if _USAGE.get(c['name'])]
+        used.sort(key=lambda c: _USAGE[c['name']], reverse=True)
+        top = used[:5]
+        rest = [c for c in COMMANDS if c not in top]
+        rest.sort(key=lambda c: c['name'])
+        return top + rest
+    scored = []
+    for c in COMMANDS:
+        name = c['name']
+        aliases = list(c.get('aliases', ()))
+        exact = name == query
+        alias_exact = any(a == query for a in aliases)
+        prefix = name.startswith(query)
+        prefix_alias = min((len(a) for a in aliases
+                            if a.startswith(query)), default=0)
+        fuzzy = max(_fuzzy_score(query, name),
+                    max((_fuzzy_score(query, a) for a in aliases),
+                        default=0.0),
+                    _fuzzy_score(query, c['desc']))
+        if not (exact or alias_exact or prefix or prefix_alias or fuzzy > 0):
+            continue
+        if exact:
+            rank = (0, 0, 0, name)
+        elif alias_exact:
+            rank = (1, 0, 0, name)
+        elif prefix:
+            rank = (2, len(name), name, '')
+        elif prefix_alias:
+            rank = (3, prefix_alias, name, '')
+        else:
+            rank = (4, -fuzzy, -_USAGE.get(name, 0), name)
+        scored.append((c, rank))
+    scored.sort(key=lambda t: t[1])
+    return [t[0] for t in scored]
 
 
 def _pricing() -> dict:
@@ -163,6 +202,11 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
     cmd, _, arg = text[1:].partition(' ')
     cmd = cmd.strip().lower()
     arg = arg.strip()
+
+    for entry in COMMANDS:
+        if cmd == entry['name'] or cmd in entry.get('aliases', ()):
+            _USAGE[entry['name']] = _USAGE.get(entry['name'], 0) + 1
+            break
 
     if cmd in ('help', 'h', '?'):
         return HELP
