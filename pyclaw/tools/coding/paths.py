@@ -16,3 +16,10 @@ def resolve(cwd, p) -> Path | None:
     if not resolved.is_relative_to(base):
         return None
     return resolved
+
+
+def relative(cwd, p) -> str:
+    try:
+        return str(Path(p).resolve().relative_to(workspace(cwd)))
+    except ValueError:
+        return str(p)

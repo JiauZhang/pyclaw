@@ -2044,7 +2044,7 @@ class PyClawApp(App[None]):
         lines.append("")
         lines.append(f"[bold]Tools[/bold] {len(self._session.available_tools)}")
         lines += [f"  {escape(str(t['name']))}"
-                  for t in self._team.tool_schemas()[:40]]
+                  for t in self._team.tool_schemas(self._team.tool_context)[:40]]
         self._tasks_pane.update("\n".join(lines))
 
     async def action_toggle_tasks(self):

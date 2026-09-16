@@ -5,18 +5,36 @@ from pathlib import Path
 
 from conippets import json
 
-from pyclaw.tools.coding import (PermissionController, build_coding_tools,
+from pyclaw.tools.coding import (CODING_TOOLS, PermissionController,
                                  next_mode, parse_mode)
 from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
                                              is_dangerous_removal,
                                              is_read_only, parse_bash_rule)
 
 
-from chatchat.tool import ToolResult
+from chatchat.tool import ToolContext, ToolResult
 
 
 def _tools(d):
-    return {t.name: t for t in build_coding_tools(d)}
+    ctx = ToolContext(cwd=Path(d).resolve())
+
+    def bound(tool):
+        def call(**kwargs):
+            return asyncio.run(tool(ctx, **kwargs))
+        call.tool = tool
+        return call
+
+    return {t.name: bound(t) for t in CODING_TOOLS}
+
+
+def test_coding_tools_are_shared_singletons():
+    with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
+        Path(a, 'same.txt').write_text('in a\n', encoding='utf-8')
+        Path(b, 'same.txt').write_text('in b\n', encoding='utf-8')
+        first, second = _tools(a)['Read'], _tools(b)['Read']
+        assert first.tool is second.tool
+        assert 'in a' in _text(first(file_path='same.txt'))
+        assert 'in b' in _text(second(file_path='same.txt'))
 
 
 def _text(result):
@@ -45,7 +63,7 @@ def test_grep_matches_and_limits():
         root = Path(d)
         (root / "a.txt").write_text("x1\n---\nx2\n")
         t = _tools(d)
-        out = _text(asyncio.run(t["Grep"](pattern="x[0-9]")))
+        out = _text(t["Grep"](pattern="x[0-9]"))
         assert "a.txt:1: x1" in out and "a.txt:3: x2" in out
 
 
@@ -481,7 +499,7 @@ def test_build_team_wires_bash_through_permission_hook():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d,
                               deny=["Bash(curl:*)"])
-            names = [t["name"] for t in team.tool_schemas()]
+            names = [t["name"] for t in team.tool_schemas(team.tool_context)]
             blocked = await team.execute_tool(
                 "Bash", {"command": "curl http://example.com"}, team.lead)
             allowed = await team.execute_tool(
@@ -500,7 +518,7 @@ def test_build_team_removes_bash_when_denied_by_bare_name():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d,
                               deny=["Bash"])
-            return [t["name"] for t in team.tool_schemas()]
+            return [t["name"] for t in team.tool_schemas(team.tool_context)]
 
     assert "Bash" not in asyncio.run(main())
 
@@ -532,7 +550,7 @@ def test_build_team_tools_differ_by_mode():
         from pyclaw.agents import build_team
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d, **kw)
-            return {t["name"] for t in team.tool_schemas()}
+            return {t["name"] for t in team.tool_schemas(team.tool_context)}
 
     single = asyncio.run(names())
     multi = asyncio.run(names(use_team=True))
@@ -567,10 +585,7 @@ def test_tools_return_structured_meta():
         assert r.meta["path"] == "a.py"
         assert r.text.startswith("a.py")
 
-        g = _tools(d)
-        r2 = g["Grep"]
-        import asyncio as _a
-        gr = _a.run(r2(pattern="x"))
+        gr = _tools(d)["Grep"](pattern="x")
         assert isinstance(gr, ToolResult)
         assert gr.meta["num_files"] == 1
         assert gr.meta["num_lines"] == 1
@@ -828,8 +843,8 @@ def test_task_output_unknown_task():
     assert "no such background task" in text
 
 
-def test_background_tools_registered_by_build_coding_tools():
-    names = {t.name for t in build_coding_tools("/tmp")}
+def test_background_tools_registered_as_coding_tools():
+    names = {t.name for t in CODING_TOOLS}
     assert {"TaskOutput", "TaskStop"} <= names
 
 

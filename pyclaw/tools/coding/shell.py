@@ -176,49 +176,47 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
                       meta={'exit_code': code})
 
 
-def make_bash(cwd: str):
-    @tool(
-        name='Bash',
-        description='Run a shell command in the workspace and return its '
-                    'combined stdout and stderr. Prefer Read, Glob, Grep, '
-                    'Edit and Write over cat, find, grep, sed and shell '
-                    'redirection. Chain dependent commands with && instead of '
-                    'newlines. Never run destructive git commands such as '
-                    'push --force or reset --hard without explicit approval.',
-        parameters={
-            'type': 'object',
-            'properties': {
-                'command': {'type': 'string',
-                            'description': 'The command to execute.'},
-                'timeout': {
-                    'type': 'integer',
-                    'description': 'Optional timeout in milliseconds '
-                                   f'(max {get_max_timeout_ms()}).',
-                },
-                'description': {
-                    'type': 'string',
-                    'description': 'Short description of what the command '
-                                   'does.',
-                },
-                'run_in_background': {
-                    'type': 'boolean',
-                    'description': 'Set to true to run this command in the '
-                                   'background and get a task ID back '
-                                   'immediately. Read its output later with '
-                                   'TaskOutput. Do not use a trailing "&".',
-                },
+@tool(
+    name='Bash',
+    description='Run a shell command in the workspace and return its '
+                'combined stdout and stderr. Prefer Read, Glob, Grep, '
+                'Edit and Write over cat, find, grep, sed and shell '
+                'redirection. Chain dependent commands with && instead of '
+                'newlines. Never run destructive git commands such as '
+                'push --force or reset --hard without explicit approval.',
+    parameters={
+        'type': 'object',
+        'properties': {
+            'command': {'type': 'string',
+                        'description': 'The command to execute.'},
+            'timeout': {
+                'type': 'integer',
+                'description': 'Optional timeout in milliseconds '
+                               f'(max {get_max_timeout_ms()}).',
             },
-            'required': ['command'],
+            'description': {
+                'type': 'string',
+                'description': 'Short description of what the command '
+                               'does.',
+            },
+            'run_in_background': {
+                'type': 'boolean',
+                'description': 'Set to true to run this command in the '
+                               'background and get a task ID back '
+                               'immediately. Read its output later with '
+                               'TaskOutput. Do not use a trailing "&".',
+            },
         },
-    )
-    def bash(command: str, timeout: int | None = None,
-             description: str | None = None,
-             run_in_background: bool = False) -> str:
-        if run_in_background:
-            from .background import _output_path, spawn
-            task_id = spawn(cwd, command)
-            return (f'Command running in background with ID: {task_id}. '
-                    f'Output is being written to: {_output_path(task_id)}. '
-                    'Read the output with TaskOutput.')
-        return run_command(cwd, command, timeout)
-    return bash
+        'required': ['command'],
+    },
+)
+def Bash(context, command: str, timeout: int | None = None,
+         description: str | None = None,
+         run_in_background: bool = False) -> str:
+    if run_in_background:
+        from .background import _output_path, spawn
+        task_id = spawn(context.cwd, command)
+        return (f'Command running in background with ID: {task_id}. '
+                f'Output is being written to: {_output_path(task_id)}. '
+                'Read the output with TaskOutput.')
+    return run_command(context.cwd, command, timeout)

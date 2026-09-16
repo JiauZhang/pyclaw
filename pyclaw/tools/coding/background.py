@@ -109,90 +109,88 @@ def cleanup_background_tasks():
 atexit.register(cleanup_background_tasks)
 
 
-def make_task_output(cwd: str):
-    @tool(
-        name='TaskOutput',
-        description='Read output of a background task started with Bash '
-                    'run_in_background. Returns the combined stdout/stderr '
-                    'tail so far and the exit code once the task has exited.',
-        parameters={
-            'type': 'object',
-            'properties': {
-                'task_id': {'type': 'string',
-                            'description': 'Background task ID (starts with b).'},
-                'block': {'type': 'boolean',
-                          'description': 'Wait for the task to finish before '
-                                         'returning (default true).'},
-                'timeout': {'type': 'integer',
-                            'description': 'Max milliseconds to wait when '
-                                           f'block is true (default 30000, '
-                                           f'max {TASK_MAX_TIMEOUT_MS}).'},
-            },
-            'required': ['task_id'],
+@tool(
+    name='TaskOutput',
+    description='Read output of a background task started with Bash '
+                'run_in_background. Returns the combined stdout/stderr '
+                'tail so far and the exit code once the task has exited.',
+    parameters={
+        'type': 'object',
+        'properties': {
+            'task_id': {'type': 'string',
+                        'description': 'Background task ID (starts with b).'},
+            'block': {'type': 'boolean',
+                      'description': 'Wait for the task to finish before '
+                                     'returning (default true).'},
+            'timeout': {'type': 'integer',
+                        'description': 'Max milliseconds to wait when '
+                                       f'block is true (default 30000, '
+                                       f'max {TASK_MAX_TIMEOUT_MS}).'},
         },
-    )
-    def task_output(task_id: str, block: bool = True,
-                    timeout: int = 30000) -> str:
-        task = _tasks.get(task_id)
-        if task is None:
-            return f'Error: no such background task: {task_id}'
-        limit = max(1, min(int(timeout or 30000), TASK_MAX_TIMEOUT_MS)) / 1000
-        deadline = time.monotonic() + (limit if block else 0)
-        while True:
-            if task['process'].poll() is not None:
-                break
-            if time.monotonic() >= deadline:
-                break
-            time.sleep(TASK_BLOCK_POLL_S)
-        code = task['process'].poll()
-        if code is not None:
-            retrieval, status = 'success', 'completed'
-        elif block:
-            retrieval, status = 'timeout', 'running'
-        else:
-            retrieval, status = 'not_ready', 'running'
-        lines = [f'<retrieval_status>{retrieval}</retrieval_status>',
-                 f'<task_id>{task_id}</task_id>',
-                 '<task_type>shell</task_type>',
-                 f'<status>{status}</status>']
-        if code is not None:
-            lines.append(f'<exit_code>{code}</exit_code>')
-        body = _tail(task['output']).rstrip('\n')
-        lines.append(body if body.strip() else '(no output yet)')
-        meta = {'status': status}
-        if code is not None:
-            meta['exit_code'] = code
-        return ToolResult(text='\n'.join(lines), meta=meta)
-    return task_output
+        'required': ['task_id'],
+    },
+)
+def TaskOutput(context, task_id: str, block: bool = True,
+                timeout: int = 30000) -> str:
+    task = _tasks.get(task_id)
+    if task is None:
+        return f'Error: no such background task: {task_id}'
+    limit = max(1, min(int(timeout or 30000), TASK_MAX_TIMEOUT_MS)) / 1000
+    deadline = time.monotonic() + (limit if block else 0)
+    while True:
+        if task['process'].poll() is not None:
+            break
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(TASK_BLOCK_POLL_S)
+    code = task['process'].poll()
+    if code is not None:
+        retrieval, status = 'success', 'completed'
+    elif block:
+        retrieval, status = 'timeout', 'running'
+    else:
+        retrieval, status = 'not_ready', 'running'
+    lines = [f'<retrieval_status>{retrieval}</retrieval_status>',
+             f'<task_id>{task_id}</task_id>',
+             '<task_type>shell</task_type>',
+             f'<status>{status}</status>']
+    if code is not None:
+        lines.append(f'<exit_code>{code}</exit_code>')
+    body = _tail(task['output']).rstrip('\n')
+    lines.append(body if body.strip() else '(no output yet)')
+    meta = {'status': status}
+    if code is not None:
+        meta['exit_code'] = code
+    return ToolResult(text='\n'.join(lines), meta=meta)
 
 
-def make_task_stop(cwd: str):
-    @tool(
-        name='TaskStop',
-        description='Stop a background task started with Bash '
-                    'run_in_background (kills the whole process tree).',
-        parameters={
-            'type': 'object',
-            'properties': {
-                'task_id': {'type': 'string',
-                            'description': 'Background task ID (starts with b).'},
-            },
-            'required': ['task_id'],
+
+
+@tool(
+    name='TaskStop',
+    description='Stop a background task started with Bash '
+                'run_in_background (kills the whole process tree).',
+    parameters={
+        'type': 'object',
+        'properties': {
+            'task_id': {'type': 'string',
+                        'description': 'Background task ID (starts with b).'},
         },
-    )
-    def task_stop(task_id: str) -> str:
-        task = _tasks.get(task_id)
-        if task is None:
-            return f'Error: no such background task: {task_id}'
-        process = task['process']
-        if process.poll() is None:
-            _kill(process)
-            task['killed'] = True
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-        return ToolResult(
-            text=f'Successfully stopped task: {task_id} ({task["command"]})',
-            meta={'stopped': True})
-    return task_stop
+        'required': ['task_id'],
+    },
+)
+def TaskStop(context, task_id: str) -> str:
+    task = _tasks.get(task_id)
+    if task is None:
+        return f'Error: no such background task: {task_id}'
+    process = task['process']
+    if process.poll() is None:
+        _kill(process)
+        task['killed'] = True
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+    return ToolResult(
+        text=f'Successfully stopped task: {task_id} ({task["command"]})',
+        meta={'stopped': True})

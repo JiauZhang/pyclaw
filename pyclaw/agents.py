@@ -17,11 +17,13 @@ from chatchat.hooks.events import (
     register_runtime_handler,
 )
 
+from chatchat.tool import ToolContext
+
 from .plugins import discover_skills, discover_tools
 from .skills import skill_roots
 from .tools import tools as base_tools
-from .tools.coding import (PermissionController, PermissionMode,
-                           build_coding_tools, parse_mode)
+from .tools.coding import CODING_TOOLS, PermissionController, PermissionMode, \
+    parse_mode
 
 _name_counter = itertools.count()
 _sessions_by_root: dict[str, 'Session'] = {}
@@ -295,7 +297,7 @@ def build_team(
     cwd = cwd or os.getcwd()
     gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
                                 ask=ask or (), deny=deny or ())
-    coding_tools = build_coding_tools(cwd)
+    coding_tools = list(CODING_TOOLS)
     coding_names = {t.name for t in coding_tools}
     _resolve_skills(skills)
     resolved = coding_tools + [t for t in _resolve_tools(tools)
@@ -312,6 +314,7 @@ def build_team(
         provider=provider,
         model=model,
         tools=resolved,
+        tool_context=ToolContext(cwd=Path(cwd).resolve()),
         lead_instruction=inst,
         thinking=bool(thinking),
         model_timeout=model_timeout,
@@ -398,7 +401,7 @@ class Session:
 
     @property
     def available_tools(self) -> list:
-        return [t['name'] for t in self._team.tool_schemas()]
+        return [t['name'] for t in self._team.tool_schemas(self._team.tool_context)]
 
     @property
     def context_messages(self) -> int:

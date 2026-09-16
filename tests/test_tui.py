@@ -1,5 +1,6 @@
 import asyncio
 import re
+from pathlib import Path
 
 import pytest
 
@@ -12,6 +13,7 @@ from chatchat.hooks.events import (
     AGENT_TOOL_CALL,
     AGENT_TURN_FINISHED,
 )
+from chatchat.tool import ToolContext
 from pyclaw.tui import PyClawApp, _TextBlock
 
 
@@ -45,11 +47,12 @@ class _FakeTeam:
         self.children = {}
         self.lead = self.agents["lead@t"]
         self._messages = []
+        self.tool_context = ToolContext(cwd=Path.cwd())
 
     def provided_tools(self):
         return []
 
-    def tool_schemas(self):
+    def tool_schemas(self, context):
         return [{"name": "k", "description": "d", "input_schema": {}}]
 
     def set_model(self, model):

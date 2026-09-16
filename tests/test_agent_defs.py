@@ -6,7 +6,7 @@ from conippets import json  # noqa: F401
 
 from pyclaw.agent_defs import load_agent_defs
 from pyclaw.agents import build_team
-from pyclaw.tools.coding import build_coding_tools
+from pyclaw.tools.coding import CODING_TOOLS
 
 
 def _write_agent(root: Path, filename: str, text: str):
@@ -48,7 +48,7 @@ def test_load_agent_defs_parses_and_resolves_tools():
         _write_agent(agents_dir, 'reviewer.md', REVIEWER)
         _write_agent(agents_dir, 'researcher.md', WILDCARD)
         _write_agent(agents_dir, 'planner.md', NO_TOOLS)
-        all_tools = build_coding_tools(d)
+        all_tools = list(CODING_TOOLS)
         defs = {x.agent_type: x for x in load_agent_defs(d, all_tools=all_tools)}
         assert set(defs) >= {'reviewer', 'researcher', 'planner'}
         assert {t.name for t in defs['reviewer'].tools} <= {t.name for t in all_tools}
@@ -86,7 +86,7 @@ def test_build_team_registers_agent_defs_and_lists_in_tool_description(tmp_path)
 
     async def main():
         team = build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
-        schema = next(t for t in team.tool_schemas() if t['name'] == 'create_agent')
+        schema = next(t for t in team.tool_schemas(team.tool_context) if t['name'] == 'create_agent')
         return team.agent_defs.get('reviewer'), schema['description']
 
     defn, description = asyncio.run(main())
