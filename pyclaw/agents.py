@@ -372,6 +372,8 @@ class Session:
         self._unreg = None
         self._bind_gen = 0
         self._gate = getattr(entity, '_pyclaw_gate', None)
+        if session_id:
+            self._team.sidechain_dir = _session_dir(session_id) / "subagents"
         _sessions_by_root[entity.name] = self
 
     @property
