@@ -785,6 +785,29 @@ def test_ctrl_r_history_picker_tab_accepts_without_submit():
     asyncio.run(scenario())
 
 
+def test_ctrl_s_stash_and_unstash_prompt():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            inp = app.query_one(Input)
+            inp.value = "half written"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            assert inp.value == ""
+            assert app._stashed == "half written"
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            assert inp.value == "half written"
+            assert app._stashed is None
+            # empty + nothing stashed -> no-op
+            await pilot.press("ctrl+s")
+            await pilot.pause()
+            assert inp.value == ""
+
+    asyncio.run(scenario())
+
+
 def test_ctrl_r_history_picker_escape_cancels():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

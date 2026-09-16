@@ -1199,6 +1199,7 @@ class PyClawApp(App[None]):
                 ("ctrl+l", "redraw", "Redraw"),
                 ("ctrl+o", "toggle_transcript", "Transcript"),
                 ("ctrl+r", "history_search", "Search history"),
+                ("ctrl+s", "stash", "Stash prompt"),
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
                 ("ctrl+home", "conv_scroll_top", "Scroll to top"),
@@ -1253,6 +1254,7 @@ class PyClawApp(App[None]):
         self._suggest_dismissed: str | None = None
         self._typeahead: str | None = None
         self._tool_meta: dict[str, dict] = {}
+        self._stashed: str | None = None
         self._group: _GroupBlock | None = None
         self._last_interrupt = 0.0
         self._history: list[str] = []
@@ -2060,6 +2062,17 @@ class PyClawApp(App[None]):
     def action_history_search(self):
         if self._history:
             self.push_screen(HistorySearchScreen(self))
+
+    def action_stash(self):
+        inp = self.query_one("#input", Input)
+        text = inp.value
+        if text.strip():
+            self._stashed = text
+            inp.value = ""
+        elif self._stashed is not None:
+            inp.value = self._stashed
+            inp.cursor_position = len(self._stashed)
+            self._stashed = None
 
     def action_toggle_help(self):
         if isinstance(self.screen, HelpScreen):
