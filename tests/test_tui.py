@@ -1356,6 +1356,33 @@ def test_fresh_start_ignores_saved_history(tmp_path, monkeypatch):
     assert "stale" not in asyncio.run(scenario())
 
 
+def test_permission_card_shows_why_the_model_wants_to_run_it():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with_intent = _PermissionPrompt(
+                "Bash", {"command": "npm ci",
+                         "description": "install pinned dependencies"},
+                rememberable=True)
+            await app._conv().mount(with_intent)
+            await pilot.pause()
+            text = str(with_intent.query_one("#perm-body", Static).content)
+            assert "install pinned dependencies" in text
+            assert "npm ci" in text
+
+            without = _PermissionPrompt("Bash", {"command": "npm ci"},
+                                        rememberable=True)
+            await app._conv().mount(without)
+            await pilot.pause()
+            plain = str(without.query_one("#perm-body", Static).content)
+            assert "npm ci" in plain
+            assert len(text.splitlines()) == len(plain.splitlines()) + 1
+    asyncio.run(scenario())
+
+
 def test_permission_card_drops_remember_option_for_dangerous_command():
     from pyclaw.tui import _PermissionPrompt
 

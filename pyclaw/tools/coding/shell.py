@@ -201,8 +201,8 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             },
             'description': {
                 'type': 'string',
-                'description': 'Short description of what the command '
-                               'does.',
+                'description': 'What the command is for, shown to the human '
+                               'who approves it.',
             },
             'run_in_background': {
                 'type': 'boolean',

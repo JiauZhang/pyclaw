@@ -1049,10 +1049,15 @@ class _PermissionPrompt(Vertical):
                 f"with this rule[/]")
             return
         args = _tool_use_args(self._tool, self._input, self._cwd)
+        intent = ''
+        if isinstance(self._input, dict):
+            intent = str(self._input.get('description') or '').strip()
         lines = [f"[#B1B9F9]{BULLET}[/] [bold]Tool use[/bold]",
                  f"  {escape(_display_name(self._tool))}"
-                 f"({escape(args)})",
-                 "  Do you want to proceed?"]
+                 f"({escape(args)})"]
+        if intent:
+            lines.append(f"  [dim]{escape(intent)}[/]")
+        lines.append("  Do you want to proceed?")
         for index, (_value, label) in enumerate(self._options()):
             marker = POINTER if index == self._selected else ' '
             row = escape(f"  {marker} {index + 1}. {label}")
