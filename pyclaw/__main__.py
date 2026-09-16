@@ -189,32 +189,32 @@ def stop_server_cmd(args):
 def _add_session_args(target):
     target.add_argument("-c", "--continue", dest="continue_session",
                         action="store_true",
-                        help="Resume the most recent session in this directory (claude -c)")
+                        help="Resume the most recent session in this directory")
     target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID",
-                        help="Resume a specific session by id (claude --resume)")
+                        help="Resume a specific session by id")
     for flag, help_text in (
-            ("--allow", "Permission rule to allow, e.g. 'Bash(git push:*)' (claude --allowedTools)"),
+            ("--allow", "Permission rule to allow, e.g. 'Bash(git push:*)'"),
             ("--deny", "Permission rule to deny, e.g. 'Bash(curl:*)'"),
             ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'")):
         target.add_argument(flag, action="append", default=None, metavar="RULE",
                             help=help_text)
     target.add_argument("--use-team", action="store_true", default=False,
                         help="Run in team (multi-agent) mode; fixed for the "
-                             "whole session (claude --agent-teams)")
+                             "whole session")
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PyClaw – Personal AI Assistant")
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
     parser.add_argument("-p", "--print", type=str, metavar="PROMPT", default=None,
-                        help="Print mode: run one prompt non-interactively and print the result (claude -p)")
+                        help="Print mode: run one prompt non-interactively and print the result")
     parser.add_argument("--output", type=str, default="text", choices=["text", "json"],
-                        help="Output format for print mode (claude --output)")
+                        help="Output format for print mode")
     parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
     parser.add_argument("--permission-mode", type=str, default=None,
                         choices=["default", "acceptEdits", "plan"],
-                        help="Session permission mode (claude --permission-mode)")
+                        help="Session permission mode")
     _add_session_args(parser)
     subparsers = parser.add_subparsers(dest="command")
 
