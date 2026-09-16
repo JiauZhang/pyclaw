@@ -853,6 +853,57 @@ def test_at_typeahead_dir_keeps_navigating():
         asyncio.run(scenario(d))
 
 
+def test_subagent_agent_square_brackets_do_not_crash():
+    from chatchat.hooks.events import (RuntimeEvent, AGENT_TOOL_CALL,
+                                       AGENT_TOOL_RESULT, AGENT_TEXT,
+                                       AGENT_PROGRESS)
+
+    def builder():
+        t = _FakeTeam()
+        t.agents["teammate@t"] = type("A", (), {
+            "name": "teammate", "agent_id": "teammate@t"})()
+        return t
+
+    async def scenario():
+        async with PyClawApp(builder=builder).run_test() as pilot:
+            app = pilot.app
+            await app.action_toggle_tasks()
+            await pilot.pause()
+            app._subagents["teammate"] = {"type": "Task", "tools": 0,
+                                          "tokens": None, "last_tool": None,
+                                          "done": False, "tool_names": {}}
+            errors = []
+
+            async def h(ev):
+                try:
+                    await app._handle(ev)
+                    app._render_status()
+                    app._render_tasks()
+                except Exception as e:
+                    errors.append((ev.kind, type(e).__name__, str(e)))
+
+            await h(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "build site 1. **x** [/bold]"},
+                "tool_use_id": "c1"}))
+            await h(RuntimeEvent(AGENT_TEXT, agent="teammate",
+                                 data={"delta": "Running [/bold] build"}))
+            await h(RuntimeEvent(AGENT_TOOL_CALL, agent="teammate", data={
+                "tool": "Bash",
+                "input": {"command": "npm create vite"},
+                "tool_use_id": "b1"}))
+            await h(RuntimeEvent(AGENT_TOOL_RESULT, agent="teammate", data={
+                "tool": "Bash", "tool_use_id": "b1", "exit_code": 0}))
+            app._sync_tool_states()
+            app._tools["c1"].set_result("Report:\n[/bold] done scaffolding")
+            await pilot.pause()
+            assert not errors
+            assert "render error" not in str(app.query_one("#conv"))
+            assert "[/bold]" not in str(app.query_one("#conv"))
+
+    asyncio.run(scenario())
+
+
 def test_slash_menu_shows_and_tab_completes():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
