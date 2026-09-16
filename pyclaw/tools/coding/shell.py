@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from chatchat.tool import tool
+from chatchat.tool import ToolResult, tool
 
 from .shell_rules import split_commands
 
@@ -166,11 +166,14 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
     body = _clean(_read_output(output_path))
     code = process.returncode
     if code == 0:
-        return body or '(no output)'
+        return ToolResult(text=body or '(no output)',
+                          meta={'exit_code': 0})
     message = _exit_message(text, code)
     if message is not None:
-        return _join(message, body)
-    return _join(f'Exit code {code}', body)
+        return ToolResult(text=_join(message, body),
+                          meta={'exit_code': code})
+    return ToolResult(text=_join(f'Exit code {code}', body),
+                      meta={'exit_code': code})
 
 
 def make_bash(cwd: str):

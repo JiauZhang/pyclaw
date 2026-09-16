@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from chatchat.tool import tool
+from chatchat.tool import ToolResult, tool
 
 from .paths import resolve
 
@@ -67,7 +67,10 @@ def make_read(cwd: str):
         body = lines[start:end]
         numbered = '\n'.join(f'{i + start + 1}\t{ln}' for i, ln in enumerate(body))
         note = f' ({total} lines, showing {start + 1}-{end})' if total != end - start else ''
-        return f'{_rel(workspace := Path(cwd).resolve(), path)}{note}:\n{numbered}'
+        rel = _rel(Path(cwd).resolve(), path)
+        return ToolResult(
+            text=f'{rel}{note}:\n{numbered}',
+            meta={'num_lines': total, 'path': rel})
     return read
 
 
@@ -104,7 +107,8 @@ def make_glob(cwd: str):
         if not matches:
             return f'No files match "{pattern}".'
         matches.sort()
-        return '\n'.join(matches)
+        return ToolResult(text='\n'.join(matches),
+                          meta={'num_files': len(matches)})
     return glob
 
 
@@ -144,6 +148,7 @@ def make_grep(cwd: str):
         else:
             files = (p for p in base.rglob('*') if p.is_file())
         hits = []
+        files_seen = set()
         root = Path(cwd).resolve()
         for p in files:
             if any(part in _SKIP_DIRS for part in p.parts):
@@ -152,12 +157,22 @@ def make_grep(cwd: str):
                 text = p.read_text(encoding='utf-8')
             except (UnicodeDecodeError, OSError):
                 continue
+            if max_hits and len(hits) >= max_hits:
+                return ToolResult(
+                    text='\n'.join(hits) + f'\n[exceeded {max_hits} hits]',
+                    meta={'num_files': len(files_seen),
+                          'num_lines': len(hits)})
             for lineno, line in enumerate(text.splitlines(), 1):
                 if max_hits and len(hits) >= max_hits:
-                    return '\n'.join(hits) + f'\n[exceeded {max_hits} hits]'
+                    break
                 if rx.search(line):
                     hits.append(f'{_rel(root, p)}:{lineno}: {line}')
-        return '\n'.join(hits) if hits else f'No matches for "{pattern}".'
+                    files_seen.add(_rel(root, p))
+        if not hits:
+            return f'No matches for "{pattern}".'
+        return ToolResult(text='\n'.join(hits),
+                          meta={'num_files': len(files_seen),
+                                'num_lines': len(hits)})
     return grep
 
 
@@ -193,5 +208,6 @@ def make_ls(cwd: str):
                     size = 0
                 entries.append(f'{child.name}  ({size} bytes)')
         label = _rel(base_root, base) or '.'
-        return f'{label}\n' + '\n'.join(entries)
+        return ToolResult(text=f'{label}\n' + '\n'.join(entries),
+                          meta={'num_entries': len(entries)})
     return ls

@@ -3,7 +3,7 @@ from __future__ import annotations
 import difflib
 from pathlib import Path
 
-from chatchat.tool import tool
+from chatchat.tool import ToolResult, tool
 
 from .paths import resolve
 
@@ -22,6 +22,14 @@ def _read_text(path: Path) -> tuple[str | None, str | None]:
         return None, f'Error: not a text file: {path}'
     except OSError as e:
         return None, f'Error reading {path}: {e}'
+
+
+def _diff_counts(before: str, after: str):
+    added = sum(1 for ln in after.splitlines()
+                if ln not in before.splitlines())
+    removed = sum(1 for ln in before.splitlines()
+                  if ln not in after.splitlines())
+    return added, removed
 
 
 def _diff(rel: str, before: str, after: str) -> str:
@@ -65,9 +73,15 @@ def make_write(cwd: str):
         except OSError as e:
             return f'Error writing {file_path}: {e}'
         if existed:
-            return (f'The file {rel} has been updated successfully.\n\n'
-                    + _diff(rel, old_text or '', content))
-        return f'File created successfully at: {rel}'
+            added, removed = _diff_counts(old_text or '', content)
+            return ToolResult(
+                text=(f'The file {rel} has been updated successfully.\n\n'
+                      + _diff(rel, old_text or '', content)),
+                meta={'path': rel, 'mode': 'updated',
+                      'num_added': added, 'num_removed': removed})
+        return ToolResult(
+            text=f'File created successfully at: {rel}',
+            meta={'path': rel, 'mode': 'wrote'})
     return write
 
 
@@ -108,8 +122,11 @@ def make_edit(cwd: str):
         except OSError as e:
             return f'Error writing {file_path}: {e}'
         rel = _rel(Path(cwd).resolve(), path)
-        return (f'The file {rel} has been updated successfully.\n\n'
-                + _diff(rel, text, after))
+        added, removed = _diff_counts(text, after)
+        return ToolResult(
+            text=(f'The file {rel} has been updated successfully.\n\n'
+                  + _diff(rel, text, after)),
+            meta={'path': rel, 'num_added': added, 'num_removed': removed})
     return edit
 
 
@@ -164,6 +181,9 @@ def make_multi_edit(cwd: str):
         except OSError as e:
             return f'Error writing {file_path}: {e}'
         rel = _rel(Path(cwd).resolve(), path)
-        return (f'The file {rel} has been updated successfully.\n\n'
-                + _diff(rel, text, working))
+        added, removed = _diff_counts(text, working)
+        return ToolResult(
+            text=(f'The file {rel} has been updated successfully.\n\n'
+                  + _diff(rel, text, working)),
+            meta={'path': rel, 'num_added': added, 'num_removed': removed})
     return multi_edit

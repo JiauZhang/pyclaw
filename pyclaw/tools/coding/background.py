@@ -8,7 +8,7 @@ import threading
 import time
 from pathlib import Path
 
-from chatchat.tool import tool
+from chatchat.tool import ToolResult, tool
 
 from .shell import _kill
 
@@ -159,7 +159,10 @@ def make_task_output(cwd: str):
             lines.append(f'<exit_code>{code}</exit_code>')
         body = _tail(task['output']).rstrip('\n')
         lines.append(body if body.strip() else '(no output yet)')
-        return '\n'.join(lines)
+        meta = {'status': status}
+        if code is not None:
+            meta['exit_code'] = code
+        return ToolResult(text='\n'.join(lines), meta=meta)
     return task_output
 
 
@@ -189,5 +192,7 @@ def make_task_stop(cwd: str):
                 process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 pass
-        return f'Successfully stopped task: {task_id} ({task["command"]})'
+        return ToolResult(
+            text=f'Successfully stopped task: {task_id} ({task["command"]})',
+            meta={'stopped': True})
     return task_stop

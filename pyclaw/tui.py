@@ -24,6 +24,7 @@ from chatchat.hooks.events import (
     AGENT_STATE,
     AGENT_TEXT,
     AGENT_TOOL_CALL,
+    AGENT_TOOL_RESULT,
     AGENT_TURN_FINISHED,
     AGENT_WARN,
     register_runtime_handler,
@@ -614,6 +615,7 @@ class _ToolBlock(Static):
         self._expanded = False
         self._failed = False
         self._frame = BULLET
+        self._meta: dict | None = None
         self._draw()
 
     def tick(self, char: str):
@@ -621,11 +623,37 @@ class _ToolBlock(Static):
             self._frame = char
             self._draw()
 
-    def set_result(self, output):
+    def set_result(self, output, meta=None):
         self._done = True
         self._output = output
+        self._meta = meta
         self._failed = str(output or "").startswith("Error")
         self._draw()
+
+    def _meta_summary(self) -> str | None:
+        m = self._meta or {}
+        if m.get('num_lines') and self._name == 'Read':
+            path = m.get('path', '')
+            return (f"Read {_plural(m['num_lines'], 'line')}"
+                    + (f" {escape(path)}" if path else ""))
+        if m.get('num_files') is not None or m.get('num_lines') is not None:
+            if self._name == 'Grep':
+                hits = m.get('num_lines', 0)
+                files = m.get('num_files', 0)
+                return (f"Found {_plural(hits, 'line')} in "
+                        f"{_plural(files, 'file')}")
+            if m.get('num_files') is not None:
+                return f"Found {_plural(m['num_files'], 'file')}"
+        if m.get('num_entries') is not None:
+            return f"Listed {_plural(m['num_entries'], 'entry')}"
+        if m.get('num_added', 0) or m.get('num_removed', 0):
+            return _edit_summary(m.get('num_added', 0),
+                                 m.get('num_removed', 0))
+        if self._name == 'Write' and m.get('mode'):
+            verb = 'Wrote' if m['mode'] == 'wrote' else 'Updated'
+            if m.get('path'):
+                return f"{verb} {escape(m['path'])}"
+        return None
 
     def on_click(self):
         self._expanded = not self._expanded
@@ -664,15 +692,20 @@ class _ToolBlock(Static):
             rows = escape(body).replace("\n", "\n" + RESULT_HANG)
             self.update(f"{head}\n{RESULT_PREFIX}{rows}")
             return
-        diff = _diff_block(self._name, self._input, self._output, self._cwd,
-                           self._width())
-        if diff is not None:
-            self.add_class("diff")
-            self.update(f"{head}\n{diff}")
-            return
-        self.remove_class("diff")
-        summary = _result_summary(self._name, self._input, self._output,
-                                  self._cwd, self._width())
+        summary = self._meta_summary()
+        if summary is None:
+            summary = _result_summary(self._name, self._input, self._output,
+                                      self._cwd, self._width())
+        if self._meta_summary() is not None:
+            self.remove_class("diff")
+        else:
+            diff = _diff_block(self._name, self._input, self._output,
+                               self._cwd, self._width())
+            if diff is not None:
+                self.add_class("diff")
+                self.update(f"{head}\n{diff}")
+                return
+            self.remove_class("diff")
         rows = escape(summary).replace("\n", "\n" + RESULT_HANG)
         self.update(f"{head}\n[dim]{RESULT_PREFIX}{rows}[/]")
 
@@ -1219,6 +1252,7 @@ class PyClawApp(App[None]):
         self._suggest_selected = 0
         self._suggest_dismissed: str | None = None
         self._typeahead: str | None = None
+        self._tool_meta: dict[str, dict] = {}
         self._group: _GroupBlock | None = None
         self._last_interrupt = 0.0
         self._history: list[str] = []
@@ -1418,6 +1452,9 @@ class PyClawApp(App[None]):
         elif ev.kind == AGENT_WARN:
             await self._frozen()
             await self._append_error(ev.data.get('text', ''))
+        elif ev.kind == AGENT_TOOL_RESULT:
+            uid = ev.data.get('tool_use_id') or ev.data.get('tool', '')
+            self._tool_meta[uid] = dict(ev.data)
         elif ev.kind == AGENT_TURN_FINISHED:
             self._note(name, think=False, busy=False)
             self._discard_think()
@@ -1630,7 +1667,8 @@ class PyClawApp(App[None]):
                     results[block.get("tool_use_id")] = block.get("content", "")
         for uid, block in self._tools.items():
             if not block._done and uid in results:
-                block.set_result(str(results[uid]))
+                block.set_result(str(results[uid]),
+                                 meta=self._tool_meta.get(uid))
 
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()

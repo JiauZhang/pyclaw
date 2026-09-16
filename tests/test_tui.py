@@ -638,6 +638,29 @@ def test_diff_block_pairs_only_adjacent_remove_add():
     assert "[on #225C2B]" in text and "[on #7A2936]" in text
 
 
+def test_read_card_uses_structured_meta_not_text_parsing():
+    from chatchat.hooks.events import (RuntimeEvent, AGENT_TOOL_RESULT)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(
+                AGENT_TOOL_CALL, agent="lead",
+                data={"tool": "Read", "input": {"file_path": "a.py"},
+                      "tool_use_id": "rt1"}))
+            await pilot.pause()
+            block = app._tools["rt1"]
+            block.set_result("a.py:\n10\tfoo\n11\tbar",
+                             meta={"num_lines": 42, "path": "a.py"})
+            await pilot.pause()
+            content = str(block.content)
+            assert "Read 42 lines" in content
+            assert "Read 2 lines" not in content
+
+    asyncio.run(scenario())
+
+
 def test_tool_block_renders_edit_diff():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

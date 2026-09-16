@@ -12,8 +12,15 @@ from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
                                              is_read_only, parse_bash_rule)
 
 
+from chatchat.tool import ToolResult
+
+
 def _tools(d):
     return {t.name: t for t in build_coding_tools(d)}
+
+
+def _text(result):
+    return result.text if isinstance(result, ToolResult) else result
 
 
 def _read(p):
@@ -25,11 +32,11 @@ def test_read_and_find():
         root = Path(d)
         (root / "a.txt").write_text("alpha\nbeta\n")
         t = _tools(d)
-        out = t["Read"](file_path="a.txt")
+        out = _text(t["Read"](file_path="a.txt"))
         assert "alpha" in out and "a.txt" in out
-        g = t["Glob"](pattern="*.txt")
+        g = _text(t["Glob"](pattern="*.txt"))
         assert "a.txt" in g
-        ls = t["LS"](path=".")
+        ls = _text(t["LS"](path="."))
         assert "a.txt" in ls
 
 
@@ -38,7 +45,7 @@ def test_grep_matches_and_limits():
         root = Path(d)
         (root / "a.txt").write_text("x1\n---\nx2\n")
         t = _tools(d)
-        out = asyncio.run(t["Grep"](pattern="x[0-9]"))
+        out = _text(asyncio.run(t["Grep"](pattern="x[0-9]")))
         assert "a.txt:1: x1" in out and "a.txt:3: x2" in out
 
 
@@ -55,15 +62,15 @@ def test_edit_unique_and_ambiguous():
         root = Path(d)
         (root / "a.txt").write_text("one\ntwo\none\n")
         t = _tools(d)
-        ambiguous = t["Edit"](file_path="a.txt", old_string="one",
-                              new_string="X")
+        ambiguous = _text(t["Edit"](file_path="a.txt", old_string="one",
+                                      new_string="X"))
         assert "not unique" in ambiguous
-        ok = t["Edit"](file_path="a.txt", old_string="two", new_string="TWO")
+        ok = _text(t["Edit"](file_path="a.txt", old_string="two", new_string="TWO"))
         assert "has been updated successfully" in ok
         assert "-two" in ok and "+TWO" in ok
         assert "TWO" in _read(root / "a.txt")
-        missing = t["Edit"](file_path="a.txt", old_string="zzz",
-                            new_string="y")
+        missing = _text(t["Edit"](file_path="a.txt", old_string="zzz",
+                                    new_string="y"))
         assert "not found" in missing
 
 
@@ -71,10 +78,10 @@ def test_write_and_multi_edit():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         t = _tools(d)
-        wrote = t["Write"](file_path="b.txt", content="hi\n")
+        wrote = _text(t["Write"](file_path="b.txt", content="hi\n"))
         assert "File created successfully at: b.txt" in wrote
-        out = t["MultiEdit"](file_path="b.txt", edits=[
-            {"old_string": "hi", "new_string": "hello"}])
+        out = _text(t["MultiEdit"](file_path="b.txt", edits=[
+            {"old_string": "hi", "new_string": "hello"}]))
         assert "has been updated successfully" in out
         assert "-hi" in out and "+hello" in out
         assert "hello" in _read(root / "b.txt")
@@ -171,23 +178,23 @@ def test_bash_tool_runs_in_workspace():
         (root / "marker.txt").write_text("x\n")
         t = _tools(d)
         assert "Bash" in t
-        assert "marker.txt" in t["Bash"](command="ls")
-        out = t["Bash"](command="python3 -c \"import os;"
-                                "print(os.path.realpath(os.getcwd()))\"")
+        assert "marker.txt" in _text(t["Bash"](command="ls"))
+        out = _text(t["Bash"](command="python3 -c \"import os;"
+                                        "print(os.path.realpath(os.getcwd()))\""))
         assert str(root.resolve()) in out
 
 
 def test_bash_merges_stdout_and_stderr():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="echo out; echo err 1>&2")
+        out = _text(t["Bash"](command="echo out; echo err 1>&2"))
         assert "out" in out and "err" in out
 
 
 def test_bash_reports_nonzero_exit_with_output():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="echo boom 1>&2; exit 3")
+        out = _text(t["Bash"](command="echo boom 1>&2; exit 3"))
         assert out.startswith("Exit code 3")
         assert "boom" in out
 
@@ -197,7 +204,7 @@ def test_bash_grep_exit_one_is_not_an_error():
         root = Path(d)
         (root / "a.txt").write_text("alpha\n")
         t = _tools(d)
-        out = t["Bash"](command="grep zzz a.txt")
+        out = _text(t["Bash"](command="grep zzz a.txt"))
         assert "No matches found" in out
         assert "Exit code" not in out
 
@@ -205,7 +212,7 @@ def test_bash_grep_exit_one_is_not_an_error():
 def test_bash_test_exit_one_is_condition_false():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="test 1 = 2")
+        out = _text(t["Bash"](command="test 1 = 2"))
         assert "Condition is false" in out
         assert "Exit code" not in out
 
@@ -213,24 +220,24 @@ def test_bash_test_exit_one_is_condition_false():
 def test_bash_timeout_kills_command():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="sleep 5", timeout=200)
+        out = _text(t["Bash"](command="sleep 5", timeout=200))
         assert "timed out" in out
 
 
 def test_bash_timeout_moves_running_command_to_background():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="echo start; sleep 2; echo done", timeout=300)
+        out = _text(t["Bash"](command="echo start; sleep 2; echo done", timeout=300))
         assert "background" in out
         task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
-        final = t["TaskOutput"](task_id=task_id, timeout=8000)
+        final = _text(t["TaskOutput"](task_id=task_id, timeout=8000))
         assert "done" in final
 
 
 def test_bash_truncates_large_output():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        out = t["Bash"](command="python3 -c \"print('y' * 40000)\"")
+        out = _text(t["Bash"](command="python3 -c \"print('y' * 40000)\""))
         assert "truncated" in out
         assert len(out) < 40000
 
@@ -240,7 +247,7 @@ def test_bash_exit_code_semantics_use_the_last_subcommand():
         root = Path(d)
         (root / "a.txt").write_text("alpha\n")
         t = _tools(d)
-        out = t["Bash"](command="cd . && grep zzz a.txt")
+        out = _text(t["Bash"](command="cd . && grep zzz a.txt"))
         assert "No matches found" in out
         assert "Exit code" not in out
 
@@ -261,7 +268,7 @@ def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
                         lambda: str(tmp_path / "scratch"))
     monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", "200")
     t = _tools(str(tmp_path))
-    out = t["Bash"](command="python3 -c \"print('y' * 500)\"")
+    out = _text(t["Bash"](command="python3 -c \"print('y' * 500)\""))
     assert "truncated" in out and "full output:" in out
     path = out.split("full output: ")[1].split("]")[0]
     assert len(Path(path).read_text(encoding="utf-8")) == 500
@@ -462,6 +469,40 @@ def test_dont_ask_persists_allow():
         assert data["permissions"]["allow"] == ["Edit(./a.txt)"]
 
 
+def test_tools_return_structured_meta():
+    from chatchat.tool import ToolResult
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "a.py").write_text("x\ny\n")
+        t = _tools(d)
+        r = t["Read"](file_path="a.py")
+        assert isinstance(r, ToolResult)
+        assert r.meta["num_lines"] == 2
+        assert r.meta["path"] == "a.py"
+        assert r.text.startswith("a.py")
+
+        g = _tools(d)
+        r2 = g["Grep"]
+        import asyncio as _a
+        gr = _a.run(r2(pattern="x"))
+        assert isinstance(gr, ToolResult)
+        assert gr.meta["num_files"] == 1
+        assert gr.meta["num_lines"] == 1
+
+        w = t["Write"](file_path="b.py", content="hi\n")
+        assert isinstance(w, ToolResult)
+        assert w.meta["mode"] == "wrote"
+
+        e = t["Edit"](file_path="a.py", old_string="x", new_string="X")
+        assert isinstance(e, ToolResult)
+        assert e.meta["num_added"] == 1 and e.meta["num_removed"] == 1
+
+        b = _text(t["Bash"](command="exit 3"))
+        assert b.startswith("Exit code 3")
+        br = t["Bash"](command="exit 3")
+        assert br.meta["exit_code"] == 3
+
+
 def test_suggested_path_rule():
     from pyclaw.tools.coding.permission import suggested_path_rule
     assert suggested_path_rule("Edit", {"file_path": "a.txt"},
@@ -634,7 +675,7 @@ def test_task_output_blocks_until_completion():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 0.4 && echo finished-data", run_in_background=True)
     task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
-    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=5000)
+    text = _text(_tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=5000))
     assert "finished-data" in text
     assert "<exit_code>0</exit_code>" in text
     assert "<retrieval_status>success</retrieval_status>" in text
@@ -646,7 +687,7 @@ def test_task_output_timeout_reports_still_running():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 5", run_in_background=True)
     task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
-    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=300)
+    text = _text(_tools("/tmp")["TaskOutput"](task_id=task_id, block=True, timeout=300))
     assert "<retrieval_status>timeout</retrieval_status>" in text
     assert "<status>running</status>" in text
     assert "exit_code" not in text
@@ -658,7 +699,7 @@ def test_task_output_non_blocking_reports_not_ready():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 5", run_in_background=True)
     task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
-    text = _tools("/tmp")["TaskOutput"](task_id=task_id, block=False)
+    text = _text(_tools("/tmp")["TaskOutput"](task_id=task_id, block=False))
     assert "<retrieval_status>not_ready</retrieval_status>" in text
     background.cleanup_background_tasks()
 
@@ -670,7 +711,7 @@ def test_task_stop_kills_process_group():
     out = bash(command="sleep 30", run_in_background=True)
     task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
     task = background._tasks[task_id]
-    text = _tools("/tmp")["TaskStop"](task_id=task_id)
+    text = _text(_tools("/tmp")["TaskStop"](task_id=task_id))
     assert f"Successfully stopped task: {task_id}" in text
     assert "sleep 30" in text
     for _ in range(30):
@@ -695,9 +736,9 @@ def test_background_tasks_cleanup_kills_all():
 
 def test_task_output_unknown_task():
     from pyclaw.tools.coding import background
-    text = _tools("/tmp")["TaskOutput"](task_id="bdeadbeef")
+    text = _text(_tools("/tmp")["TaskOutput"](task_id="bdeadbeef"))
     assert "no such background task" in text
-    text = _tools("/tmp")["TaskStop"](task_id="bdeadbeef")
+    text = _text(_tools("/tmp")["TaskStop"](task_id="bdeadbeef"))
     assert "no such background task" in text
 
 
@@ -732,7 +773,7 @@ def test_write_overwrite_returns_a_diff():
         root = Path(d)
         (root / "a.txt").write_text("one\ntwo\nthree\n")
         t = _tools(d)
-        out = t["Write"](file_path="a.txt", content="one\nTWO\nthree\n")
+        out = _text(t["Write"](file_path="a.txt", content="one\nTWO\nthree\n"))
         assert "has been updated successfully" in out
         assert "--- a/a.txt" in out and "+++ b/a.txt" in out
         assert "-two" in out and "+TWO" in out
@@ -744,7 +785,7 @@ def test_edit_result_is_a_unified_diff():
         root = Path(d)
         (root / "a.txt").write_text("a\nb\nc\n")
         t = _tools(d)
-        out = t["Edit"](file_path="a.txt", old_string="b", new_string="B")
+        out = _text(t["Edit"](file_path="a.txt", old_string="b", new_string="B"))
         assert "has been updated successfully" in out
         assert "@@ -1,3 +1,3 @@" in out
         assert "-b" in out and "+B" in out
@@ -755,10 +796,10 @@ def test_multi_edit_diff_covers_all_changes():
         root = Path(d)
         (root / "a.txt").write_text("x\ny\nz\n")
         t = _tools(d)
-        out = t["MultiEdit"](file_path="a.txt", edits=[
+        out = _text(t["MultiEdit"](file_path="a.txt", edits=[
             {"old_string": "x", "new_string": "X"},
             {"old_string": "z", "new_string": "Z"},
-        ])
+        ]))
         assert "has been updated successfully" in out
         assert "-x" in out and "+X" in out
         assert "-z" in out and "+Z" in out
