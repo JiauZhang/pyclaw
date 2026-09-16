@@ -162,6 +162,44 @@ def test_permission_gate_resolves_subagent_mode():
     assert "needs approval" in lead["reason"]
 
 
+def test_permission_gate_parent_mode_takes_precedence():
+    from chatchat.core.agents import AgentDefinition
+    from pyclaw.agents import build_team
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            def accept_edits_team():
+                team = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                                  permission_mode="acceptEdits")
+                team.register_agent_definition(AgentDefinition(
+                    "reader", system_prompt="read only",
+                    permission_mode="plan"))
+                return team
+
+            file = {"file_path": str(Path(d) / "a.txt")}
+            team = accept_edits_team()
+            edit_in_accept_edits = await _gate_call(team, "Edit", file,
+                                                    "reader")
+            bash_in_accept_edits = await _gate_call(
+                team, "Bash", {"command": "echo hi"}, "reader")
+
+            bypass = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                                permission_mode="bypassPermissions")
+            bypass.register_agent_definition(AgentDefinition(
+                "reader", system_prompt="read only", permission_mode="plan"))
+            edit_in_bypass = await _gate_call(bypass, "Edit", file, "reader")
+            datetime_in_bypass = await _gate_call(bypass, "datetime", {},
+                                                  "reader")
+            return (edit_in_accept_edits, bash_in_accept_edits,
+                    edit_in_bypass, datetime_in_bypass)
+
+    edit_ae, bash_ae, edit_bp, dt_bp = asyncio.run(main())
+    assert edit_ae is True
+    assert bash_ae is True
+    assert edit_bp is True
+    assert dt_bp is True
+
+
 def test_bypass_permissions_allows_unless_a_rule_says_otherwise():
     with tempfile.TemporaryDirectory() as d:
         g = PermissionController(mode="bypassPermissions", cwd=d)

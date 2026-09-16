@@ -350,7 +350,8 @@ def build_team(
     async def _permission_gate(hook_input):
         agent_type = hook_input.get('agent_type') or ''
         mode = None
-        if agent_type:
+        if agent_type and gate.mode not in (PermissionMode.bypass_permissions,
+                                            PermissionMode.accept_edits):
             defn = team.agent_defs.find(agent_type)
             mode = (defn.permission_mode if defn is not None else None) \
                 or 'acceptEdits'
