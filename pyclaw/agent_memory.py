@@ -2,19 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-TEMPLATE = '''# PYCLAW
-
-Project instructions for PyClaw. This file is loaded into the agent's
-context at the start of every session (claude: CLAUDE.md).
-
-- Describe build/test commands, conventions and gotchas.
-- Keep it short; anything the agent must always know goes here.
-'''
-
 
 def _user_memory_file() -> Path:
     from pyclaw import __pyclaw_home__
-    return Path(__pyclaw_home__) / 'PYCLAW.md'
+    return Path(__pyclaw_home__) / 'AGENTS.md'
 
 
 def load_instruction_files(cwd: str) -> list[dict]:
@@ -29,7 +20,7 @@ def load_instruction_files(cwd: str) -> list[dict]:
             pass
     current = Path(cwd).resolve()
     for directory in [current, *current.parents]:
-        candidate = directory / 'PYCLAW.md'
+        candidate = directory / 'AGENTS.md'
         if not candidate.exists():
             continue
         try:
@@ -44,11 +35,3 @@ def load_instruction_files(cwd: str) -> list[dict]:
 def load_project_memory(cwd: str) -> str:
     return '\n\n'.join(item['content']
                        for item in load_instruction_files(cwd))
-
-
-def init_project_memory(cwd: str) -> str:
-    target = Path(cwd) / 'PYCLAW.md'
-    if target.exists():
-        return f'already exists: {target}'
-    target.write_text(TEMPLATE, encoding='utf-8')
-    return f'created {target}'

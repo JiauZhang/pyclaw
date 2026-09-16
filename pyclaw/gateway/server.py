@@ -455,6 +455,18 @@ class GatewayServer:
 
                 slash_reply = await handle_slash(msg.text, session, session_id)
                 if slash_reply is not None:
+                    if isinstance(slash_reply, tuple):
+                        info, follow = slash_reply
+                        if info:
+                            await _adapter.send_message(
+                                msg.sender_id, OutboundMessage(text=info, reply_to=msg.id))
+                        await run_im_interaction(
+                            session, _adapter, session_id, msg.sender_id,
+                            follow, msg.id, im_extra=IM_EXTRA,
+                            progress_fn=_im_progress_text)
+                        logger.info("IM '%s' ran /init via model", _platform)
+                        self.runtime.increment_requests()
+                        return
                     await _adapter.send_message(
                         msg.sender_id, OutboundMessage(text=slash_reply, reply_to=msg.id),
                     )

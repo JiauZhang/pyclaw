@@ -86,6 +86,37 @@ def test_status_reports_version_and_directory():
     assert "Directory:" in out
 
 
+def test_init_returns_prompt_tuple_for_model():
+    class _S:
+        cwd = "/tmp/demo"
+
+    info, prompt = asyncio.run(_call("/init", _S()))
+    assert isinstance(info, str) and prompt
+    assert "AGENTS.md" in prompt
+    assert "CLAUDE.md" not in prompt
+
+
+def test_init_reports_existing_file(tmp_path):
+    (tmp_path / "AGENTS.md").write_text("# AGENTS.md\n", encoding="utf-8")
+
+    class _S:
+        cwd = str(tmp_path)
+
+    info, prompt = asyncio.run(_call("/init", _S()))
+    assert "already exists" in info
+    assert "AGENTS.md" in prompt
+
+
+def test_memory_command_points_at_agents_md(tmp_path):
+    class _S:
+        cwd = str(tmp_path)
+
+    out = asyncio.run(_call("/memory", _S()))
+    assert "AGENTS.md" in out
+    assert "PYCLAW.md" not in out
+
+
+
 def test_plan_with_description_queues_the_goal():
     class _S:
         permission_mode = "default"

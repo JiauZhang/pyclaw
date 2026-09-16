@@ -220,16 +220,27 @@ class WebChannelAdapter(ChannelAdapter):
 
             slash_reply = await handle_slash(message, session, session_id)
             if slash_reply is not None:
-                await self.send_response(
-                    client_id,
-                    text=slash_reply,
-                    message_type="stream_chunk",
-                    extra_data={"session_id": session_id, "agent_id": session.name, "is_final": False},
-                )
-                await self._finish_stream(client_id, session_id, session, slash_reply)
-                runtime.update_session_activity(session_id)
-                runtime.increment_requests()
-                return
+                if isinstance(slash_reply, tuple):
+                    info, follow = slash_reply
+                    if info:
+                        await self.send_response(
+                            client_id,
+                            text=info,
+                            message_type="stream_chunk",
+                            extra_data={"session_id": session_id, "agent_id": session.name, "is_final": False},
+                        )
+                    message = follow
+                else:
+                    await self.send_response(
+                        client_id,
+                        text=slash_reply,
+                        message_type="stream_chunk",
+                        extra_data={"session_id": session_id, "agent_id": session.name, "is_final": False},
+                    )
+                    await self._finish_stream(client_id, session_id, session, slash_reply)
+                    runtime.update_session_activity(session_id)
+                    runtime.increment_requests()
+                    return
 
             async def on_event(ev):
                 parts = ev.kind.split(':')

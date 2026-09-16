@@ -5,9 +5,9 @@ COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
     {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
-    {'name': 'init', 'desc': 'Create a PYCLAW.md project instructions file (claude /init)', 'hint': ''},
-    {'name': 'memory', 'desc': 'Show loaded project memory (PYCLAW.md) locations', 'hint': ''},
-    {'name': 'compact', 'desc': 'Force context compaction now (claude /compact)', 'hint': ''},
+    {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
+    {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
+    {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
@@ -26,6 +26,26 @@ def _help_text() -> str:
 
 
 HELP = _help_text()
+
+INIT_PROMPT = '''Analyze this codebase and create an AGENTS.md file, which will be given to future instances of PyClaw (and any AGENTS.md-aware agent) to operate in this repository.
+
+What to add:
+1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
+2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
+
+Usage notes:
+- If there's already an AGENTS.md, improve it (edit it) rather than overwriting blindly.
+- When you create the initial AGENTS.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
+- Avoid listing every component or file structure that can be easily discovered.
+- Don't include generic development practices.
+- If there is a README.md, make sure to include the important parts.
+- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
+- Be sure to prefix the file with:
+
+# AGENTS.md
+
+This file provides guidance to PyClaw (and any AGENTS.md-aware agent) when working with code in this repository.
+'''
 
 _USAGE: dict[str, int] = {}
 
@@ -195,7 +215,7 @@ def _handle_cost(session, arg: str) -> str:
             f"Cost: {detail}")
 
 
-async def handle_slash(text: str, session, session_key: str = '') -> str | None:
+async def handle_slash(text: str, session, session_key: str = '') -> str | None | tuple:
     text = text.strip()
     if not text.startswith('/'):
         return None
@@ -211,8 +231,14 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
     if cmd in ('help', 'h', '?'):
         return HELP
     if cmd == 'init':
-        from pyclaw.agent_memory import init_project_memory
-        return init_project_memory(getattr(session, 'cwd', None) or '.')
+        cwd = getattr(session, 'cwd', None) or '.'
+        existing = Path(cwd) / 'AGENTS.md'
+        if existing.exists():
+            info = (f'AGENTS.md already exists at {existing}. '
+                    f'Asking the agent to improve it.')
+        else:
+            info = 'Surveying the codebase and drafting AGENTS.md…'
+        return info, INIT_PROMPT
     if cmd == 'compact':
         compactor = getattr(session, 'compact', None)
         if compactor is None:
@@ -222,7 +248,7 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None:
         from pyclaw.agent_memory import load_project_memory, _user_memory_file
         cwd = getattr(session, 'cwd', None) or '.'
         lines = [f'user: {_user_memory_file()}',
-                 f'project: {Path(cwd) / "PYCLAW.md"}']
+                 f'project: {Path(cwd) / "AGENTS.md"}']
         memory = load_project_memory(cwd)
         lines.append('loaded: yes' if memory else 'loaded: nothing found')
         return '\n'.join(lines)

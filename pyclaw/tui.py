@@ -74,7 +74,7 @@ BASH_READ_COMMANDS = frozenset({'cat', 'head', 'tail', 'less', 'more', 'wc',
                                 'sort', 'uniq', 'tr'})
 BASH_LIST_COMMANDS = frozenset({'ls', 'tree', 'du'})
 BASH_NEUTRAL_COMMANDS = frozenset({'echo', 'printf', 'true', 'false', ':'})
-MEMORY_FILE_NAME = 'PYCLAW.md'
+MEMORY_FILE_NAME = 'AGENTS.md'
 
 GROUP_PARTS = (
     ('search', 'Searching for', 'Searched for', 'pattern', 'patterns'),
@@ -1130,7 +1130,7 @@ class PyClawApp(App[None]):
     TITLE = "PyClaw"
     CSS = """
     $background: #101010;
-    $claude: #D77757;
+    $brand: #D77757;
     $shimmer: #EB9F7F;
     $text: #FFFFFF;
     $inactive: #999999;
@@ -1161,10 +1161,10 @@ class PyClawApp(App[None]):
     #perm-amend { display: none; width: 100%; height: 1; margin-top: 1;
                   border: round $permission; background: $background;
                   color: $text; padding: 0 1; }
-    .logo { width: auto; margin-bottom: 1; color: $claude; }
+    .logo { width: auto; margin-bottom: 1; color: $brand; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }
-    .text-bullet { width: 2; height: 1; color: $claude; }
+    .text-bullet { width: 2; height: 1; color: $brand; }
     .text-body { width: 1fr; height: auto; color: $text; background: $background; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #help { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
@@ -1922,7 +1922,7 @@ class PyClawApp(App[None]):
             self.query_one("#input", Input).value = self._processing
             self._processing = None
         await self._append_block(
-            "[#9A9A9A]Interrupted \u00b7 What should Claude do instead?[/]")
+            "[#9A9A9A]Interrupted \u00b7 What should PyClaw do instead?[/]")
 
     def _begin_turn(self):
         self._live = None

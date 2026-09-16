@@ -552,7 +552,7 @@ def test_interrupt_cancels_running_work():
             await pilot.pause()
             flat = _flatten(app)
             assert "Interrupted" in flat
-            assert "What should Claude do instead?" in flat
+            assert "What should PyClaw do instead?" in flat
     asyncio.run(scenario())
 
 
@@ -800,7 +800,6 @@ def test_ctrl_s_stash_and_unstash_prompt():
             await pilot.pause()
             assert inp.value == "half written"
             assert app._stashed is None
-            # empty + nothing stashed -> no-op
             await pilot.press("ctrl+s")
             await pilot.pause()
             assert inp.value == ""
@@ -1678,13 +1677,13 @@ def test_tool_collapsible_classification():
     from pyclaw.tui import _collapsible_kinds
 
     assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
-    assert _collapsible_kinds("Read", {"file_path": "PYCLAW.md"}) == {
+    assert _collapsible_kinds("Read", {"file_path": "AGENTS.md"}) == {
         "memory_read"}
     assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
     assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
     assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
     assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Write", {"file_path": "PYCLAW.md"}) == {
+    assert _collapsible_kinds("Write", {"file_path": "AGENTS.md"}) == {
         "memory_write"}
     assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
     assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
@@ -1710,20 +1709,20 @@ def test_tool_collapsible_classification():
     from pyclaw.tui import _collapsible_kinds
 
     assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
-    assert _collapsible_kinds("Read", {"file_path": "PYCLAW.md"}) == {
+    assert _collapsible_kinds("Read", {"file_path": "AGENTS.md"}) == {
         "memory_read"}
     assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
     assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
     assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
     assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Write", {"file_path": "PYCLAW.md"}) == {
+    assert _collapsible_kinds("Write", {"file_path": "AGENTS.md"}) == {
         "memory_write"}
     assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
     assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
     assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
 
 
-def test_prompt_has_the_claude_pointer():
+def test_prompt_has_the_pointer():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
