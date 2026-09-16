@@ -479,6 +479,21 @@ def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
     assert len(Path(path).read_text(encoding="utf-8")) == 500
 
 
+def test_bash_budget_keeps_its_own_output_pointer_readable(monkeypatch, tmp_path):
+    from chatchat.tool import DEFAULT_MAX_RESULT_CHARS
+    from pyclaw.tools.coding import shell
+    t = _tools(str(tmp_path))
+    assert t["Bash"].tool.max_result_chars > DEFAULT_MAX_RESULT_CHARS
+
+    limit = shell.MAX_OUTPUT_UPPER_LIMIT
+    monkeypatch.setattr(shell.tempfile, "gettempdir",
+                        lambda: str(tmp_path / "scratch"))
+    monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", str(limit))
+    out = _text(t["Bash"](command=f"python3 -c \"print('y' * {limit + 5})\""))
+    assert "full output:" in out
+    assert "was truncated" not in out
+
+
 def test_bash_rule_parse_and_match():
     assert parse_bash_rule("Bash(npm run test:*)") == ("prefix", "npm run test")
     assert parse_bash_rule("Bash(ls)") == ("exact", "ls")

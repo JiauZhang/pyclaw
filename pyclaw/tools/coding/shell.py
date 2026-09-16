@@ -185,6 +185,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
                 'background and reports its task ID instead of failing. Ask '
                 'before destructive git commands like push --force or reset '
                 '--hard.',
+    max_result_chars=MAX_OUTPUT_UPPER_LIMIT + 1_000,
     parameters={
         'type': 'object',
         'properties': {
