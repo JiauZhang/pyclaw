@@ -11,7 +11,7 @@ _GREP_MAX = 200
 _TEXT_ERROR = "Invalid UTF-8"
 
 _SKIP_DIRS = {'.git', '.hg', '.svn', '__pycache__', 'node_modules', '.venv',
-              'venv', 'dist', 'build', '.tox', '.idea', '.claude'}
+              'venv', 'dist', 'build', '.tox', '.idea', '.pyclaw'}
 
 
 def _skipped(path) -> bool:
@@ -20,8 +20,11 @@ def _skipped(path) -> bool:
 
 @tool(
     name='Read',
-    description='Read a file from the workspace. Returns full content or '
-                'a line range when offset/limit are given.',
+    description='Reads a workspace file as text, one entry per line, each '
+                'preceded by its 1-based line number and a tab. That prefix is '
+                'not file content: never carry it into an Edit old_string. '
+                f'Files longer than {_READ_LIMIT} lines return the first page '
+                'with a note; binary files return an encoding error.',
     parameters={
         'type': 'object',
         'properties': {
@@ -31,11 +34,13 @@ def _skipped(path) -> bool:
             },
             'offset': {
                 'type': 'integer',
-                'description': '0-based line to start from.',
+                'description': 'Line number to start from, counting the '
+                               'numbers the output prints.',
             },
             'limit': {
                 'type': 'integer',
-                'description': 'Max number of lines to return.',
+                'description': 'Max lines to return.',
+                'default': _READ_LIMIT,
             },
         },
         'required': ['file_path'],
@@ -55,14 +60,14 @@ def Read(context, file_path: str, offset: int | None = None,
     except OSError as e:
         return f'Error reading {file_path}: {e}'
     total = len(lines)
-    start = offset or 0
-    end = total if limit is None else min(start + limit, total)
+    start = max((offset or 1) - 1, 0)
+    end = min(start + (limit or _READ_LIMIT), total)
     if start >= total and total:
-        return f'Error: offset {start} beyond file length {total}'
+        return f'Error: offset {offset} beyond file length {total}'
     body = lines[start:end]
     numbered = '\n'.join(f'{i + start + 1}\t{ln}' for i, ln in enumerate(body))
     note = (f' ({total} lines, showing {start + 1}-{end})'
-            if total != end - start else '')
+            if total != len(body) else '')
     rel = relative(context.cwd, path)
     return ToolResult(text=f'{rel}{note}:\n{numbered}',
                       meta={'num_lines': total, 'path': rel})
@@ -102,18 +107,23 @@ def Glob(context, pattern: str, path: str | None = None) -> str:
 
 @tool(
     name='Grep',
-    description='Search file contents with a regular expression. Each '
-                'match is reported as path:line: text.',
+    description='Searches file contents by regex, reporting each match as '
+                'path:line: text. Patterns are Python re applied one line at a '
+                'time, so . never spans a newline. A trailing "[exceeded N '
+                'hits]" means the search stopped early, not that nothing else '
+                'matched. node_modules, dist and VCS dirs are never searched.',
     parameters={
         'type': 'object',
         'properties': {
             'pattern': {'type': 'string', 'description': 'Regex to match.'},
             'path': {'type': 'string',
-                     'description': 'Optional subdirectory seed.'},
+                     'description': 'Subdirectory to search instead of the '
+                                    'whole workspace.'},
             'glob': {'type': 'string',
-                     'description': 'Optional file glob to restrict to.'},
+                     'description': 'Only search files whose path matches '
+                                    'this glob.'},
             'max_hits': {'type': 'integer',
-                         'description': 'Max matches to return.',
+                         'description': 'Stop after this many matches.',
                          'default': _GREP_MAX},
         },
         'required': ['pattern'],

@@ -37,6 +37,56 @@ def test_coding_tools_are_shared_singletons():
         assert 'in b' in _text(second(file_path='same.txt'))
 
 
+def _all_properties(schema: dict) -> dict:
+    found = dict(schema.get('properties', {}))
+    for spec in schema.get('properties', {}).values():
+        if spec.get('type') == 'array':
+            found.update(_all_properties(spec.get('items', {})))
+    return found
+
+
+def test_tool_text_respects_the_budget_and_documents_every_parameter():
+    ctx = ToolContext(cwd=Path("/w"))
+    for tool in CODING_TOOLS:
+        text = tool.describe(ctx)
+        assert len(text) <= 350, (tool.name, len(text))
+        assert "claude" not in text.lower()
+        for name, spec in _all_properties(tool.parameters).items():
+            assert spec.get("description"), (tool.name, name)
+
+
+def test_read_warns_about_the_line_prefix_that_edit_must_not_copy():
+    text = dict((t.name, t) for t in CODING_TOOLS)["Read"].describe(
+        ToolContext(cwd=Path("/w")))
+    assert "line number" in text and "tab" in text
+
+
+def test_grep_states_the_regex_dialect_and_its_line_scope():
+    text = dict((t.name, t) for t in CODING_TOOLS)["Grep"].describe(
+        ToolContext(cwd=Path("/w")))
+    assert "Python re" in text and "newline" in text
+
+
+def test_read_offset_counts_the_lines_the_output_shows():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "ten.txt").write_text(
+            "\n".join(f"l{i}" for i in range(1, 11)), encoding="utf-8")
+        out = _text(_tools(d)["Read"](file_path="ten.txt", offset=3, limit=2))
+        assert "3\tl3" in out and "4\tl4" in out
+        assert "l5" not in out and "2\tl2" not in out
+
+
+def test_read_caps_long_files_at_the_line_count_it_promises():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "long.txt").write_text(
+            "\n".join(f"l{i}" for i in range(2100)), encoding="utf-8")
+        out = _text(_tools(d)["Read"](file_path="long.txt"))
+        assert "showing 1-2000" in out and "2100 lines" in out
+        assert "2000\tl1999" in out and "2001\tl2000" not in out
+        assert "2000" in dict((t.name, t) for t in CODING_TOOLS)[
+            "Read"].describe(ToolContext(cwd=Path("/w")))
+
+
 def _text(result):
     return result.text if isinstance(result, ToolResult) else result
 
@@ -65,6 +115,19 @@ def test_grep_matches_and_limits():
         t = _tools(d)
         out = _text(t["Grep"](pattern="x[0-9]"))
         assert "a.txt:1: x1" in out and "a.txt:3: x2" in out
+
+
+def test_grep_never_searches_vendored_or_state_dirs():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        for rel in ("node_modules/p/x.txt", ".git/x.txt",
+                    ".pyclaw/teams/x.txt"):
+            (root / rel).parent.mkdir(parents=True)
+            (root / rel).write_text("hidden\n")
+        (root / "src.txt").write_text("visible\n")
+        out = _text(_tools(d)["Grep"](pattern="hidden|visible"))
+        assert "src.txt:1: visible" in out
+        assert "hidden" not in out
 
 
 def test_path_escape_guard():

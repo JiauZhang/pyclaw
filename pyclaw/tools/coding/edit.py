@@ -99,7 +99,8 @@ def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
     name='MultiEdit',
     description='Apply several exact-string replacements to one file in a '
                 'single call. Every old_string must occur exactly once, '
-                'otherwise nothing is written.',
+                'otherwise nothing is written. Later strings are matched '
+                'against the file as earlier ones have already rewritten it.',
     parameters={
         'type': 'object',
         'properties': {
@@ -108,11 +109,15 @@ def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
             'edits': {
                 'type': 'array',
                 'minItems': 1,
+                'description': 'Replacements, applied in order.',
                 'items': {
                     'type': 'object',
                     'properties': {
-                        'old_string': {'type': 'string'},
-                        'new_string': {'type': 'string'},
+                        'old_string': {'type': 'string',
+                                       'description': 'Unique text to '
+                                                      'replace.'},
+                        'new_string': {'type': 'string',
+                                       'description': 'Replacement text.'},
                     },
                     'required': ['old_string', 'new_string'],
                 },
