@@ -119,8 +119,6 @@ def render_output(output_fmt: str, out: dict):
 
 
 async def run_headless(args):
-    from chatchat.hooks.events import clear_runtime_sinks
-    clear_runtime_sinks()
     config = load_config()
     provider = args.provider or config.get("provider")
     model = args.model or config.get("model")

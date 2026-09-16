@@ -15,6 +15,10 @@ from .config import load
 from .agents import Session, build_team, IM_EXTRA
 from .channels import IMChannelAdapter
 
+from chatchat.hooks.events import clear_runtime_sinks
+
+clear_runtime_sinks()
+
 __all__ = [
     "GatewayServer",
     "GatewayConfig",
