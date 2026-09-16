@@ -35,6 +35,7 @@ Research thoroughly and cite sources.
 NO_TOOLS = '''---
 name: planner
 description: Drafts implementation plans without touching files
+permissionMode: plan
 ---
 
 Plan first, edit never.
@@ -57,6 +58,8 @@ def test_load_agent_defs_parses_and_resolves_tools():
         assert 'strict code reviewer' in defs['reviewer'].system_prompt
         assert defs['reviewer'].description == \
             'Reviews code changes for correctness and style'
+        assert defs['planner'].permission_mode == 'plan'
+        assert defs['reviewer'].permission_mode is None
 
 
 def test_load_agent_defs_skips_invalid_and_project_overrides_user(tmp_path,

@@ -14,7 +14,7 @@ def test_session_persists_subagent_sidechains_under_session_log(tmp_path, monkey
         return 'sub done'
 
     async def main():
-        team = Team('sc', client_factory=lambda inst: MockClient(handler=sub_respond))
+        team = Team('sc', client_factory=lambda inst, model=None: MockClient(handler=sub_respond))
         Session(team, session_id='sid-1')
         return await team.spawn_subagent('do it', subagent_type='general-purpose')
 
@@ -39,7 +39,7 @@ def test_sessions_without_persistence_do_not_write_sidechains(tmp_path, monkeypa
         return 'sub done'
 
     async def main():
-        team = Team('np', client_factory=lambda inst: MockClient(handler=sub_respond))
+        team = Team('np', client_factory=lambda inst, model=None: MockClient(handler=sub_respond))
         Session(team)
         await team.spawn_subagent('do it', subagent_type='general-purpose')
 

@@ -348,8 +348,15 @@ def build_team(
     _background.set_notifier(_notify_task_finished)
 
     async def _permission_gate(hook_input):
+        agent_type = hook_input.get('agent_type') or ''
+        mode = None
+        if agent_type:
+            defn = team.agent_defs.find(agent_type)
+            mode = (defn.permission_mode if defn is not None else None) \
+                or 'acceptEdits'
         return await gate.authorize(hook_input.get('tool_name', ''),
-                                    hook_input.get('tool_input') or {})
+                                    hook_input.get('tool_input') or {},
+                                    mode=mode)
 
     team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
     return team

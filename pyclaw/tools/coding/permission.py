@@ -273,52 +273,62 @@ class PermissionController:
             return suggested_rule(_command_of(tool_input)) is not None
         return True
 
-    def _decide_bash(self, tool_input) -> str:
+    def _effective_mode(self, mode) -> PermissionMode:
+        if mode is None:
+            return self.mode
+        if isinstance(mode, PermissionMode):
+            return mode
+        return parse_mode(mode)
+
+    def _decide_bash(self, tool_input, mode: PermissionMode) -> str:
         command = _command_of(tool_input)
         if is_dangerous_removal(command):
             return 'ask'
         if _rule_matches(self._allow, BASH_TOOL, tool_input):
             return 'allow'
-        if self.mode is PermissionMode.accept_edits \
+        if mode is PermissionMode.accept_edits \
                 and is_workspace_edit_command(command):
             return 'allow'
         if is_read_only(command):
             return 'allow'
         return 'ask'
 
-    def decide(self, tool_name: str, tool_input) -> str:
+    def decide(self, tool_name: str, tool_input, mode=None) -> str:
+        mode = self._effective_mode(mode)
         env_all = tool_name == BASH_TOOL
         if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd):
             return 'deny'
         if _rule_matches(self._ask, tool_name, tool_input, env_all, self.cwd):
             return 'ask'
-        if self.mode is PermissionMode.bypass_permissions:
+        if mode is PermissionMode.bypass_permissions:
             return 'allow'
         if tool_name == BASH_TOOL:
-            return self._decide_bash(tool_input)
+            return self._decide_bash(tool_input, mode)
         if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd):
             return 'allow'
         if tool_name in WRITE_TOOLS:
-            if self.mode is PermissionMode.plan:
+            if mode is PermissionMode.plan:
                 return 'deny'
             if self._in_workspace(self.cwd, tool_input):
-                if self.mode is PermissionMode.accept_edits:
+                if mode is PermissionMode.accept_edits:
                     return 'allow'
                 return 'ask'
             return 'ask'
         if tool_name in READ_TOOLS:
             if self._in_workspace(self.cwd, tool_input):
                 return 'allow'
-            return 'allow' if self.mode is PermissionMode.plan else 'ask'
+            return 'allow' if mode is PermissionMode.plan else 'ask'
         return 'ask'
 
-    async def authorize(self, tool_name: str, tool_input) -> bool | dict:
-        decision = self.decide(tool_name, tool_input)
+    async def authorize(self, tool_name: str, tool_input,
+                        mode=None) -> bool | dict:
+        mode = self._effective_mode(mode)
+        decision = self.decide(tool_name, tool_input, mode)
         if decision == 'allow':
             return True
         if decision == 'deny':
             return {'decision': 'block',
-                    'reason': f'{tool_name} is not allowed in {self.mode.value} '
+                    'reason': f'{tool_name} is not allowed in {mode.value} '
                               f'mode / by your permission rules.'}
         if self.request is None:
             return {'decision': 'block',

@@ -114,6 +114,54 @@ def test_decide_matrix():
         assert ae.decide("Edit", {"file_path": "a.txt"}) == "allow"
 
 
+def test_decide_mode_override_per_call():
+    with tempfile.TemporaryDirectory() as d:
+        g = PermissionController(mode="default", cwd=d)
+        assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
+        assert g.decide("Edit", {"file_path": "a.txt"},
+                        mode="acceptEdits") == "allow"
+        assert g.decide("Edit", {"file_path": "a.txt"},
+                        mode="plan") == "deny"
+        assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
+        assert g.mode.value == "default"
+        assert g.decide("Bash", {"command": "echo hi"},
+                        mode="acceptEdits") == "allow"
+
+
+async def _gate_call(team, tool_name, tool_input, agent_type):
+    matched = team.hooks.get_matching_hooks(
+        "PreToolUse", tool_name,
+        {"hook_event_name": "PreToolUse", "tool_name": tool_name})
+    fn = matched[0].config.fn
+    return await fn({"hook_event_name": "PreToolUse",
+                     "tool_name": tool_name, "tool_input": tool_input,
+                     "agent_type": agent_type})
+
+
+def test_permission_gate_resolves_subagent_mode():
+    from chatchat.core.agents import AgentDefinition
+    from pyclaw.agents import build_team
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.register_agent_definition(AgentDefinition(
+                "reader", system_prompt="read only",
+                permission_mode="plan"))
+            file = {"file_path": str(Path(d) / "a.txt")}
+            planned = await _gate_call(team, "Write", file, "reader")
+            subagent = await _gate_call(team, "Write", file, "subagent")
+            lead = await _gate_call(team, "Write", file, "")
+            return planned, subagent, lead
+
+    planned, subagent, lead = asyncio.run(main())
+    assert planned["decision"] == "block"
+    assert planned["reason"].startswith("Write is not allowed in plan mode")
+    assert subagent is True
+    assert lead["decision"] == "block"
+    assert "needs approval" in lead["reason"]
+
+
 def test_bypass_permissions_allows_unless_a_rule_says_otherwise():
     with tempfile.TemporaryDirectory() as d:
         g = PermissionController(mode="bypassPermissions", cwd=d)

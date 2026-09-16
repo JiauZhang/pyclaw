@@ -62,7 +62,7 @@ def test_session_persists_and_restores_history(tmp_path, monkeypatch):
         return "answer"
 
     def make_session():
-        team = Team("t1", client_factory=lambda inst: MockClient(handler=handler))
+        team = Team("t1", client_factory=lambda inst, model=None: MockClient(handler=handler))
         return agents.Session(team, session_id="s1")
 
     async def main():
@@ -135,7 +135,7 @@ def test_clear_rotates_session_id_and_keeps_the_old_transcript(tmp_path,
 
     async def main():
         team = Team("t1",
-                    client_factory=lambda inst: MockClient(handler=handler))
+                    client_factory=lambda inst, model=None: MockClient(handler=handler))
         session = agents.Session(team, session_id="s1")
         await session.chat("hi")
         session.save_transcript()
@@ -160,7 +160,7 @@ def test_slash_resume_lists_and_loads_a_saved_session(tmp_path, monkeypatch):
 
     async def main():
         team = Team("t1",
-                    client_factory=lambda inst: MockClient(handler=handler))
+                    client_factory=lambda inst, model=None: MockClient(handler=handler))
         session = agents.Session(team, session_id="fresh")
 
         listed = await slash.handle_slash("/resume", session)

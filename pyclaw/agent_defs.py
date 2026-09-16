@@ -48,6 +48,7 @@ def _definition_from_md(text: str, all_tools: list):
         tools = [by_name[n] for n in raw_tools if n in by_name]
     return AgentDefinition(name, system_prompt=body, tools=tools,
                            model=meta.get('model') or None,
+                           permission_mode=meta.get('permissionMode') or None,
                            description=description)
 
 
