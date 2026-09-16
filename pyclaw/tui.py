@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import difflib
 import json
 import os
@@ -15,6 +16,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
+from textual.theme import BUILTIN_THEMES
 from textual.widgets import Input, Markdown, Static
 
 
@@ -30,6 +32,7 @@ from chatchat.hooks.events import (
     register_runtime_handler,
 )
 
+from pyclaw import banner, config
 from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
@@ -570,28 +573,16 @@ class _GroupBlock(Static):
         if not body:
             self.update("")
             return
-        color = '#D77757' if self.active else '#4EBA65'
+        color = self.app.brand if self.active else '#4EBA65'
         marker = self._frame if self.active else BULLET
         hint = "" if self.active else " [dim](ctrl+o to expand)[/]"
         self.update(f"[{color}]{marker}[/] {body}{hint}")
 
 
-CLAWD_BODY = "#D77757"
-CLAWD_BG = "#000000"
-
-
-def _logo_markup() -> str:
-    row1 = (f"[{CLAWD_BODY}] \u2590[/]"
-            f"[{CLAWD_BODY} on {CLAWD_BG}]\u259b\u2588\u2588\u2588\u259c[/]"
-            f"[{CLAWD_BODY}]\u258c[/]")
-    row2 = f"[{CLAWD_BODY}]\u259d\u259c\u259b\u2598[/]"
-    return f"{row1}\n{row2}"
-
-
 class _LogoBlock(Static):
 
-    def __init__(self, model: str = "", **kw):
-        lines = [_logo_markup()]
+    def __init__(self, triple: tuple, model: str = "", **kw):
+        lines = [banner.directional(*triple)]
         if model:
             lines.append(f"\n[dim]{escape(model)}[/]")
         super().__init__("\n".join(lines), markup=True, classes="logo", **kw)
@@ -675,7 +666,7 @@ class _ToolBlock(Static):
         name = escape(_display_name(self._name))
         args = escape(_tool_use_args(self._name, self._input, self._cwd))
         color = "#FF6B80" if self._failed else (
-            "#4EBA65" if self._done else "#D77757")
+            "#4EBA65" if self._done else self.app.brand)
         marker = BULLET if (self._done or self._failed) else self._frame
         return f"[{color}]{marker}[/] [bold]{name}[/]({args})"
 
@@ -955,7 +946,7 @@ class PermissionsScreen(Screen):
         rules = self._rules()
         mode = getattr(self._session, 'permission_mode', 'default')
         bypass = bool(getattr(self._session, 'bypass_available', False))
-        lines = [f'[bold]Permission mode[/bold] [#D77757]{mode}[/]',
+        lines = [f'[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]',
                  f'[#9A9A9A]bypass available: {bypass} · '
                  f'shift+tab cycles · /permissions <mode> switches[/]', '']
         if not rules:
@@ -1135,8 +1126,6 @@ class PyClawApp(App[None]):
     TITLE = "PyClaw"
     CSS = """
     $background: #101010;
-    $brand: #D77757;
-    $shimmer: #EB9F7F;
     $text: #FFFFFF;
     $inactive: #999999;
     $subtle: #505050;
@@ -1166,7 +1155,7 @@ class PyClawApp(App[None]):
     #perm-amend { display: none; width: 100%; height: 1; margin-top: 1;
                   border: round $permission; background: $background;
                   color: $text; padding: 0 1; }
-    .logo { width: auto; margin-bottom: 1; color: $brand; }
+    .logo { width: auto; margin-bottom: 1; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }
     .text-bullet { width: 2; height: 1; color: $brand; }
@@ -1226,6 +1215,12 @@ class PyClawApp(App[None]):
     def __init__(self, *, builder, session_id=None, resume=False,
                  resume_from=None):
         super().__init__()
+        self._triple = banner.palette(config.load()["banner"])
+        self.brand = banner.brand(self._triple)
+        self.register_theme(dataclasses.replace(
+            BUILTIN_THEMES["textual-dark"], name="pyclaw",
+            variables={"brand": self.brand}))
+        self.theme = "pyclaw"
         self._builder = builder
         self._session_id = session_id
         self._resume = resume
@@ -1289,7 +1284,8 @@ class PyClawApp(App[None]):
         asyncio.create_task(self._pump())
         asyncio.create_task(self._drive())
         self._spin_timer = self.set_interval(SPINNER_INTERVAL, self._tool_spin_tick)
-        self._logo = _LogoBlock(model=getattr(self._session, "model", ""))
+        self._logo = _LogoBlock(
+            self._triple, model=getattr(self._session, "model", ""))
         await self._conv().mount(self._logo)
         if self._resume:
             self._session.restore_transcript()
@@ -1574,7 +1570,7 @@ class PyClawApp(App[None]):
             tokens = int(getattr(self._session.usage, 'total_tokens', 0) or 0)
             if tokens:
                 suffix += f' \u00b7 \u2193 {self._fmt(tokens)} tokens'
-        return (f"[#D77757]{char}[/] {self._turn_verb}\u2026 "
+        return (f"[{self.brand}]{char}[/] {self._turn_verb}\u2026 "
                 f"[dim]({suffix})[/]")
 
     @staticmethod

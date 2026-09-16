@@ -1941,3 +1941,52 @@ def test_escape_interrupts_a_running_turn():
     processing, flat = asyncio.run(scenario())
     assert processing is None
     assert "Interrupted" in flat
+
+
+def _gradient_cfg(monkeypatch):
+    from pyclaw import config as config_module
+    monkeypatch.setattr(
+        config_module, "load",
+        lambda: {"banner": {"style": "gradient", "from": "#0084E4",
+                            "to": "#F0CC00", "angle": 60.0}})
+
+
+def test_the_welcome_logo_is_the_painted_wordmark(monkeypatch):
+    from pyclaw import banner
+    _gradient_cfg(monkeypatch)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            return pilot.app.query_one(".logo").render()
+
+    visual = asyncio.run(scenario())
+    assert "\u259b" not in visual.plain
+    assert visual.plain.splitlines()[0] == banner.WORDMARK[0]
+    painted = [span for span in visual.spans if span.style.startswith("rgb(")]
+    assert len(painted) == sum(1 for row in banner.WORDMARK
+                               for ch in row if ch != " ")
+    assert painted[0].style == "rgb(0,132,228)"
+
+
+def test_the_accent_colour_follows_the_launch_palette(monkeypatch):
+    from pyclaw import banner
+    _gradient_cfg(monkeypatch)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            probe = Static("", classes="text-bullet")
+            await pilot.app.query_one("#conv").mount(probe)
+            await pilot.pause()
+            return probe.styles.color.hex, pilot.app.brand
+
+    computed, brand = asyncio.run(scenario())
+    assert brand == banner.brand((banner.BLUE, banner.YELLOW, 60.0))
+    assert computed == brand
+
+
+def test_the_default_config_picks_a_fresh_palette_per_app():
+    first = PyClawApp(builder=_builder)
+    second = PyClawApp(builder=_builder)
+    assert first.brand != second.brand
