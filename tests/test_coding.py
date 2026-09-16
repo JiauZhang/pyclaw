@@ -130,6 +130,18 @@ def test_grep_never_searches_vendored_or_state_dirs():
         assert "hidden" not in out
 
 
+def test_glob_bare_pattern_matches_one_level():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "pkg").mkdir()
+        (root / "top.py").write_text("")
+        (root / "pkg" / "deep.py").write_text("")
+        t = _tools(d)
+        assert _text(t["Glob"](pattern="*.py")).split() == ["top.py"]
+        assert sorted(_text(t["Glob"](pattern="**/*.py")).split()) == [
+            "pkg/deep.py", "top.py"]
+
+
 def test_path_escape_guard():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
@@ -884,6 +896,21 @@ def test_task_stop_kills_process_group():
         _time.sleep(0.1)
     assert task["process"].poll() is not None
     assert task["killed"] is True
+
+
+def test_a_stopped_task_stays_readable():
+    import time as _time
+    t = _tools("/tmp")
+    out = t["Bash"](command="echo kept-output; sleep 30",
+                   run_in_background=True)
+    task_id = re.search(r"ID: (b[0-9a-z]{8})", out).group(1)
+    def read():
+        return _text(t["TaskOutput"](task_id=task_id, block=False))
+    deadline = _time.monotonic() + 5
+    while "kept-output" not in read() and _time.monotonic() < deadline:
+        _time.sleep(0.1)
+    t["TaskStop"](task_id=task_id)
+    assert "kept-output" in read()
 
 
 def test_background_tasks_cleanup_kills_all():

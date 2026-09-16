@@ -35,14 +35,17 @@ def _diff(rel: str, before: str, after: str) -> str:
 
 @tool(
     name='Write',
-    description='Create a new file or overwrite an existing one entirely.',
+    description='Creates a file or rewrites an existing one, returning the '
+                'path and, for an update, the unified diff. content becomes '
+                'the whole file: anything left out of it is lost, so read the '
+                'file first and write it back complete.',
     parameters={
         'type': 'object',
         'properties': {
             'file_path': {'type': 'string',
                           'description': 'Path relative to the workspace.'},
             'content': {'type': 'string',
-                        'description': 'Full new file content.'},
+                        'description': 'File content.'},
         },
         'required': ['file_path', 'content'],
     },
@@ -76,15 +79,16 @@ def Write(context, file_path: str, content: str) -> str:
 
 @tool(
     name='Edit',
-    description='Replace an exact string in a file. old_string must occur '
-                'exactly once, otherwise the edit fails.',
+    description='Replaces an exact string in one file and returns the unified '
+                'diff of the change. old_string must match the file byte for '
+                'byte, indentation included, and must occur exactly once.',
     parameters={
         'type': 'object',
         'properties': {
             'file_path': {'type': 'string',
                           'description': 'Path relative to the workspace.'},
             'old_string': {'type': 'string',
-                           'description': 'Unique text to replace.'},
+                           'description': 'Text to replace.'},
             'new_string': {'type': 'string',
                            'description': 'Replacement text.'},
         },
@@ -97,10 +101,12 @@ def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
 
 @tool(
     name='MultiEdit',
-    description='Apply several exact-string replacements to one file in a '
-                'single call. Every old_string must occur exactly once, '
-                'otherwise nothing is written. Later strings are matched '
-                'against the file as earlier ones have already rewritten it.',
+    description='Applies exact-string replacements to one file in a single '
+                'call and returns the unified diff of the combined change. '
+                'Every old_string must match byte for byte and occur exactly '
+                'once; if any one fails nothing is written. Later strings are '
+                'matched against the file as earlier ones have already '
+                'rewritten it.',
     parameters={
         'type': 'object',
         'properties': {
@@ -114,8 +120,7 @@ def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
                     'type': 'object',
                     'properties': {
                         'old_string': {'type': 'string',
-                                       'description': 'Unique text to '
-                                                      'replace.'},
+                                       'description': 'Text to replace.'},
                         'new_string': {'type': 'string',
                                        'description': 'Replacement text.'},
                     },

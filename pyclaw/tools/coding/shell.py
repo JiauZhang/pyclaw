@@ -178,21 +178,26 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
 
 @tool(
     name='Bash',
-    description='Run a shell command in the workspace and return its '
-                'combined stdout and stderr. Prefer Read, Glob, Grep, '
-                'Edit and Write over cat, find, grep, sed and shell '
-                'redirection. Chain dependent commands with && instead of '
-                'newlines. Never run destructive git commands such as '
-                'push --force or reset --hard without explicit approval.',
+    description='Runs a shell command in the workspace and returns stdout '
+                'and stderr combined. Prefer Read, Glob, Grep, Edit '
+                'and Write over cat, find, grep, sed and shell redirection. '
+                'A command that outlives its timeout usually moves to the '
+                'background and reports its task ID instead of failing. Ask '
+                'before destructive git commands like push --force or reset '
+                '--hard.',
     parameters={
         'type': 'object',
         'properties': {
             'command': {'type': 'string',
-                        'description': 'The command to execute.'},
+                        'description': 'The command to execute. Chain '
+                                       'dependent steps with && rather than '
+                                       'newlines.'},
             'timeout': {
                 'type': 'integer',
-                'description': 'Optional timeout in milliseconds '
-                               f'(max {get_max_timeout_ms()}).',
+                'description': 'Milliseconds to wait before the command is '
+                               f'moved to the background (default '
+                               f'{get_default_timeout_ms()}, max '
+                               f'{get_max_timeout_ms()}).',
             },
             'description': {
                 'type': 'string',
@@ -201,10 +206,9 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             },
             'run_in_background': {
                 'type': 'boolean',
-                'description': 'Set to true to run this command in the '
-                               'background and get a task ID back '
-                               'immediately. Read its output later with '
-                               'TaskOutput. Do not use a trailing "&".',
+                'description': 'Run in the background and return a task ID '
+                               'immediately; read what it produced with '
+                               'TaskOutput. Never append "&".',
             },
         },
         'required': ['command'],

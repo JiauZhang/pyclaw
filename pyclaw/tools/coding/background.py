@@ -14,6 +14,7 @@ from .shell import _kill
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
+TASK_DEFAULT_TIMEOUT_MS = 30_000
 TASK_MAX_TIMEOUT_MS = 600_000
 _TASK_ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
 
@@ -111,9 +112,10 @@ atexit.register(cleanup_background_tasks)
 
 @tool(
     name='TaskOutput',
-    description='Read output of a background task started with Bash '
-                'run_in_background. Returns the combined stdout/stderr '
-                'tail so far and the exit code once the task has exited.',
+    description='Reads a background task, returning a status header, the tail '
+                'of its combined stdout and stderr, and the exit code once it '
+                'has exited. Waits for the task by default, so a timeout '
+                'report means it is still running rather than that it failed.',
     parameters={
         'type': 'object',
         'properties': {
@@ -121,21 +123,23 @@ atexit.register(cleanup_background_tasks)
                         'description': 'Background task ID (starts with b).'},
             'block': {'type': 'boolean',
                       'description': 'Wait for the task to finish before '
-                                     'returning (default true).'},
+                                     'returning.',
+                      'default': True},
             'timeout': {'type': 'integer',
-                        'description': 'Max milliseconds to wait when '
-                                       f'block is true (default 30000, '
-                                       f'max {TASK_MAX_TIMEOUT_MS}).'},
+                        'description': 'Milliseconds to wait when block is '
+                                       f'true (max {TASK_MAX_TIMEOUT_MS}).',
+                        'default': TASK_DEFAULT_TIMEOUT_MS},
         },
         'required': ['task_id'],
     },
 )
 def TaskOutput(context, task_id: str, block: bool = True,
-                timeout: int = 30000) -> str:
+               timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
     task = _tasks.get(task_id)
     if task is None:
         return f'Error: no such background task: {task_id}'
-    limit = max(1, min(int(timeout or 30000), TASK_MAX_TIMEOUT_MS)) / 1000
+    ms = TASK_DEFAULT_TIMEOUT_MS if timeout is None else timeout
+    limit = max(1, min(int(ms), TASK_MAX_TIMEOUT_MS)) / 1000
     deadline = time.monotonic() + (limit if block else 0)
     while True:
         if task['process'].poll() is not None:
@@ -164,12 +168,11 @@ def TaskOutput(context, task_id: str, block: bool = True,
     return ToolResult(text='\n'.join(lines), meta=meta)
 
 
-
-
 @tool(
     name='TaskStop',
-    description='Stop a background task started with Bash '
-                'run_in_background (kills the whole process tree).',
+    description='Stops a background task, killing its whole process tree, and '
+                'reports what was stopped. The output collected so far stays '
+                'readable with TaskOutput afterwards.',
     parameters={
         'type': 'object',
         'properties': {

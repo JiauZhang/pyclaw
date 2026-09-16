@@ -20,7 +20,7 @@ def _skipped(path) -> bool:
 
 @tool(
     name='Read',
-    description='Reads a workspace file as text, one entry per line, each '
+    description='Reads a workspace file and returns its lines as text, each '
                 'preceded by its 1-based line number and a tab. That prefix is '
                 'not file content: never carry it into an Edit old_string. '
                 f'Files longer than {_READ_LIMIT} lines return the first page '
@@ -75,18 +75,22 @@ def Read(context, file_path: str, offset: int | None = None,
 
 @tool(
     name='Glob',
-    description='Find files matching a shell-style glob pattern, '
-                'relative to the workspace (supports ** for recursion).',
+    description='Returns the workspace-relative paths of matching files, one '
+                'per line, sorted; directories are never listed. A bare '
+                'pattern matches one level only, so "*.py" finds the search '
+                'root and "**/*.py" reaches nested files. Vendored and VCS '
+                'dirs are skipped.',
     parameters={
         'type': 'object',
         'properties': {
             'pattern': {
                 'type': 'string',
-                'description': 'Glob pattern, e.g. "**/*.py".',
+                'description': 'Glob pattern.',
             },
             'path': {
                 'type': 'string',
-                'description': 'Optional subdirectory to search within.',
+                'description': 'Subdirectory to search instead of the whole '
+                               'workspace.',
             },
         },
         'required': ['pattern'],
@@ -170,12 +174,15 @@ async def Grep(context, pattern: str, path: str | None = None,
 
 @tool(
     name='LS',
-    description='List a directory in the workspace (entries and sizes).',
+    description='Returns one line per entry: directories suffixed with "/" '
+                'and files followed by their byte size in parentheses. Only '
+                'the immediate children of a directory are listed; hidden '
+                'entries are included.',
     parameters={
         'type': 'object',
         'properties': {
             'path': {'type': 'string',
-                     'description': 'Optional directory, relative to the '
+                     'description': 'Directory to list instead of the whole '
                                     'workspace.'},
         },
         'required': [],
