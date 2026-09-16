@@ -1874,13 +1874,7 @@ class PyClawApp(App[None]):
 
     async def _ask_permission(self, tool_name: str, tool_input) -> str:
         inp = tool_input if isinstance(tool_input, dict) else {}
-        rule = ""
-        if tool_name == 'Bash':
-            from pyclaw.tools.coding.shell_rules import suggested_rule
-            rule = suggested_rule(str(inp.get('command') or '')) or ""
-        else:
-            from pyclaw.tools.coding.permission import suggested_path_rule
-            rule = suggested_path_rule(tool_name, inp, self._cwd()) or ""
+        rule = self._session.permission_rule(tool_name, inp)
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
                                    rememberable=bool(rule) or tool_name != 'Bash',
                                    rule=rule)

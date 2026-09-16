@@ -192,24 +192,25 @@ def test_mode_parse_and_cycle():
 
 def test_decide_matrix():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d)
+        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
         assert g.decide("Read", {"file_path": "a.txt"}) == "allow"
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Write", {"file_path": "../x"}) == "ask"
         assert g.decide("Read", {"file_path": "../x"}) == "ask"
         assert g.decide("datetime", {}) == "ask"
 
-        plan = PermissionController(mode="plan", cwd=d)
+        plan = PermissionController(mode="plan", cwd=d, tools=CODING_TOOLS)
         assert plan.decide("Edit", {"file_path": "a.txt"}) == "deny"
         assert plan.decide("Read", {"file_path": "../x"}) == "allow"
 
-        ae = PermissionController(mode="acceptEdits", cwd=d)
+        ae = PermissionController(mode="acceptEdits", cwd=d,
+                                 tools=CODING_TOOLS)
         assert ae.decide("Edit", {"file_path": "a.txt"}) == "allow"
 
 
 def test_decide_mode_override_per_call():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d)
+        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Edit", {"file_path": "a.txt"},
                         mode="acceptEdits") == "allow"
@@ -219,6 +220,30 @@ def test_decide_mode_override_per_call():
         assert g.mode.value == "default"
         assert g.decide("Bash", {"command": "echo hi"},
                         mode="acceptEdits") == "allow"
+
+
+def test_coding_tools_declare_their_permissions_capabilities():
+    by_name = {t.name: t for t in CODING_TOOLS}
+    assert {n for n, t in by_name.items() if t.read_only} == {
+        "Read", "Glob", "Grep", "LS"}
+    assert by_name["Edit"].get_path({"file_path": "a.py"}) == "a.py"
+    assert by_name["Grep"].get_path({"pattern": "a|b", "path": "src"}) == "src"
+    assert by_name["Grep"].get_path({"pattern": "a|b"}) is None
+    assert by_name["Bash"].get_path is None
+    assert by_name["Bash"].read_only is False
+
+
+def test_the_gate_asks_the_tool_what_it_addresses():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "src").mkdir()
+        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
+        assert g.decide("Grep", {"pattern": "../secret"}) == "allow"
+        assert g.decide("Grep", {"pattern": "x", "path": "../secret"}) == "ask"
+        assert g.suggested_rule("Grep", {"pattern": "a|b"}) is None
+        assert g.suggested_rule("Grep", {"pattern": "a|b",
+                                         "path": "src"}) == "Grep(./src)"
+        assert (g.suggested_rule("Bash", {"command": "npm test"}) or ""
+                ).startswith("Bash(npm")
 
 
 async def _gate_call(team, tool_name, tool_input, agent_type):
@@ -319,12 +344,13 @@ def test_deny_removes_tool_and_precedence():
 
 def test_non_bash_tool_rules_match_their_path_argument():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d,
+        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS,
                                  deny=["Read(./secret.txt)"])
         assert g.decide("Read", {"file_path": "secret.txt"}) == "deny"
         assert g.decide("Read", {"file_path": "notes.txt"}) == "allow"
 
         scoped = PermissionController(mode="default", cwd=d,
+                                      tools=CODING_TOOLS,
                                       allow=["Edit(./src/**)"])
         assert scoped.decide("Edit", {"file_path": "src/a.py"}) == "allow"
         assert scoped.decide("Edit", {"file_path": "other/a.py"}) == "ask"
@@ -640,7 +666,8 @@ def test_dont_ask_persists_allow():
         async def once(name, inp):
             return "dont_ask"
 
-        g = PermissionController(mode="default", cwd=d, request=once)
+        g = PermissionController(mode="default", cwd=d, request=once,
+                                 tools=CODING_TOOLS)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
         assert "Edit(./a.txt)" in g._allow
         assert g.decide("Edit", {"file_path": "a.txt"}) == "allow"
@@ -679,14 +706,14 @@ def test_tools_return_structured_meta():
         assert br.meta["exit_code"] == 3
 
 
-def test_suggested_path_rule():
-    from pyclaw.tools.coding.permission import suggested_path_rule
-    assert suggested_path_rule("Edit", {"file_path": "a.txt"},
-                               "/w") == "Edit(./a.txt)"
-    assert suggested_path_rule("Read", {"path": "./docs/x.md"},
-                               "/w") == "Read(./docs/x.md)"
-    assert suggested_path_rule("Edit", {}, "/w") is None
-    assert suggested_path_rule("Edit", {"file_path": "."}, "/w") is None
+def test_suggested_rule_uses_the_addressed_path():
+    g = PermissionController(mode="default", cwd="/w", tools=CODING_TOOLS)
+    assert g.suggested_rule("Edit", {"file_path": "a.txt"}) == "Edit(./a.txt)"
+    assert g.suggested_rule("Read", {"file_path": "./docs/x.md"}
+                            ) == "Read(./docs/x.md)"
+    assert g.suggested_rule("LS", {"path": ".pyclaw"}) == "LS(./.pyclaw)"
+    assert g.suggested_rule("Edit", {}) is None
+    assert g.suggested_rule("Edit", {"file_path": "."}) is None
 
 
 def test_authorize_accepts_amended_rule():

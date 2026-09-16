@@ -39,6 +39,7 @@ def _diff(rel: str, before: str, after: str) -> str:
                 'path and, for an update, the unified diff. content becomes '
                 'the whole file: anything left out of it is lost, so read the '
                 'file first and write it back complete.',
+    get_path=lambda args: args.get('file_path'),
     parameters={
         'type': 'object',
         'properties': {
@@ -82,6 +83,7 @@ def Write(context, file_path: str, content: str) -> str:
     description='Replaces an exact string in one file and returns the unified '
                 'diff of the change. old_string must match the file byte for '
                 'byte, indentation included, and must occur exactly once.',
+    get_path=lambda args: args.get('file_path'),
     parameters={
         'type': 'object',
         'properties': {
@@ -107,6 +109,7 @@ def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
                 'once; if any one fails nothing is written. Later strings are '
                 'matched against the file as earlier ones have already '
                 'rewritten it.',
+    get_path=lambda args: args.get('file_path'),
     parameters={
         'type': 'object',
         'properties': {

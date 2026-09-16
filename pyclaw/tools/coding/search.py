@@ -25,6 +25,8 @@ def _skipped(path) -> bool:
                 'not file content: never carry it into an Edit old_string. '
                 f'Files longer than {_READ_LIMIT} lines return the first page '
                 'with a note; binary files return an encoding error.',
+    read_only=True,
+    get_path=lambda args: args.get('file_path'),
     parameters={
         'type': 'object',
         'properties': {
@@ -80,6 +82,8 @@ def Read(context, file_path: str, offset: int | None = None,
                 'pattern matches one level only, so "*.py" finds the search '
                 'root and "**/*.py" reaches nested files. Vendored and VCS '
                 'dirs are skipped.',
+    read_only=True,
+    get_path=lambda args: args.get('path'),
     parameters={
         'type': 'object',
         'properties': {
@@ -116,6 +120,8 @@ def Glob(context, pattern: str, path: str | None = None) -> str:
                 'time, so . never spans a newline. A trailing "[exceeded N '
                 'hits]" means the search stopped early, not that nothing else '
                 'matched. node_modules, dist and VCS dirs are never searched.',
+    read_only=True,
+    get_path=lambda args: args.get('path'),
     parameters={
         'type': 'object',
         'properties': {
@@ -178,6 +184,8 @@ async def Grep(context, pattern: str, path: str | None = None,
                 'and files followed by their byte size in parentheses. Only '
                 'the immediate children of a directory are listed; hidden '
                 'entries are included.',
+    read_only=True,
+    get_path=lambda args: args.get('path'),
     parameters={
         'type': 'object',
         'properties': {

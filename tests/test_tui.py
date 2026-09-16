@@ -192,8 +192,10 @@ class _GateTeam(_FakeTeam):
         from pyclaw.tools.coding import PermissionController
         import tempfile as _t
         self._tmp = _t.TemporaryDirectory()
+        from pyclaw.tools.coding import CODING_TOOLS
         self._pyclaw_gate = PermissionController(mode="default",
-                                                 cwd=self._tmp.name)
+                                                 cwd=self._tmp.name,
+                                                 tools=CODING_TOOLS)
 
 
 def test_shift_tab_cycles_permission_mode():
@@ -1489,7 +1491,7 @@ def test_permission_amend_saves_edited_rule():
     from pyclaw.tui import _PermissionPrompt
 
     async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
             task = asyncio.ensure_future(
@@ -1517,7 +1519,7 @@ def test_permission_amend_escape_returns_to_options():
     from pyclaw.tui import _PermissionPrompt
 
     async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
             task = asyncio.ensure_future(
@@ -1545,7 +1547,7 @@ def test_permission_amend_empty_rule_approves_without_saving():
     from pyclaw.tui import _PermissionPrompt
 
     async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
             task = asyncio.ensure_future(

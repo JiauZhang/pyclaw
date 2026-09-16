@@ -295,14 +295,15 @@ def build_team(
     use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
-    gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
-                                ask=ask or (), deny=deny or ())
+    _resolve_skills(skills)
     coding_tools = list(CODING_TOOLS)
     coding_names = {t.name for t in coding_tools}
-    _resolve_skills(skills)
-    resolved = coding_tools + [t for t in _resolve_tools(tools)
-                               if t.name not in coding_names]
-    resolved = [t for t in resolved if gate.allowed_tool(t.name)]
+    candidates = coding_tools + [t for t in _resolve_tools(tools)
+                                 if t.name not in coding_names]
+    gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
+                                ask=ask or (), deny=deny or (),
+                                tools=candidates)
+    resolved = [t for t in candidates if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get('timeout', 120)
     inst = instruction or (team_instruction(names) if use_team
@@ -463,6 +464,11 @@ class Session:
     def attach_approval(self, coro):
         if self._gate is not None:
             self._gate.request = coro
+
+    def permission_rule(self, tool_name: str, tool_input) -> str:
+        if self._gate is None:
+            return ''
+        return self._gate.suggested_rule(tool_name, tool_input) or ''
 
     def submit(self, text: str, *, cancelable_tools: tuple = ()):
         self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)

@@ -12,8 +12,6 @@ from .shell_rules import (bash_rule_matches, is_dangerous_removal,
                           is_read_only, is_workspace_edit_command,
                           suggested_rule)
 
-READ_TOOLS = frozenset({'Read', 'Glob', 'Grep', 'LS'})
-WRITE_TOOLS = frozenset({'Write', 'Edit', 'MultiEdit'})
 BASH_TOOL = 'Bash'
 
 _MODE_NAMES = {
@@ -60,7 +58,7 @@ def _command_of(tool_input) -> str:
 
 
 def _rule_matches(rules, tool_name: str, tool_input=None,
-                  env_all: bool = False, cwd=None) -> bool:
+                  env_all: bool = False, cwd=None, target=None) -> bool:
     if not rules:
         return False
     command = _command_of(tool_input) if tool_name == BASH_TOOL else ''
@@ -75,7 +73,8 @@ def _rule_matches(rules, tool_name: str, tool_input=None,
                                             env_all):
                 return True
             continue
-        if _path_rule_matches(arg.rstrip(')'), tool_input, cwd):
+        if target and cwd is not None \
+                and _matches_pattern(arg.rstrip(')'), target, cwd):
             return True
     return False
 
@@ -106,36 +105,23 @@ def _matches_pattern(pattern: str, target: str, cwd) -> bool:
     return False
 
 
-def _path_rule_matches(pattern: str, tool_input, cwd) -> bool:
-    if not isinstance(tool_input, dict) or cwd is None:
-        return False
-    fields = _path_fields(tool_input)
-    if not fields:
-        return False
-    return any(_matches_pattern(pattern, f, cwd) for f in fields)
-
-
-def _path_fields(input) -> list[str]:
-    fields = []
-    for key in ('file_path', 'path', 'pattern'):
-        val = input.get(key) if isinstance(input, dict) else None
-        if val:
-            fields.append(str(val))
-    return fields
-
-
-def suggested_path_rule(tool_name: str, tool_input, cwd) -> str | None:
-    fields = _path_fields(tool_input)
-    if not fields:
+def _relative_target(target: str, cwd) -> str | None:
+    if not target:
         return None
-    raw = str(fields[0]).strip()
+    raw = str(target).strip()
     if raw.startswith(('~', '/')):
         try:
             raw = os.path.relpath(os.path.expanduser(raw), str(cwd))
         except (OSError, ValueError):
             return None
-    rel = raw.lstrip('./')
-    if not rel:
+    if raw.startswith('./'):
+        raw = raw[2:]
+    return raw or None
+
+
+def _path_rule(tool_name: str, target, cwd) -> str | None:
+    rel = _relative_target(target, cwd)
+    if not rel or rel == '.':
         return None
     return f'{tool_name}(./{rel})'
 
@@ -163,9 +149,10 @@ def _read_rule_file(path) -> dict:
 class PermissionController:
 
     def __init__(self, *, mode: str = 'default', cwd, allow=(),
-                 ask=(), deny=(), request=None):
+                 ask=(), deny=(), request=None, tools=None):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
+        self._by_name = {t.name: t for t in (tools or ())}
         self._layers: list[tuple[str, str, str]] = []
         self._layer_files = {
             'user': _user_settings_file(),
@@ -242,31 +229,37 @@ class PermissionController:
         except OSError:
             pass
 
+    def path_of(self, tool_name: str, tool_input) -> str | None:
+        tool = self._by_name.get(tool_name)
+        if tool is None or tool.get_path is None \
+                or not isinstance(tool_input, dict):
+            return None
+        value = tool.get_path(tool_input)
+        return str(value) if value else None
+
+    def suggested_rule(self, tool_name: str, tool_input) -> str | None:
+        if tool_name == BASH_TOOL:
+            return suggested_rule(_command_of(tool_input))
+        return _path_rule(tool_name, self.path_of(tool_name, tool_input),
+                          self.cwd)
+
     def remember_allow(self, tool_name: str, tool_input=None, rule=None):
         if rule is None:
-            rule = tool_name
+            rule = self.suggested_rule(tool_name, tool_input)
             if tool_name == BASH_TOOL:
                 command = _command_of(tool_input)
                 if not command:
                     return
-                rule = (suggested_rule(command)
-                        or f'Bash({" ".join(command.split())})')
-            else:
-                path_rule = suggested_path_rule(tool_name, tool_input,
-                                                self.cwd)
-                if path_rule:
-                    rule = path_rule
+                rule = rule or f'Bash({" ".join(command.split())})'
+            rule = rule or tool_name
         if rule not in self._allow:
             self._allow.append(rule)
             self._layers.append(('allow', rule, 'session'))
         self._save_local_rule(rule)
 
-    @staticmethod
-    def _in_workspace(cwd: Path, input) -> bool:
-        fields = _path_fields(input)
-        if not fields:
-            return True
-        return all(resolve(cwd, f) is not None for f in fields)
+    def _in_workspace(self, tool_name: str, input) -> bool:
+        target = self.path_of(tool_name, input)
+        return target is None or resolve(self.cwd, target) is not None
 
     def _rememberable(self, tool_name: str, tool_input) -> bool:
         if tool_name == BASH_TOOL:
@@ -296,28 +289,34 @@ class PermissionController:
     def decide(self, tool_name: str, tool_input, mode=None) -> str:
         mode = self._effective_mode(mode)
         env_all = tool_name == BASH_TOOL
-        if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd):
+        target = self.path_of(tool_name, tool_input)
+        if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd,
+                         target):
             return 'deny'
-        if _rule_matches(self._ask, tool_name, tool_input, env_all, self.cwd):
+        if _rule_matches(self._ask, tool_name, tool_input, env_all, self.cwd,
+                         target):
             return 'ask'
         if mode is PermissionMode.bypass_permissions:
             return 'allow'
         if tool_name == BASH_TOOL:
             return self._decide_bash(tool_input, mode)
-        if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd):
+        if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd,
+                         target=target):
             return 'allow'
-        if tool_name in WRITE_TOOLS:
-            if mode is PermissionMode.plan:
-                return 'deny'
-            if self._in_workspace(self.cwd, tool_input):
-                if mode is PermissionMode.accept_edits:
-                    return 'allow'
-                return 'ask'
+        tool = self._by_name.get(tool_name)
+        if tool is None:
             return 'ask'
-        if tool_name in READ_TOOLS:
-            if self._in_workspace(self.cwd, tool_input):
+        inside = self._in_workspace(tool_name, tool_input)
+        if tool.read_only:
+            if inside:
                 return 'allow'
             return 'allow' if mode is PermissionMode.plan else 'ask'
+        if target is None:
+            return 'ask'
+        if mode is PermissionMode.plan:
+            return 'deny'
+        if inside and mode is PermissionMode.accept_edits:
+            return 'allow'
         return 'ask'
 
     async def authorize(self, tool_name: str, tool_input,
