@@ -14,6 +14,23 @@ from .shell_rules import (bash_rule_matches, is_dangerous_removal,
 
 BASH_TOOL = 'Bash'
 
+# Calls that orchestrate the agents this one already owns. They are not part
+# of the coding tool registry, so without this they fell through to the
+# "unknown tool" branch and asked the human every single time.
+#
+# claude-code auto-approves all three classes: spawning a sub-agent is allowed
+# in every mode ("Only route through auto mode classifier when in auto mode /
+# In all other modes, auto-approve sub-agent generation" —
+# tools/AgentTool/AgentTool.tsx:1281-1297), and send_message only asks when the
+# address crosses machines to another Claude
+# (tools/SendMessageTool/SendMessageTool.ts:585-604, a `bridge` scheme pyclaw
+# has no counterpart for). task_stop is scoped to the caller's own children
+# (chatchat/core/tools.py, `is not your sub-agent`).
+#
+# An explicit `ask`/`deny` rule still wins, because decide() checks the rule
+# buckets first — so this only changes the default.
+AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop'})
+
 _MODE_NAMES = {
     'default': 'default',
     'acceptEdits': 'acceptEdits',
@@ -298,6 +315,8 @@ class PermissionController:
             return 'ask'
         if mode is PermissionMode.bypass_permissions:
             return 'allow'
+        if tool_name in AUTO_TOOLS:
+            return 'allow'
         if tool_name == BASH_TOOL:
             return self._decide_bash(tool_input, mode)
         if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd,
@@ -320,7 +339,13 @@ class PermissionController:
         return 'ask'
 
     async def authorize(self, tool_name: str, tool_input,
-                        mode=None) -> bool | dict:
+                        mode=None, tool_use_id: str = '') -> bool | dict:
+        """Decide whether a call may run.
+
+        `request` is called as `await request(tool_name, tool_input,
+        tool_use_id=...)`; the id is what lets the UI attach the pending
+        decision to the tool call the human is being asked about.
+        """
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
         if decision == 'allow':
@@ -333,7 +358,8 @@ class PermissionController:
             return {'decision': 'block',
                     'reason': f'{tool_name} needs approval but no app is '
                               f'present to ask.'}
-        choice = await self.request(tool_name, tool_input)
+        choice = await self.request(tool_name, tool_input,
+                                    tool_use_id=tool_use_id)
         rule = None
         if isinstance(choice, tuple):
             choice, rule = choice

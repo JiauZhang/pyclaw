@@ -361,7 +361,9 @@ def build_team(
                 or 'acceptEdits'
         return await gate.authorize(hook_input.get('tool_name', ''),
                                     hook_input.get('tool_input') or {},
-                                    mode=mode)
+                                    mode=mode,
+                                    tool_use_id=str(
+                                        hook_input.get('tool_use_id') or ''))
 
     team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
     return team

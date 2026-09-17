@@ -83,6 +83,15 @@ AGENT_TRAIL_LIMIT = 3
 INITIALIZING_TEXT = "Initializing\u2026"
 EXPAND_HINT = "ctrl+o to expand"
 
+# claude-code renders these in place of a running tool's progress:
+# "Waiting for permission…" while an approval is pending
+# (components/messages/AssistantToolUseMessage.tsx:240) and
+# "Interrupted · What should Claude do instead?" as the result of a call the
+# user killed (components/InterruptedByUser.tsx:8, reached through
+# FallbackToolUseRejectedMessage / UserToolCanceledMessage).
+WAITING_PERMISSION_TEXT = "Waiting for permission\u2026"
+INTERRUPTED_TEXT = "Interrupted \u00b7 What should PyClaw do instead?"
+
 AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
                 "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
 
@@ -807,12 +816,31 @@ class _ToolBlock(Static):
         self._meta: dict | None = None
         self._progress: list[tuple[list[str], int]] = []
         self._progress_done = False
+        self._waiting_permission = False
+        self._rejected: str | None = None
         self._draw()
 
     def tick(self, char: str):
         if not self._done:
             self._frame = char
             self._draw()
+
+    def set_waiting_permission(self, waiting: bool):
+        """Mark the call as parked on an approval decision."""
+        if self._waiting_permission == waiting:
+            return
+        self._waiting_permission = waiting
+        self._draw()
+
+    def reject(self, text: str = INTERRUPTED_TEXT):
+        """Settle a call the user killed before it ever ran."""
+        self._done = True
+        self._progress = []
+        self._progress_done = True
+        self._waiting_permission = False
+        self._rejected = text
+        self._failed = True
+        self._draw()
 
     def add_progress(self, rows: list[str], tool_uses: int):
         """Append one sub-agent progress message to the live trail."""
@@ -847,6 +875,8 @@ class _ToolBlock(Static):
         """Live sub-agent progress, or None when there is nothing to trail."""
         if self._output is not None or self._progress_done:
             return None
+        if self._waiting_permission:
+            return f"[dim]{RESULT_PREFIX}{WAITING_PERMISSION_TEXT}[/]"
         rows = self._trail_rows(full) or [INITIALIZING_TEXT]
         body = ("\n" + RESULT_HANG).join(rows)
         return f"[dim]{RESULT_PREFIX}{body}[/]"
@@ -919,6 +949,10 @@ class _ToolBlock(Static):
 
     def _draw(self):
         head = self._head()
+        if self._rejected is not None:
+            self.update(f"{head}\n[dim]{RESULT_PREFIX}"
+                        f"{escape(self._rejected)}[/]")
+            return
         if self._is_teammate_spawn():
             trail = self._trail_markup()
             self.update(f"{head}\n{trail}" if trail else head)
@@ -1522,6 +1556,8 @@ class PyClawApp(App[None]):
         self._spin_timer = None
         self._spin_i = 0
         self._think: dict | None = None
+        self._permission_request: tuple | None = None
+        self._interrupted_call = False
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
         self._expanded_view = 'none'
@@ -2592,7 +2628,8 @@ class PyClawApp(App[None]):
         finally:
             self._driving = False
 
-    async def _ask_permission(self, tool_name: str, tool_input) -> str:
+    async def _ask_permission(self, tool_name: str, tool_input,
+                              *, tool_use_id: str = '') -> str:
         inp = tool_input if isinstance(tool_input, dict) else {}
         rule = self._session.permission_rule(tool_name, inp)
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
@@ -2600,10 +2637,37 @@ class PyClawApp(App[None]):
                                    rule=rule)
         fut = asyncio.get_running_loop().create_future()
         prompt.on_choice = fut.set_result
-        conv = self._conv()
-        await conv.mount(prompt)
-        await self._after_mount()
-        return await fut
+        block = self._tools.get(tool_use_id) if tool_use_id else None
+        if isinstance(block, _ToolBlock):
+            block.set_waiting_permission(True)
+        self._permission_request = (prompt, block)
+        try:
+            conv = self._conv()
+            await conv.mount(prompt)
+            await self._after_mount()
+            return await fut
+        finally:
+            self._permission_request = None
+            if isinstance(block, _ToolBlock):
+                block.set_waiting_permission(False)
+
+    async def _deny_pending_permission(self) -> bool:
+        """Settle an approval the user was answering when they interrupted.
+
+        Left alone, the prompt outlives the turn it belongs to: the card sits
+        on "Initializing…" for good, and answering the orphaned prompt would
+        still run the tool the user just killed.
+        """
+        pending = self._permission_request
+        if pending is None:
+            return False
+        prompt, block = pending
+        self._permission_request = None
+        await prompt.action_cancel()
+        if isinstance(block, _ToolBlock) and not block._done:
+            block.reject()
+        self._interrupted_call = True
+        return True
 
     async def action_cycle_permission(self):
         if self._session is None:
@@ -2644,18 +2708,21 @@ class PyClawApp(App[None]):
         await self._interrupt()
 
     async def _interrupt(self):
+        rejected = await self._deny_pending_permission()
         if self._team is not None:
             self._team.lead.abort_work()
         if self._processing and not self._wrote_body:
             self.query_one("#input", Input).value = self._processing
             self._processing = None
-        await self._append_block(
-            "[#9A9A9A]Interrupted \u00b7 What should PyClaw do instead?[/]")
+        if not rejected:
+            await self._append_block(
+                f"[#9A9A9A]{INTERRUPTED_TEXT}[/]")
 
     def _begin_turn(self):
         self._live = None
         self._live_text = ""
         self._wrote_body = False
+        self._interrupted_call = False
         self._turn_start = len(self._team.transcript())
         self._turn_verb = random.choice(SPINNER_VERBS)
         self._turn_started_at = asyncio.get_running_loop().time()
@@ -2690,7 +2757,10 @@ class PyClawApp(App[None]):
             return
         await self._wait_session_idle()
         await self._queue.join()
-        if out.strip() and not self._wrote_body \
+        # A killed call already narrates itself on its card; chatchat hands
+        # back the tool error as the turn's "answer", and echoing it here
+        # prints the block reason a second time.
+        if out.strip() and not self._wrote_body and not self._interrupted_call \
                 and len(self._team.transcript()) > self._turn_start:
             await self._append_block(escape(out))
         self._render_status()

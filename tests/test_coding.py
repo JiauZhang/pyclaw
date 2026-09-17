@@ -359,13 +359,13 @@ def test_non_bash_tool_rules_match_their_path_argument():
 def test_ask_flow_authorize():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp):
+        async def approve(name, inp, *, tool_use_id=''):
             return "approved"
 
         g = PermissionController(mode="default", cwd=d, request=approve)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
 
-        async def denied(name, inp):
+        async def denied(name, inp, *, tool_use_id=''):
             return "denied"
 
         g2 = PermissionController(mode="default", cwd=d, request=denied)
@@ -581,7 +581,7 @@ def test_bash_dangerous_removal_asks_even_when_allowed():
 def test_bash_dangerous_removal_is_not_remembered():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp):
+        async def once(name, inp, *, tool_use_id=''):
             return "dont_ask"
 
         g = PermissionController(mode="default", cwd=d, request=once)
@@ -678,7 +678,7 @@ def test_build_team_tools_differ_by_mode():
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp):
+        async def once(name, inp, *, tool_use_id=''):
             return "dont_ask"
 
         g = PermissionController(mode="default", cwd=d, request=once,
@@ -734,7 +734,7 @@ def test_suggested_rule_uses_the_addressed_path():
 def test_authorize_accepts_amended_rule():
     with tempfile.TemporaryDirectory() as d:
 
-        async def amend(name, inp):
+        async def amend(name, inp, *, tool_use_id=''):
             return ("dont_ask", "Bash(git commit --amend:*)")
 
         g = PermissionController(mode="default", cwd=d, request=amend)
@@ -774,7 +774,7 @@ def test_suggested_rule_refuses_risky_commands():
 def test_dont_ask_saves_rule_to_local_settings():
     with tempfile.TemporaryDirectory() as d:
 
-        async def always(name, inp):
+        async def always(name, inp, *, tool_use_id=''):
             return "dont_ask"
 
         g = PermissionController(mode="default", cwd=d, request=always)
@@ -1059,3 +1059,39 @@ def test_build_team_wires_task_notifications_to_lead():
     texts = asyncio.run(main())
     assert texts and "<status>failed</status>" in texts[0]["content"]
     assert "<task-id>b" in texts[0]["content"]
+
+def test_team_tools_never_ask_the_human():
+    """create_agent/send_message/task_stop orchestrate agents this one owns.
+
+    They are absent from the coding tool registry, so decide() used to fall
+    through to its "unknown tool" branch and prompt on every single call --
+    which in a fresh cwd meant the human had to approve each delegation.
+    claude-code allows all three by default (AgentTool.tsx:1281-1297,
+    SendMessageTool.ts:585-604).
+    """
+    from pyclaw.tools.coding.permission import AUTO_TOOLS
+
+    with tempfile.TemporaryDirectory() as d:
+        gate = PermissionController(mode="default", cwd=d)
+        for name in sorted(AUTO_TOOLS):
+            assert gate.decide(name, {"prompt": "x"}) == "allow", name
+        assert "Bash" not in AUTO_TOOLS
+
+
+def test_an_explicit_rule_still_gates_a_team_tool():
+    with tempfile.TemporaryDirectory() as d:
+        asking = PermissionController(mode="default", cwd=d,
+                                      ask=["create_agent"])
+        assert asking.decide("create_agent", {"prompt": "x"}) == "ask"
+        denying = PermissionController(mode="default", cwd=d,
+                                       deny=["create_agent"])
+        assert denying.decide("create_agent", {"prompt": "x"}) == "deny"
+
+
+def test_auto_tools_do_not_leak_into_other_tool_decisions():
+    with tempfile.TemporaryDirectory() as d:
+        gate = PermissionController(mode="default", cwd=d,
+                                    tools=CODING_TOOLS)
+        assert gate.decide("Edit", {"file_path": "a.txt"}) == "ask"
+        assert gate.decide("Bash", {"command": "rm -rf /"}) == "ask"
+        assert gate.decide("Read", {"file_path": "a.txt"}) == "allow"

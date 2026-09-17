@@ -2769,3 +2769,144 @@ def test_the_teammate_spawn_card_never_trails_after_it_resolves():
             assert "spawned and idle" not in text
             assert "Initializing" not in text
     asyncio.run(scenario())
+
+
+async def _pending_approval(app, pilot, tool_use_id="a1", tool="create_agent"):
+    """Start a real approval request and hand back its task + prompt."""
+    from pyclaw.tui import _PermissionPrompt
+    task = asyncio.ensure_future(
+        app._ask_permission(tool, {"prompt": "go"},
+                            tool_use_id=tool_use_id))
+    for _ in range(4):
+        await pilot.pause()
+    prompt = next((w for w in app._conv().children
+                   if isinstance(w, _PermissionPrompt)), None)
+    return task, prompt
+
+
+def test_a_tool_call_waiting_on_approval_says_so():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "go", "subagent_type": "general-purpose"},
+                "tool_use_id": "a1"}))
+            assert "Initializing" in _card(app._tools["a1"])
+            task, prompt = await _pending_approval(app, pilot)
+            # claude-code parks the card on "Waiting for permission…" instead
+            # of leaving it on the start-up line (AssistantToolUseMessage.tsx:240).
+            assert "\u23bf  Waiting for permission\u2026" in _card(app._tools["a1"])
+            assert "Initializing" not in _card(app._tools["a1"])
+            await pilot.press("y")
+            await pilot.pause()
+            await task
+            assert "Waiting for permission" not in _card(app._tools["a1"])
+    asyncio.run(scenario())
+
+
+def test_interrupting_while_an_approval_is_pending_settles_the_call():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "go", "subagent_type": "general-purpose"},
+                "tool_use_id": "a1"}))
+            task, prompt = await _pending_approval(app, pilot)
+            assert prompt is not None
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            for _ in range(6):
+                await pilot.pause()
+            assert await task == "denied"
+            assert app._permission_request is None
+            assert not [w for w in app._conv().children
+                        if isinstance(w, _PermissionPrompt)]
+            text = _card(app._tools["a1"])
+            assert "Agent(go)" in text
+            assert "\u23bf  Interrupted \u00b7 What should PyClaw do instead?" in text
+            painted = _plain("".join(str(w.content)
+                                     for w in app.query_one("#conv").children))
+            assert painted.count("What should PyClaw do instead") == 1
+    asyncio.run(scenario())
+
+
+def test_an_approval_cannot_outlive_the_turn_it_belongs_to():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "go", "subagent_type": "general-purpose"},
+                "tool_use_id": "a1"}))
+            task, _prompt = await _pending_approval(app, pilot)
+            await pilot.press("ctrl+c")
+            for _ in range(4):
+                await pilot.pause()
+            assert await task == "denied"
+            # Nothing is left to approve, so the next Enter is an ordinary
+            # submit instead of a stray approval of a dead turn.
+            app.query_one(Input).value = "still here"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app.query_one(Input).value == ""
+            assert app._permission_request is None
+    asyncio.run(scenario())
+
+
+def test_escape_still_denies_a_prompt_that_is_being_answered():
+    from pyclaw.tui import _PermissionPrompt
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _pending_approval(app, pilot)
+            assert prompt.has_focus
+            await pilot.press("escape")
+            await pilot.pause()
+            assert await task == "denied"
+            assert not [w for w in app._conv().children
+                        if isinstance(w, _PermissionPrompt)]
+    asyncio.run(scenario())
+
+
+def test_a_killed_call_is_not_narrated_twice():
+    """The card owns the interrupt; _converse must not echo chatchat's
+    tool-error-as-answer on top of it."""
+    async def run(interrupted):
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            calls = []
+
+            async def chat(text):
+                return 'Error: hook blocked tool "create_agent": nope.'
+
+            async def idle():
+                return True
+
+            app._session.chat = chat
+            app._wait_session_idle = idle
+            app._begin_turn()
+            app._team.record('user', 'go')
+            app._interrupted_call = interrupted
+            orig = app._append_block
+
+            async def spy(text):
+                calls.append(_plain(str(text)))
+                return await orig(text)
+
+            app._append_block = spy
+            await app._converse('go')
+            return calls
+
+    assert asyncio.run(run(True)) == []
+    assert asyncio.run(run(False)) == [
+        'Error: hook blocked tool "create_agent": nope.']
