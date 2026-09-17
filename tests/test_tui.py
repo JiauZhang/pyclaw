@@ -12,6 +12,7 @@ from chatchat.hooks.events import (
     AGENT_TEXT,
     AGENT_TOOL_CALL,
     AGENT_TURN_FINISHED,
+    RuntimeEvent,
 )
 from chatchat.tool import ToolContext
 from pyclaw.tui import PyClawApp, _TextBlock
@@ -23,6 +24,12 @@ def _isolated_runtime_sinks():
     saved = list(events._runtime_sinks)
     yield
     events._runtime_sinks[:] = saved
+
+
+@pytest.fixture(autouse=True)
+def _no_welcome_state_writes(monkeypatch):
+    from pyclaw import welcome
+    monkeypatch.setattr(welcome, 'remember', lambda **kwargs: None)
 
 
 class _FakeTeam:
@@ -485,10 +492,11 @@ def test_status_has_no_model_or_thinking_segments():
 
 
 def test_fmt_compacts():
-    from pyclaw.tui import PyClawApp as A
-    assert A._fmt(900) == "900"
-    assert A._fmt(1901) == "1.9k"
-    assert A._fmt(1_200_000) == "1.2m"
+    from pyclaw.tui import _format_count as fmt
+    assert fmt(900) == "900"
+    assert fmt(1000) == "1.0k"
+    assert fmt(1901) == "1.9k"
+    assert fmt(1_200_000) == "1.2m"
 
 
 def test_long_block_wraps_not_stretches():
@@ -574,7 +582,7 @@ def test_subagent_progress_renders_tree_line():
             assert "Sub-agents" in tasks
             assert "[bold]coder[/]" in tasks
             assert "1 tool use" in tasks
-            assert "2k tokens" in tasks
+            assert "2.0k tokens" in tasks
             assert "Done" in tasks
     asyncio.run(scenario())
 
@@ -1135,7 +1143,7 @@ class _TeammateTeam(_FakeTeam):
         return "answer"
 
 
-def test_input_stays_busy_while_teammate_running():
+def test_input_free_while_teammate_running():
     team = _TeammateTeam()
 
     async def scenario():
@@ -1146,14 +1154,119 @@ def test_input_stays_busy_while_teammate_running():
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
-            assert app._processing == "hi"
-            team.worker_busy = False
             for _ in range(20):
                 await pilot.pause()
                 await asyncio.sleep(0.05)
             assert app._processing is None
             assert "answer" in _flatten(app)
+            assert team.worker_busy
     asyncio.run(scenario())
+
+
+def test_turn_duration_deferred_until_teammates_settle():
+    team = _TeammateTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "hi"
+            await pilot.press("enter")
+            for _ in range(20):
+                await pilot.pause()
+                await asyncio.sleep(0.05)
+            assert "Worked for" not in _flatten(app)
+            team.worker_busy = False
+            for _ in range(10):
+                await pilot.pause()
+                await asyncio.sleep(0.05)
+            assert "Worked for" in _flatten(app)
+    asyncio.run(scenario())
+
+
+class _StubBlock:
+
+    _done = False
+
+    def end_progress(self):
+        pass
+
+
+class _Inbox:
+
+    def __init__(self):
+        self.written = []
+
+    def write(self, from_, text, **kw):
+        self.written.append((from_, text))
+
+
+class _SwarmTeam(_FakeTeam):
+
+    def __init__(self):
+        super().__init__()
+        self.worker_busy = False
+        self.submitted = []
+        self.aborted = 0
+        self.stopped = []
+        owner = self
+
+        class _W:
+            name = "worker"
+            agent_id = "worker@t"
+            instruction = "You are the worker."
+            is_running = True
+
+            def __init__(self):
+                self.messages = [{"role": "user", "content": "do the thing"}]
+                self.inbox = _Inbox()
+
+            def abort_work(self):
+                owner.aborted += 1
+
+            def submit(self, text):
+                owner.submitted.append(text)
+                self.messages.append({"role": "user", "content": text})
+
+            @property
+            def busy(self):
+                return owner.worker_busy
+
+            async def idle(self):
+                return not owner.worker_busy
+
+        self.worker = _W()
+        self.agents["worker@t"] = self.worker
+        self.children = {"lead@t": {"worker@t"}}
+        self.parents = {"worker@t": "lead@t"}
+
+    async def stop_agent(self, agent):
+        self.stopped.append(agent.name)
+        self.agents.pop(agent.agent_id, None)
+
+    async def query(self, prompt, timeout=60):
+        from chatchat.hooks.events import emit
+        self.worker_busy = True
+        self.record("user", prompt)
+        emit(AGENT_TEXT, agent="lead", delta="lead answer")
+        emit(AGENT_TEXT, agent="worker", delta="worker private text")
+        emit(AGENT_TOOL_CALL, agent="worker", tool="Read",
+             input={"file_path": "a.py"}, tool_use_id="w1")
+        self.record("assistant", "lead answer")
+        emit(AGENT_TURN_FINISHED, agent="lead")
+        return "lead answer"
+
+
+async def _run_turn(pilot, text="go", rounds=8):
+    pilot.app.query_one(Input).value = text
+    await pilot.press("enter")
+    for _ in range(rounds):
+        await pilot.pause()
+        await asyncio.sleep(0.02)
+
+
+def _tree(app) -> str:
+    return _plain(str(app._agents_pane.content)) if app._agents_pane else ""
 
 
 class _BlankTeam(_FakeTeam):
@@ -1969,6 +2082,17 @@ def test_the_welcome_logo_is_the_painted_wordmark(monkeypatch):
     assert painted[0].style == "rgb(0,132,228)"
 
 
+def test_the_welcome_logo_stays_until_scrolled_out():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            logo = pilot.app.query_one(".logo")
+            await _submit_and_wait(pilot, "hi", 2)
+            conv = pilot.app.query_one("#conv")
+            assert logo in conv.children
+    asyncio.run(scenario())
+
+
 def test_the_accent_colour_follows_the_launch_palette(monkeypatch):
     from pyclaw import banner
     _gradient_cfg(monkeypatch)
@@ -1990,3 +2114,658 @@ def test_the_default_config_picks_a_fresh_palette_per_app():
     first = PyClawApp(builder=_builder)
     second = PyClawApp(builder=_builder)
     assert first.brand != second.brand
+
+
+def test_agent_output_never_mixes_into_the_leader_transcript():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            flat = _plain(_flatten(app))
+            assert "lead answer" in flat
+            assert "worker private text" not in flat
+            assert "w1" not in app._tools
+    asyncio.run(scenario())
+
+
+def test_ctrl_t_cycles_none_tasks_teammates():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            pane = app.query_one("#tasks")
+            assert app._expanded_view == "none"
+            assert pane.display is False
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+            assert app._expanded_view == "tasks"
+            assert pane.display is True
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+            assert app._expanded_view == "teammates"
+            assert pane.display is False
+            assert "@worker" in _tree(app)
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+            assert app._expanded_view == "none"
+            assert "@worker" not in _tree(app)
+    asyncio.run(scenario())
+
+
+def test_agent_tree_shows_the_leader_and_teammate_stats():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+            await pilot.press("ctrl+t")
+            await pilot.pause()
+            tree = _tree(app)
+            assert "team-lead" in tree
+            assert "2.4k tokens" in tree
+            assert "@worker" in tree
+            assert "1 tool use" in tree
+            assert "shift + \u2191/\u2193 to select" in tree
+    asyncio.run(scenario())
+
+
+def test_shift_down_selects_the_row_and_reveals_the_view_hint():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            assert app._expanded_view == "teammates"
+            assert app._view_selection == "selecting-agent"
+            assert app._selected_index == 0
+            tree = _tree(app)
+            assert "\u276f" in tree
+            assert "\u2558\u2550" in tree
+            assert "enter to view" in tree
+    asyncio.run(scenario())
+
+
+def test_enter_opens_the_teammate_view_and_esc_returns():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            team.worker_busy = False
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app._viewing == "worker"
+            assert app.query_one("#conv").display is False
+            view = app.query_one("#view")
+            assert view.display is True
+            body = _plain(str(app._view_pane.content))
+            assert "Viewing @worker" in body
+            assert "esc to return to team lead" in body
+            assert "do the thing" in body
+            assert "esc to return to team lead" in _plain(
+                str(app.query_one("#status").content))
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._viewing is None
+            assert app.query_one("#conv").display is True
+            assert view.display is False
+    asyncio.run(scenario())
+
+
+def test_input_while_viewing_goes_to_the_viewed_teammate():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            team.worker_busy = False
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            app.query_one(Input).value = "please hurry"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert team.submitted == ["please hurry"]
+            assert app._processing is None
+            assert app.query_one(Input).value == ""
+    asyncio.run(scenario())
+
+
+def test_escape_while_viewing_a_busy_teammate_aborts_only_its_turn():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            assert team.worker_busy is True
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("escape")
+            await pilot.pause()
+            assert team.aborted == 1
+            assert app._viewing == "worker"
+            assert app.query_one("#conv").display is False
+    asyncio.run(scenario())
+
+
+def test_idle_leader_shows_teammates_running_line():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            tree = _tree(app)
+            assert "Idle \u00b7 teammates running" in tree
+    asyncio.run(scenario())
+
+
+def test_k_stops_the_selected_teammate():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("k")
+            await pilot.pause()
+            assert team.stopped == ["worker"]
+            assert app._selected_index == -1
+    asyncio.run(scenario())
+
+
+def test_typing_k_still_reaches_the_input():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press("k")
+            await pilot.pause()
+            assert app.query_one(Input).value == "k"
+    asyncio.run(scenario())
+
+
+def test_at_name_sends_a_direct_message_to_the_teammate():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            app.query_one(Input).value = "@worker hurry up"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert team.worker.inbox.written == [("lead", "hurry up")]
+            assert app._pending_inputs.empty()
+            assert "Sent to @worker" in _plain(_flatten(app))
+    asyncio.run(scenario())
+
+
+def test_subagent_task_card_reports_done_with_stats():
+    from chatchat.hooks.events import RuntimeEvent
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "look around", "subagent_type": "Explore"},
+                "tool_use_id": "a1"}))
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
+                "prompt": "look around", "subagent_type": "Explore",
+                "tool_use_id": "a1", "started_at": 0.0}))
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="sub-1", data={
+                "tool": "Grep", "input": {"pattern": "p"}, "tool_use_id": "g1"}))
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1",
+                                           data={"done": True}))
+            block = app._tools["a1"]
+            block.set_result("the subagent answer",
+                             meta=app._tool_meta.get("a1"))
+            content = str(block.content)
+            assert "[bold]Explore[/]" in content
+            assert "Done (1 tool use \u00b7 0 tokens \u00b7" in content
+            assert "the subagent answer" not in content
+    asyncio.run(scenario())
+
+
+def test_teammate_spawn_card_has_no_result_line():
+    from chatchat.hooks.events import RuntimeEvent
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "watch the build", "name": "watcher"},
+                "tool_use_id": "a2"}))
+            block = app._tools["a2"]
+            block.set_result('Teammate "watcher" spawned and idle.')
+            content = str(block.content)
+            assert "[bold]Agent[/]" in content
+            assert "spawned and idle" not in content
+    asyncio.run(scenario())
+
+
+def test_teammate_message_renders_as_a_byline():
+    from pyclaw.tui import _user_markup
+    raw = ('<teammate_message teammate_id="worker">'
+           'found the bug</teammate_message>')
+    assert _user_markup(raw) == "[bold]worker[/]\u276f found the bug"
+    idle = ('<teammate_message teammate_id="worker">'
+            '{"type": "idle_notification", "from": "worker"}'
+            '</teammate_message>')
+    assert _user_markup(idle) == ""
+    assert _user_markup("plain message") == "plain message"
+
+
+def test_enter_while_selecting_confirms_instead_of_submitting():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            await pilot.press("shift+down")
+            await pilot.pause()
+            app.query_one(Input).value = "not a prompt"
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app._pending_inputs.empty()
+            assert app._processing is None
+            assert app._view_selection == "selecting-agent"
+    asyncio.run(scenario())
+
+
+def test_escape_leaves_selection_without_cancelling_the_leader():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            assert app._view_selection == "selecting-agent"
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app._view_selection == "none"
+            assert app._selected_index == -1
+    asyncio.run(scenario())
+
+
+def test_queued_messages_are_hidden_while_viewing_a_teammate():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            team.worker_busy = False
+            app._peek_queue = lambda: ["queued while busy"]
+            await app._render_queued()
+            await pilot.pause()
+            assert app._queued is not None
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("enter")
+            await pilot.pause()
+            assert app._viewing == "worker"
+            assert app._queued is None
+            assert "Press up to edit queued messages" not in str(
+                app.query_one(Input).placeholder)
+    asyncio.run(scenario())
+
+
+def test_direct_send_message_cards_stay_off_the_transcript():
+    from chatchat.hooks.events import RuntimeEvent
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "send_message",
+                "input": {"to": "worker", "message": "please continue"},
+                "tool_use_id": "s1"}))
+            await pilot.pause()
+            block = app._tools["s1"]
+            assert block.display is False
+            block.set_result("Message delivered to worker's inbox")
+            painted = "".join(str(w.content)
+                              for w in app.query_one("#conv").children
+                              if w.display)
+            assert "Message delivered" not in _plain(painted)
+    asyncio.run(scenario())
+
+
+def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
+    import logging
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+
+            def boom():
+                raise ValueError("kaboom")
+
+            app._render_tasks = boom
+            with caplog.at_level(logging.ERROR, logger="pyclaw.tui"):
+                app._queue.put_nowait(RuntimeEvent(
+                    AGENT_TEXT, agent="lead", data={"delta": "hi"}))
+                for _ in range(10):
+                    await pilot.pause()
+                    await asyncio.sleep(0.02)
+            assert app._render_tasks is boom
+    asyncio.run(scenario())
+    records = [r for r in caplog.records if r.name == "pyclaw.tui"]
+    assert any("render failed" in r.getMessage() for r in records)
+    failed = [r for r in records if "render failed" in r.getMessage()]
+    assert "agent.text" in failed[0].getMessage()
+    assert failed[0].exc_info is not None
+    assert "kaboom" in caplog.text
+
+
+def test_every_runtime_event_is_logged_for_postmortem(caplog):
+    import logging
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with caplog.at_level(logging.DEBUG, logger="pyclaw.tui"):
+                await app._handle(RuntimeEvent(
+                    AGENT_TEXT, agent="worker", data={"delta": "hidden"}))
+    asyncio.run(scenario())
+    assert any("agent.text" in r.getMessage() and "worker" in r.getMessage()
+               for r in caplog.records if r.name == "pyclaw.tui")
+
+
+def test_subagent_spawn_and_finish_are_logged(caplog):
+    import logging
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with caplog.at_level(logging.INFO, logger="pyclaw.tui"):
+                await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
+                    "prompt": "go", "subagent_type": "Explore",
+                    "tool_use_id": "a9", "started_at": 0.0}))
+                app._tools["a9"] = app._tools.get("a9") or _StubBlock()
+                await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1",
+                                               data={"done": True}))
+    asyncio.run(scenario())
+    messages = [r.getMessage() for r in caplog.records if r.name == "pyclaw.tui"]
+    assert any("sub-agent sub-1 started" in m for m in messages)
+    assert any("sub-agent sub-1 finished" in m for m in messages)
+
+
+def _logo_text(app) -> str:
+    return _plain(str(app.query_one(".logo").content))
+
+
+def test_the_logo_greets_you_under_the_wordmark(monkeypatch):
+    from pyclaw import welcome
+    monkeypatch.setattr(welcome, "settings",
+                        lambda: {"seen": 4, "lastVersion": "0.0.5"})
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            return _logo_text(pilot.app)
+
+    text = asyncio.run(scenario())
+    assert "Welcome back!" in text
+    assert "PyClaw v" in text
+    assert "m \u00b7 p" in text
+    assert str(Path.cwd()) in text or "~/" in text
+
+
+def test_the_logo_feeds_follow_the_welcome_state(monkeypatch):
+    from pyclaw import welcome
+    monkeypatch.setattr(welcome, "recent_activity", lambda **kwargs: [
+        {"text": "fix the PDF outline jump", "timestamp": "2 hours ago"}])
+    monkeypatch.setattr(welcome, "settings",
+                        lambda: {"seen": 0, "lastVersion": "0.0.5"})
+    monkeypatch.setattr(welcome, "onboarding_steps", lambda cwd: [
+        {"text": "Ask PyClaw to create a new app", "complete": False,
+         "enabled": True}])
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            return _logo_text(pilot.app)
+
+    text = asyncio.run(scenario())
+    assert "Tips for getting started" in text
+    assert "Ask PyClaw to create a new app" in text
+    assert "Recent activity" in text
+    assert "2 hours ago" in text
+    assert "fix the PDF outline jump" in text
+    assert "/resume for more" in text
+
+
+def test_the_logo_drops_the_feeds_once_onboarding_is_settled(monkeypatch):
+    from pyclaw import welcome
+    monkeypatch.setattr(welcome, "settings",
+                        lambda: {"seen": 4, "lastVersion": "0.0.5"})
+    monkeypatch.setattr(welcome, "recent_activity", lambda **kwargs: [
+        {"text": "should not show", "timestamp": "2 hours ago"}])
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            return _logo_text(pilot.app)
+
+    text = asyncio.run(scenario())
+    assert "Welcome back!" in text
+    assert "Tips for getting started" not in text
+    assert "Recent activity" not in text
+    assert "should not show" not in text
+
+
+def test_the_greeting_records_the_version_and_the_onboarding_seen_count(
+        monkeypatch):
+    from pyclaw import welcome
+    seen = []
+    monkeypatch.setattr(welcome, "feeds_for", lambda **kwargs: ([], True))
+    monkeypatch.setattr(welcome, "remember",
+                        lambda **kwargs: seen.append(kwargs))
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    assert seen and seen[0]["seen_onboarding"] is True
+    assert seen[0]["version"]
+
+
+async def _mount_agent_card(app, *, tool_use_id="a1", subagent_type="Explore",
+                            prompt="look around"):
+    await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+        "tool": "create_agent",
+        "input": {"prompt": prompt, "subagent_type": subagent_type},
+        "tool_use_id": tool_use_id}))
+    await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
+        "prompt": prompt, "subagent_type": subagent_type,
+        "tool_use_id": tool_use_id, "started_at": 0.0}))
+
+
+async def _sub_agent_says(app, content, *, agent="sub-1", usage=None):
+    data = {"message": {"role": "assistant", "content": content}}
+    if usage is not None:
+        data["usage"] = usage
+    await app._handle(RuntimeEvent(AGENT_PROGRESS, agent=agent, data=data))
+
+
+def _card(block) -> str:
+    return _plain(str(block.content))
+
+
+def test_a_running_sub_agent_shows_what_it_is_doing_under_its_card():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            assert "\u23bf  Initializing\u2026" in _card(app._tools["a1"])
+            await _sub_agent_says(app, [
+                {"type": "text", "text": "Reading the config first"},
+                {"type": "tool_use", "id": "t1", "name": "Read",
+                 "input": {"file_path": "pyclaw/tui.py"}},
+            ])
+            text = _card(app._tools["a1"])
+            assert "Reading the config first" in text
+            assert "Read(pyclaw/tui.py)" in text
+            assert "Initializing" not in text
+    asyncio.run(scenario())
+
+
+def test_the_sub_agent_trail_keeps_the_last_three_messages():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            for index in range(5):
+                await _sub_agent_says(app, [
+                    {"type": "tool_use", "id": f"t{index}", "name": "Read",
+                     "input": {"file_path": f"step-{index}.py"}},
+                ])
+            text = _card(app._tools["a1"])
+            assert "step-4.py" in text
+            assert "step-2.py" in text
+            assert "step-1.py" not in text
+            assert "step-0.py" not in text
+            assert "+2 tool uses (ctrl+o to expand)" in text
+    asyncio.run(scenario())
+
+
+def test_the_sub_agent_trail_shows_narration_and_every_tool_call():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            await _sub_agent_says(app, [
+                {"type": "text", "text": "Checking the tests\nand the fixtures"},
+                {"type": "tool_use", "id": "g1", "name": "Grep",
+                 "input": {"pattern": "test_", "path": "tests"}},
+                {"type": "tool_use", "id": "b1", "name": "Bash",
+                 "input": {"command": "git log --oneline -3"}},
+            ])
+            text = _card(app._tools["a1"])
+            assert "Checking the tests and the fixtures" in text
+            assert 'Search(pattern: "test_", path: "tests")' in text
+            assert "Bash(git log --oneline -3)" in text
+    asyncio.run(scenario())
+
+
+def test_tool_results_never_enter_the_sub_agent_trail():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            await _sub_agent_says(app, [
+                {"type": "tool_use", "id": "t1", "name": "Read",
+                 "input": {"file_path": "pyclaw/tui.py"}},
+            ])
+            before = _card(app._tools["a1"])
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
+                "message": {"role": "user", "content": [
+                    {"type": "tool_result", "tool_use_id": "t1",
+                     "content": "SHOULD NOT SURFACE"}]}}))
+            assert _card(app._tools["a1"]) == before
+            assert "SHOULD NOT SURFACE" not in before
+    asyncio.run(scenario())
+
+
+def test_the_done_line_replaces_the_trail_when_the_sub_agent_finishes():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            await _sub_agent_says(app, [
+                {"type": "tool_use", "id": "t1", "name": "Read",
+                 "input": {"file_path": "pyclaw/tui.py"}},
+            ])
+            assert "Read(pyclaw/tui.py)" in _card(app._tools["a1"])
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="sub-1", data={
+                "tool": "Read", "input": {"file_path": "pyclaw/tui.py"},
+                "tool_use_id": "t1"}))
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1",
+                                           data={"done": True}))
+            block = app._tools["a1"]
+            text = _card(block)
+            assert "Read(pyclaw/tui.py)" not in text
+            assert "Initializing" not in text
+            block.set_result("the subagent answer",
+                             meta=app._tool_meta.get("a1"))
+            assert "Done (1 tool use \u00b7 0 tokens \u00b7" in _card(block)
+    asyncio.run(scenario())
+
+
+def test_the_transcript_shows_every_trail_row_not_just_the_last_three():
+    from pyclaw.tui import TranscriptScreen
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _mount_agent_card(app)
+            for index in range(5):
+                await _sub_agent_says(app, [
+                    {"type": "tool_use", "id": f"t{index}", "name": "Read",
+                     "input": {"file_path": f"step-{index}.py"}},
+                ])
+            entry = _plain(TranscriptScreen._tool_entry(app._tools["a1"]))
+            for index in range(5):
+                assert f"step-{index}.py" in entry
+            assert "more tool uses" not in entry
+    asyncio.run(scenario())
+
+
+def test_the_teammate_spawn_card_never_trails_after_it_resolves():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "watch the build", "name": "watcher"},
+                "tool_use_id": "a2"}))
+            block = app._tools["a2"]
+            block.set_result('Teammate "watcher" spawned and idle.')
+            text = _card(block)
+            assert "spawned and idle" not in text
+            assert "Initializing" not in text
+    asyncio.run(scenario())

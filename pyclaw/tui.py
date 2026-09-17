@@ -4,10 +4,12 @@ import asyncio
 import dataclasses
 import difflib
 import json
+import logging
 import os
 import random
 import re
 import sys
+import time
 from pathlib import Path
 
 from rich.markup import escape
@@ -32,11 +34,24 @@ from chatchat.hooks.events import (
     register_runtime_handler,
 )
 
-from pyclaw import banner, config
+from pyclaw import __version__, banner, config, welcome
 from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
+
+
+logger = logging.getLogger(__name__)
+
+MAX_LOG_PAYLOAD = 1000
+
+
+def _log_data(data) -> str:
+    try:
+        text = repr(data)
+    except Exception:
+        return "<unrepresentable>"
+    return text if len(text) <= MAX_LOG_PAYLOAD else text[:MAX_LOG_PAYLOAD] + "\u2026"
 
 
 BULLET = "\u23fa" if sys.platform == "darwin" else "\u25cf"
@@ -47,6 +62,39 @@ BULLET_PREFIX = f"{BULLET} "
 BULLET_HANG = " " * len(BULLET_PREFIX)
 RESULT_PREFIX = f"  {RESULT_GLYPH}  "
 RESULT_HANG = " " * len(RESULT_PREFIX)
+
+TREE_LEAD = ("\u250c\u2500", "\u2552\u2550")
+TREE_BRANCH = ("\u251c\u2500", "\u255e\u2550")
+TREE_LAST = ("\u2514\u2500", "\u2558\u2550")
+TREE_INDENT = "   "
+TREE_POINTER = POINTER
+SELECT_HINT = "shift + \u2191/\u2193 to select"
+VIEW_HINT = "enter to view"
+COLLAPSE_HINT = "enter to collapse"
+IDLE_TEXT = "Idle"
+AGENT_TEAMMATES_HINT = "teammates running"
+TEAMMATE_VIEW_HINT = "esc to return to team lead"
+
+# Sub-agent progress trail. Mirrors claude-code's AgentTool UI, which renders
+# the last MAX_PROGRESS_MESSAGES_TO_SHOW (3) progress messages of a running
+# sub-agent under its tool call, then a "+N more tool uses" line. See
+# tools/AgentTool/UI.tsx:33,445-570 in the claude-code source.
+AGENT_TRAIL_LIMIT = 3
+INITIALIZING_TEXT = "Initializing\u2026"
+EXPAND_HINT = "ctrl+o to expand"
+
+AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
+                "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
+
+TURN_COMPLETION_VERBS = ("Baked", "Brewed", "Churned", "Cogitated",
+                         "Cooked", "Crunched", "Saut\u00e9ed", "Worked")
+
+TEAMMATE_MESSAGE_RE = re.compile(
+    r'<teammate_message\s+teammate_id="([^"]*)"[^>]*>\s*(.*?)\s*'
+    r'</teammate_message>', re.S)
+HIDDEN_TEAMMATE_TYPES = frozenset({'idle_notification', 'shutdown_approved',
+                                   'teammate_terminated'})
+DIRECT_MESSAGE_RE = re.compile(r'^@([\w-]+)\s+(.+)$', re.S)
 
 MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5",
                 "bypassPermissions": "\u23f5\u23f5", "plan": "\u23f8"}
@@ -66,7 +114,7 @@ MAX_USE_ARG_CHARS = 80
 MAX_WRITE_PREVIEW_LINES = 10
 
 DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
-                 "Glob": "Search", "LS": "List", "create_agent": "Task"}
+                 "Glob": "Search", "LS": "List"}
 PATH_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "LS")
 SEARCH_TOOLS = ("Grep", "Glob")
 
@@ -151,6 +199,27 @@ def _plural(count: int, word: str) -> str:
 
 def _display_name(name: str) -> str:
     return DISPLAY_NAMES.get(name, name)
+
+
+def _agent_tool_name(tool_input) -> str:
+    data = tool_input if isinstance(tool_input, dict) else {}
+    subagent = str(data.get('subagent_type') or '')
+    if subagent and subagent != 'general-purpose':
+        return 'Agent' if subagent == 'worker' else subagent
+    return 'Agent'
+
+
+def _tool_label(name: str, tool_input) -> str:
+    if name == 'create_agent':
+        return _agent_tool_name(tool_input)
+    return _display_name(name)
+
+
+def _hidden_card(name: str, tool_input) -> bool:
+    if name != 'send_message':
+        return False
+    data = tool_input if isinstance(tool_input, dict) else {}
+    return isinstance(data.get('message'), str)
 
 
 def _clip_lines(value, max_lines: int, max_chars: int) -> str:
@@ -454,6 +523,119 @@ def _suggest_label(item: dict) -> str:
     return f"/{item['name']}"
 
 
+def _agent_alive(agent) -> bool:
+    flag = getattr(agent, 'is_running', None)
+    if flag is None:
+        return True
+    return bool(flag)
+
+
+def _format_count(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{n / 1_000_000:.1f}m"
+    if n >= 1000:
+        return f"{n / 1000:.1f}k"
+    return str(n)
+
+
+def _tool_uses(count: int) -> str:
+    return "1 tool use" if count == 1 else f"{count} tool uses"
+
+
+def _agent_tokens(agent) -> int:
+    usage = getattr(agent, 'total_usage', None)
+    return int(getattr(usage, 'total_tokens', 0) or 0)
+
+
+def _more_tool_uses(count: int) -> str:
+    return f"+{_tool_uses(count)} ({EXPAND_HINT})"
+
+
+def _single_line(value, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value if value is not None else "")).strip()
+    if len(text) <= limit:
+        return text
+    return text[:max(1, limit - 1)].rstrip() + "\u2026"
+
+
+def _agent_progress_rows(message, cwd, width: int) -> tuple[list[str], int]:
+    """Condense one sub-agent progress message into display rows.
+
+    Mirrors claude-code's non-ant path in `processProgressMessages`
+    (tools/AgentTool/UI.tsx:100-107): only the sub-agent's *assistant*
+    messages are shown - its narration text and the tool calls it made.
+    Tool results are dropped, because the count line already reports them.
+    """
+    if not isinstance(message, dict) or message.get('role') != 'assistant':
+        return [], 0
+    content = message.get('content')
+    if isinstance(content, str):
+        text = _single_line(content, width)
+        return ([escape(text)] if text else []), 0
+    if not isinstance(content, list):
+        return [], 0
+    rows: list[str] = []
+    uses = 0
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        kind = block.get('type')
+        if kind == 'text':
+            text = _single_line(block.get('text', ''), width)
+            if text:
+                rows.append(escape(text))
+        elif kind == 'tool_use':
+            uses += 1
+            target = str(block.get('name') or 'tool')
+            label = escape(_tool_label(target, block.get('input')))
+            args = _single_line(_tool_use_args(target, block.get('input'), cwd),
+                                max(width * 2, 80))
+            rows.append(f"{label}({escape(args)})" if args else label)
+    return rows, uses
+
+
+def _teammate_blocks(text) -> list | None:
+    matches = TEAMMATE_MESSAGE_RE.findall(str(text or ''))
+    if not matches:
+        return None
+    blocks = []
+    for sender, payload in matches:
+        payload = payload.strip()
+        obj = None
+        try:
+            obj = json.loads(payload)
+        except (TypeError, ValueError):
+            obj = None
+        kind = obj.get('type') if isinstance(obj, dict) else None
+        if kind in HIDDEN_TEAMMATE_TYPES:
+            continue
+        if kind == 'task_completed':
+            subject = obj.get('task_subject') or obj.get('subject') or ''
+            tail = f" ({subject})" if subject else ''
+            blocks.append((sender,
+                           "\n" + RESULT_PREFIX + "\u2713 Completed task #"
+                           f"{obj.get('task_id', '')}{tail}"))
+            continue
+        line = payload.splitlines()[0].strip() if payload else ''
+        blocks.append((sender, line))
+    return blocks
+
+
+def _direct_message(text: str):
+    match = DIRECT_MESSAGE_RE.match(str(text or ''))
+    if not match:
+        return None
+    return match.group(1), match.group(2).strip()
+
+
+def _user_markup(text: str) -> str:
+    blocks = _teammate_blocks(text)
+    if blocks is None:
+        return escape(str(text))
+    return "\n".join(f"[bold]{escape(str(sender))}[/]{POINTER} "
+                     f"{escape(body)}" for sender, body in blocks)
+
+
 class _Conv(VerticalScroll):
 
     def watch_scroll_y(self, value):
@@ -581,17 +763,33 @@ class _GroupBlock(Static):
 
 class _LogoBlock(Static):
 
-    def __init__(self, triple: tuple, model: str = "", **kw):
+    def __init__(self, triple: tuple, greeting: str = "", **kw):
         lines = [banner.directional(*triple)]
-        if model:
-            lines.append(f"\n[dim]{escape(model)}[/]")
+        if greeting:
+            lines.append("\n" + greeting)
         super().__init__("\n".join(lines), markup=True, classes="logo", **kw)
+
+
+class _PromptInput(Input):
+
+    def check_consume_key(self, key: str, character: str | None) -> bool:
+        app = self.app
+        if key == 'k' and getattr(app, '_view_selection', '') \
+                == 'selecting-agent':
+            return False
+        return super().check_consume_key(key, character)
+
+
+class _AgentPane(Static):
+
+    def __init__(self, **kw):
+        super().__init__("", markup=True, classes="agents", **kw)
 
 
 class _UserBlock(Static):
 
     def __init__(self, text: str, **kw):
-        super().__init__(escape(text), markup=True, classes="user", **kw)
+        super().__init__(_user_markup(text), markup=True, classes="user", **kw)
 
 
 class _ToolBlock(Static):
@@ -607,6 +805,8 @@ class _ToolBlock(Static):
         self._failed = False
         self._frame = BULLET
         self._meta: dict | None = None
+        self._progress: list[tuple[list[str], int]] = []
+        self._progress_done = False
         self._draw()
 
     def tick(self, char: str):
@@ -614,8 +814,47 @@ class _ToolBlock(Static):
             self._frame = char
             self._draw()
 
+    def add_progress(self, rows: list[str], tool_uses: int):
+        """Append one sub-agent progress message to the live trail."""
+        if self._output is not None:
+            return
+        self._progress.append((list(rows), int(tool_uses)))
+        self._draw()
+
+    def end_progress(self):
+        """Drop the live trail; the summary line takes over from here."""
+        if not self._progress and self._progress_done:
+            return
+        self._progress = []
+        self._progress_done = True
+        self._draw()
+
+    def _trail_rows(self, full: bool = False) -> list[str]:
+        if self._name != 'create_agent':
+            return []
+        if full:
+            shown, hidden = self._progress, 0
+        else:
+            shown = self._progress[-AGENT_TRAIL_LIMIT:]
+            hidden = sum(uses for _rows, uses
+                         in self._progress[:-AGENT_TRAIL_LIMIT])
+        rows = [row for entry, _uses in shown for row in entry]
+        if hidden:
+            rows.append(_more_tool_uses(hidden))
+        return rows
+
+    def _trail_markup(self, full: bool = False) -> str | None:
+        """Live sub-agent progress, or None when there is nothing to trail."""
+        if self._output is not None or self._progress_done:
+            return None
+        rows = self._trail_rows(full) or [INITIALIZING_TEXT]
+        body = ("\n" + RESULT_HANG).join(rows)
+        return f"[dim]{RESULT_PREFIX}{body}[/]"
+
     def set_result(self, output, meta=None):
         self._done = True
+        self._progress = []
+        self._progress_done = True
         self._output = output
         self._meta = meta
         self._failed = str(output or "").startswith("Error")
@@ -662,8 +901,16 @@ class _ToolBlock(Static):
                 width = 0
         return max(20, (width or 80) - len(RESULT_PREFIX) - 2)
 
+    def _is_teammate_spawn(self) -> bool:
+        return (self._name == 'create_agent'
+                and isinstance(self._input, dict)
+                and bool(self._input.get('name')))
+
+    def _agent_summary(self) -> str | None:
+        return (self._meta or {}).get('agent_summary')
+
     def _head(self) -> str:
-        name = escape(_display_name(self._name))
+        name = escape(_tool_label(self._name, self._input))
         args = escape(_tool_use_args(self._name, self._input, self._cwd))
         color = "#FF6B80" if self._failed else (
             "#4EBA65" if self._done else self.app.brand)
@@ -672,8 +919,18 @@ class _ToolBlock(Static):
 
     def _draw(self):
         head = self._head()
+        if self._is_teammate_spawn():
+            trail = self._trail_markup()
+            self.update(f"{head}\n{trail}" if trail else head)
+            return
+        summary = self._agent_summary()
+        if summary is not None and self._output is not None:
+            rows = escape(summary).replace("\n", "\n" + RESULT_HANG)
+            self.update(f"{head}\n[dim]{RESULT_PREFIX}{rows}[/]")
+            return
         if self._output is None:
-            self.update(head)
+            trail = self._trail_markup()
+            self.update(f"{head}\n{trail}" if trail else head)
             return
         if self._expanded:
             body = str(self._output)
@@ -724,7 +981,8 @@ class TranscriptScreen(Screen):
     def _tool_entry(block) -> str:
         head = block._head()
         if block._output is None:
-            return head
+            trail = block._trail_markup(full=True)
+            return f"{head}\n{trail}" if trail else head
         diff = _diff_block(block._name, block._input, block._output,
                            block._cwd, block._width())
         if diff is not None:
@@ -760,7 +1018,8 @@ class TranscriptScreen(Screen):
                     if block is not None:
                         entries.append(self._tool_entry(block))
             elif isinstance(widget, _ToolBlock):
-                entries.append(self._tool_entry(widget))
+                if widget.display:
+                    entries.append(self._tool_entry(widget))
             else:
                 entries.append(str(widget.content))
         return entries
@@ -1161,6 +1420,11 @@ class PyClawApp(App[None]):
     .text-bullet { width: 2; height: 1; color: $brand; }
     .text-body { width: 1fr; height: auto; color: $text; background: $background; }
     #transcript { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
+    #view { display: none; width: 1fr; height: 1fr; background: $background;
+            overflow-y: auto; scrollbar-gutter: stable; padding: 0 1; }
+    #view > Static { width: 100%; height: auto; }
+    .agents { display: none; width: 100%; height: auto; background: $background;
+              margin: 0 1; padding: 0 1; }
     #help { width: 1fr; height: 1fr; background: $background; padding: 0 1; }
     #help > Static { width: 100%; margin-bottom: 1; }
     #transcript > Static { width: 100%; margin-bottom: 1; }
@@ -1196,8 +1460,14 @@ class PyClawApp(App[None]):
                 ("ctrl+s", "stash", "Stash prompt"),
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
-                ("ctrl+home", "conv_scroll_top", "Scroll to top"),
-                ("ctrl+end", "jump_to_bottom", "Jump to bottom"),
+                Binding("ctrl+home", "conv_scroll_top", "Scroll to top"),
+                Binding("ctrl+end", "jump_to_bottom", "Jump to bottom"),
+                Binding("shift+up", "agent_prev", "Previous agent",
+                        priority=True),
+                Binding("shift+down", "agent_next", "Next agent",
+                        priority=True),
+                Binding("k", "stop_agent", "Stop selected agent",
+                        priority=True),
                 Binding("shift+tab", "cycle_permission", "Cycle permission mode",
                         priority=True),
                 Binding("down", "prompt_next", "Next", priority=True),
@@ -1210,6 +1480,11 @@ class PyClawApp(App[None]):
             return bool(self._suggest_items)
         if action in ('prompt_next', 'prompt_prev'):
             return len(self.screen_stack) <= 1
+        if action == 'stop_agent':
+            return (self._view_selection == 'selecting-agent'
+                    and 0 <= self._selected_index < len(self._teammates()))
+        if action in ('agent_next', 'agent_prev'):
+            return bool(self._teammates())
         return True
 
     def __init__(self, *, builder, session_id=None, resume=False,
@@ -1249,6 +1524,14 @@ class PyClawApp(App[None]):
         self._think: dict | None = None
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
+        self._expanded_view = 'none'
+        self._view_selection = 'none'
+        self._selected_index = -1
+        self._viewing: str | None = None
+        self._agents_pane: _AgentPane | None = None
+        self._view_pane: Static | None = None
+        self._spawns: dict[str, str] = {}
+        self._agent_colors: dict[str, str] = {}
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
         self._suggest_dismissed: str | None = None
@@ -1260,15 +1543,15 @@ class PyClawApp(App[None]):
         self._history: list[str] = []
         self._history_index: int | None = None
         self._draft = ''
-        self._logo: _LogoBlock | None = None
 
     def compose(self) -> ComposeResult:
         yield _Conv(id="conv")
+        yield VerticalScroll(id="view")
         yield Static('', id='suggest')
         yield VerticalScroll(id="tasks")
         with Horizontal(id="prompt"):
             yield Static(POINTER, id="prompt-pointer")
-            yield Input(placeholder="Message PyClaw\u2026", id="input")
+            yield _PromptInput(placeholder="Message PyClaw\u2026", id="input")
         with Horizontal(id="footer"):
             yield Static(id="status")
             yield Static(id="status-right")
@@ -1284,15 +1567,18 @@ class PyClawApp(App[None]):
         asyncio.create_task(self._pump())
         asyncio.create_task(self._drive())
         self._spin_timer = self.set_interval(SPINNER_INTERVAL, self._tool_spin_tick)
-        self._logo = _LogoBlock(
-            self._triple, model=getattr(self._session, "model", ""))
-        await self._conv().mount(self._logo)
+        greeting, shown_onboarding = self._greeting()
+        logo = _LogoBlock(self._triple, greeting=greeting)
+        await self._conv().mount(logo)
+        welcome.remember(seen_onboarding=shown_onboarding,
+                         version=str(__version__))
         if self._resume:
             self._session.restore_transcript()
             await self._render_history()
         self.query_one(Input).focus()
         self._render_status()
         self._render_tasks()
+        await self._refresh_agents()
 
     async def on_unmount(self):
         if self._spin_timer is not None:
@@ -1310,7 +1596,343 @@ class PyClawApp(App[None]):
     def _cwd(self) -> str:
         if self._session is None:
             return "."
-        return getattr(self._session, "cwd", "") or "."
+        value = str(getattr(self._session, "cwd", "") or "")
+        if value and value != ".":
+            return value
+        context = getattr(self._team, "tool_context", None)
+        return str(getattr(context, "cwd", "") or value or ".")
+
+    def _greeting(self) -> tuple[str, bool]:
+        session = self._session
+        version = str(__version__)
+        cwd = self._cwd()
+        feeds, shown = welcome.feeds_for(
+            cwd=cwd, version=version,
+            session_id=getattr(session, 'conv_session_id', None))
+        text = welcome.block(
+            version=version,
+            model=str(getattr(session, 'model', '') or ''),
+            provider=str(getattr(session, 'provider', '') or ''),
+            cwd=cwd, feeds=feeds, brand=self.brand)
+        return text, shown
+
+    def _teammates(self) -> list:
+        team = self._team
+        if team is None:
+            return []
+        lead = getattr(team, 'lead', None)
+        found = []
+        for agent in getattr(team, 'agents', {}).values():
+            if agent is lead or getattr(agent, '_internal', False):
+                continue
+            if _agent_alive(agent):
+                found.append(agent)
+        found.sort(key=lambda a: str(getattr(a, 'name', '')))
+        return found
+
+    def _agent_by_name(self, name):
+        for agent in getattr(self._team, 'agents', {}).values():
+            if getattr(agent, 'name', '') == name:
+                return agent
+        return None
+
+    def _state(self, name: str) -> dict:
+        state = self._agent_state.get(name)
+        if state is None:
+            state = {'tools': 0, 'think': False, 'busy': False,
+                     'last_tool': '', 'error': '',
+                     'verb': random.choice(TURN_COMPLETION_VERBS),
+                     'started_at': time.monotonic(), 'idle_since': None}
+            self._agent_state[name] = state
+        return state
+
+    def _agent_color(self, name: str) -> str:
+        color = self._agent_colors.get(name)
+        if color is None:
+            index = len(self._agent_colors) % len(AGENT_COLORS)
+            color = AGENT_COLORS[index]
+            self._agent_colors[name] = color
+        return color
+
+    def _agent_running(self, agent) -> bool:
+        if agent is None:
+            return False
+        return bool(getattr(agent, 'busy', False))
+
+    def _status_text(self, agent, all_idle: bool, highlighted: bool) -> str:
+        state = self._state(str(getattr(agent, 'name', '')))
+        if state.get('error'):
+            return _summarize(state['error'], 60)
+        now = time.monotonic()
+        if self._agent_running(agent):
+            if highlighted:
+                return ''
+            if state['last_tool']:
+                return f"{state['last_tool']}\u2026"
+            return f"{state['verb']}\u2026"
+        if all_idle:
+            return (f"{state['verb']} for "
+                    f"{self._duration(int(now - state['started_at']))}")
+        if state.get('idle_since') is None:
+            state['idle_since'] = now
+        return (f"{IDLE_TEXT} for "
+                f"{self._duration(int(now - state['idle_since']))}")
+
+    def _leader_row(self, selected) -> str:
+        foreground = self._viewing is None
+        highlighted = foreground or selected == -1
+        glyph = TREE_LEAD[1] if selected == -1 else TREE_LEAD[0]
+        pointer = TREE_POINTER if selected == -1 else ' '
+        label = f"[#48968C]team-lead[/]"
+        if not foreground:
+            if self._processing is not None:
+                label += f": {escape(self._turn_verb)}\u2026"
+            else:
+                label += f": {IDLE_TEXT}"
+        tokens = 0
+        if self._session is not None:
+            tokens = int(getattr(self._session.usage, 'total_tokens', 0) or 0)
+        stats = f" \u00b7 {_format_count(tokens)} tokens" if tokens else ''
+        hint = f" \u00b7 {SELECT_HINT}" if highlighted else ''
+        view = f" \u00b7 {VIEW_HINT}" if selected == -1 and not foreground else ''
+        return (f"{TREE_INDENT}{pointer} {glyph} {label}{stats}{hint}{view}")
+
+    def _teammate_row(self, agent, index: int, last: bool,
+                      selected, all_idle: bool) -> str:
+        name = str(getattr(agent, 'name', ''))
+        state = self._state(name)
+        chosen = selected == index
+        glyph = (TREE_LAST if last else TREE_BRANCH)[1 if chosen else 0]
+        pointer = TREE_POINTER if chosen else ' '
+        color = '#B1B9F9' if chosen else self._agent_color(name)
+        status = self._status_text(agent, all_idle, chosen)
+        label = f"[{color}][bold]@{escape(name)}[/][/]"
+        body = f"{label}: {escape(status)}" if status else label
+        stats = (f" \u00b7 {_tool_uses(state['tools'])}"
+                 f" \u00b7 {_format_count(_agent_tokens(agent))} tokens")
+        hint = f" \u00b7 {SELECT_HINT}" if chosen else ''
+        view = f" \u00b7 {VIEW_HINT}" if chosen else ''
+        return f"{TREE_INDENT}{pointer} {glyph} {body}{stats}{hint}{view}"
+
+    def _hide_row(self, chosen: bool) -> str:
+        glyph = TREE_LAST[1] if chosen else TREE_LAST[0]
+        pointer = TREE_POINTER if chosen else ' '
+        hint = f" \u00b7 {COLLAPSE_HINT}" if chosen else ''
+        return f"{TREE_INDENT}{pointer} {glyph} hide{hint}"
+
+    def _tree_markup(self, rows: bool, idle_line: bool) -> str:
+        teammates = self._teammates()
+        if not teammates:
+            return ''
+        selecting = self._view_selection == 'selecting-agent'
+        selected = self._selected_index if selecting else None
+        all_idle = all(not self._agent_running(a) for a in teammates)
+        lines = []
+        if idle_line:
+            suffix = '' if all_idle else f" \u00b7 {AGENT_TEAMMATES_HINT}"
+            lines.append(f"[dim]{ASTERISK} {IDLE_TEXT}{suffix}[/]")
+        if rows:
+            lines.append(self._leader_row(selected))
+            for index, agent in enumerate(teammates):
+                lines.append(self._teammate_row(
+                    agent, index, index == len(teammates) - 1,
+                    selected, all_idle))
+            if selecting:
+                lines.append(self._hide_row(selected == len(teammates)))
+        return '\n'.join(lines)
+
+    async def _refresh_agents(self):
+        known = {str(getattr(a, 'name', ''))
+                 for a in getattr(self._team, 'agents', {}).values()}
+        for name in list(self._agent_state):
+            if name not in known:
+                self._agent_state.pop(name, None)
+        for name in list(self._spawns):
+            if name not in known:
+                self._spawns.pop(name, None)
+        teammates = self._teammates()
+        rows = bool(teammates) and self._expanded_view == 'teammates'
+        idle_line = bool(teammates) and self._processing is None
+        text = self._tree_markup(rows, idle_line)
+        if not text:
+            if self._agents_pane is not None:
+                self._agents_pane.remove()
+                self._agents_pane = None
+            return
+        if self._agents_pane is None or self._agents_pane.parent is None:
+            self._agents_pane = _AgentPane()
+            await self.screen.mount(self._agents_pane,
+                                    before=self.query_one("#prompt"))
+        self._agents_pane.display = True
+        self._agents_pane.update(text)
+
+    def _step_selection(self, delta: int):
+        teammates = self._teammates()
+        if not teammates:
+            return
+        if self._expanded_view != 'teammates':
+            self._selected_index = -1
+        else:
+            last = len(teammates)
+            current = self._selected_index
+            if delta == 1:
+                self._selected_index = -1 if current >= last else current + 1
+            else:
+                self._selected_index = last if current <= -1 else current - 1
+        self._view_selection = 'selecting-agent'
+        self._expanded_view = 'teammates'
+
+    async def action_agent_next(self):
+        self._step_selection(1)
+
+    async def action_agent_prev(self):
+        self._step_selection(-1)
+
+    async def _confirm_selection(self):
+        teammates = self._teammates()
+        index = self._selected_index
+        if index == -1:
+            await self._exit_agent_view()
+        elif index >= len(teammates):
+            self._expanded_view = 'none'
+            self._view_selection = 'none'
+            self._selected_index = -1
+        else:
+            await self._enter_agent_view(teammates[index])
+        self._render_status()
+        await self._refresh_agents()
+
+    async def _enter_agent_view(self, agent):
+        self._viewing = str(getattr(agent, 'name', ''))
+        self._view_selection = 'viewing-agent'
+        self.query_one("#conv").display = False
+        view = self.query_one("#view", VerticalScroll)
+        view.display = True
+        await self._render_agent_view()
+        view.scroll_end(animate=False)
+        await self._render_queued()
+        self._render_status()
+
+    async def _exit_agent_view(self):
+        if self._viewing is None:
+            return
+        self._viewing = None
+        self._view_selection = 'none'
+        self._selected_index = -1
+        self.query_one("#view", VerticalScroll).display = False
+        self.query_one("#conv").display = True
+        self._follow_scroll()
+        await self._render_queued()
+        self._render_status()
+
+    def _agent_prompt(self, agent) -> str:
+        for message in getattr(agent, 'messages', []) or []:
+            if not isinstance(message, dict):
+                continue
+            if message.get('role') == 'user' \
+                    and isinstance(message.get('content'), str):
+                return message['content']
+        return str(getattr(agent, 'instruction', '') or '')
+
+    def _tool_line(self, block: dict) -> str:
+        name = str(block.get('name', 'tool'))
+        tool_input = block.get('input', '')
+        args = _tool_use_args(name, tool_input, self._cwd())
+        label = escape(_tool_label(name, tool_input))
+        return f"{BULLET} [bold]{label}[/]({escape(args)})"
+
+    def _agent_entries(self, agent) -> list:
+        entries = []
+        for message in getattr(agent, 'messages', []) or []:
+            if not isinstance(message, dict):
+                continue
+            role = message.get('role')
+            content = message.get('content')
+            if role == 'user':
+                if isinstance(content, str):
+                    blocks = _teammate_blocks(content)
+                    if blocks is not None:
+                        for sender, body in blocks:
+                            color = self._agent_color(str(sender))
+                            entries.append(f"[{color}]"
+                                           f"@{escape(str(sender))}[/]"
+                                           f"{POINTER} {escape(body)}")
+                        continue
+                    if content.strip():
+                        entries.append(_user_markup(content))
+                    continue
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) \
+                                and block.get('type') == 'tool_result':
+                            body = str(block.get('content', '')).strip()
+                            head = body.splitlines()[0] if body else ''
+                            entries.append(
+                                f"[dim]{RESULT_PREFIX}"
+                                f"{escape(_summarize(head, 100))}[/]")
+                continue
+            if role != 'assistant':
+                continue
+            if isinstance(content, str):
+                text = content.strip('\n')
+                if text:
+                    entries.append(f"{BULLET_PREFIX}{escape(text)}")
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) \
+                            and block.get('type') == 'tool_use':
+                        entries.append(self._tool_line(block))
+        return entries
+
+    def _agent_view_markup(self, agent) -> str:
+        if agent is None:
+            return "[dim]this agent is gone[/]"
+        name = str(getattr(agent, 'name', ''))
+        color = self._agent_color(name)
+        lines = [f"[bold]Viewing [/][{color}][bold]@{escape(name)}[/][/]"
+                 f"[dim] \u00b7 {TEAMMATE_VIEW_HINT}[/]"]
+        prompt = self._agent_prompt(agent)
+        if prompt:
+            lines.append(f"[dim]{escape(_summarize(prompt, 200))}[/]")
+        lines.append('')
+        lines += self._agent_entries(agent)
+        return '\n'.join(lines)
+
+    async def _render_agent_view(self):
+        if self._viewing is None:
+            return
+        markup = self._agent_view_markup(self._agent_by_name(self._viewing))
+        view = self.query_one("#view", VerticalScroll)
+        if self._view_pane is None or self._view_pane.parent is None:
+            self._view_pane = Static(markup, markup=True)
+            await view.mount(self._view_pane)
+        else:
+            self._view_pane.update(markup)
+
+    async def action_stop_agent(self):
+        teammates = self._teammates()
+        index = self._selected_index
+        if index < 0 or index >= len(teammates):
+            return
+        agent = teammates[index]
+        logger.info("stopping teammate %s by user request",
+                    getattr(agent, 'name', ''))
+        if self._viewing == str(getattr(agent, 'name', '')):
+            await self._exit_agent_view()
+        stop = getattr(self._team, 'stop_agent', None)
+        if stop is not None:
+            await stop(agent)
+        self._selected_index = -1
+        await self._refresh_agents()
+
+    async def _send_direct(self, agent, message: str):
+        lead = getattr(self._team, 'lead', None)
+        sender = str(getattr(lead, 'name', 'team-lead'))
+        agent.inbox.write(sender, message)
+        logger.info("direct message %s -> @%s", sender,
+                    getattr(agent, 'name', ''))
+        await self._append_block(
+            f"[#B1B9F9]Sent to @{escape(str(agent.name))}[/]")
 
     async def _append_widget(self, widget):
         await self._conv().mount(widget)
@@ -1338,7 +1960,7 @@ class PyClawApp(App[None]):
 
     async def _refresh_follow_hint(self):
         inp = self.query_one("#input", Input)
-        if self._follow or not self._new_messages:
+        if self._follow or not self._new_messages or self._viewing is not None:
             if self._hint is not None:
                 self._hint.remove()
                 self._hint = None
@@ -1352,17 +1974,11 @@ class PyClawApp(App[None]):
             self._hint.update(text)
 
     async def _after_mount(self):
-        self._drop_logo()
         if self._follow:
             self._follow_scroll()
         else:
             self._new_messages += 1
         await self._refresh_follow_hint()
-
-    def _drop_logo(self):
-        logo, self._logo = self._logo, None
-        if logo is not None and logo.parent is not None:
-            logo.remove()
 
     async def action_jump_to_bottom(self):
         self._follow = True
@@ -1408,12 +2024,18 @@ class PyClawApp(App[None]):
                 await self._handle(ev)
                 self._render_status()
                 self._render_tasks()
+                if self._viewing is not None:
+                    await self._render_agent_view()
+                await self._refresh_agents()
             except Exception as exc:
+                logger.exception(
+                    "render failed for %s agent=%r data=%s",
+                    ev.kind, ev.agent, _log_data(ev.data))
                 try:
                     await self._append_error(
                         f"render error: {exc}")
                 except Exception:
-                    pass
+                    logger.exception("failed to report a render error")
             finally:
                 self._queue.task_done()
 
@@ -1427,14 +2049,21 @@ class PyClawApp(App[None]):
         return {a.name for a in self._team.agents.values()}
 
     async def _handle(self, ev):
+        logger.debug("event %s agent=%r data=%s", ev.kind, ev.agent,
+                     _log_data(ev.data))
         name = ev.agent or ""
+        lead = str(getattr(self._team.lead, 'name', ''))
+        mine = not name or name == lead
         if ev.kind == AGENT_REASON_START:
             self._note(name, think=True)
-            await self._add_think(ev)
+            if mine:
+                await self._add_think(ev)
         elif ev.kind == AGENT_TEXT:
             self._note(name, think=False, busy=True)
             delta = ev.data.get("delta", "")
             if not delta:
+                return
+            if not mine:
                 return
             self._discard_think()
             if self._live is None:
@@ -1447,12 +2076,18 @@ class PyClawApp(App[None]):
             self._reset_tool_group()
         elif ev.kind == AGENT_TOOL_CALL:
             self._note(name, tools=1, think=False)
+            if not mine:
+                self._note_tool(name, ev.data)
+                return
             self._discard_think()
             await self._frozen()
             await self._add_tool(ev)
         elif ev.kind == AGENT_PROGRESS:
             self._note_progress(ev)
         elif ev.kind == AGENT_WARN:
+            if not mine:
+                self._state(name)['error'] = str(ev.data.get('text', ''))
+                return
             await self._frozen()
             await self._append_error(ev.data.get('text', ''))
         elif ev.kind == AGENT_TOOL_RESULT:
@@ -1460,26 +2095,63 @@ class PyClawApp(App[None]):
             self._tool_meta[uid] = dict(ev.data)
         elif ev.kind == AGENT_TURN_FINISHED:
             self._note(name, think=False, busy=False)
+            self._finish_agent(name)
+            if not mine:
+                return
             self._discard_think()
             self._reset_tool_group()
-            if name == self._team.lead.name:
-                await self._frozen()
-                self._sync_tool_states()
-                await self._finish_work()
-                self._log_turn()
+            await self._frozen()
+            self._sync_tool_states()
+            self._log_turn()
+            asyncio.create_task(self._finish_work_when_settled())
         elif ev.kind == AGENT_STATE:
             self._note(name, busy=bool(ev.data.get("busy", False)))
 
-    _SPIN = "".join(SPINNER_FRAMES)
+    def _note_tool(self, name: str, data: dict):
+        state = self._state(name)
+        tool = str(data.get('tool', 'tool'))
+        args = _tool_use_args(tool, data.get('input', ''), self._cwd())
+        state['last_tool'] = f"{_tool_label(tool, data.get('input'))}: {args}"
 
-    @staticmethod
-    def _fmt(n: int) -> str:
-        if n >= 1_000_000:
-            return f"{n / 1_000_000:.1f}m"
-        if n >= 1000:
-            s = f"{n / 1000:.1f}".rstrip("0").rstrip(".")
-            return f"{s}k"
-        return str(n)
+    def _spawn_block(self, name: str):
+        """The tool card a sub-agent's progress belongs under, if any."""
+        uid = self._spawns.get(name)
+        if not uid:
+            return None
+        block = self._tools.get(uid)
+        return block if isinstance(block, _ToolBlock) else None
+
+    def _finish_agent(self, name: str):
+        state = self._state(name)
+        state['busy'] = False
+        state['think'] = False
+        state['idle_since'] = None
+        uid = self._spawns.get(name)
+        if not uid:
+            return
+        block = self._tools.get(uid)
+        if block is None or block._done:
+            return
+        meta = self._tool_meta.setdefault(uid, {})
+        # A sub-agent reports twice - AGENT_TURN_FINISHED, then the spawning
+        # progress message with done=True. By the time the second one lands,
+        # chatchat has already finalized the agent and _refresh_agents has
+        # dropped its state, so recomputing would report "0 tool uses · 0s".
+        # The first report is the accurate one; keep it.
+        if 'agent_summary' not in meta:
+            started = state['started_at']
+            elapsed = max(0, int(time.monotonic() - started))
+            agent = self._agent_by_name(name)
+            tokens = _agent_tokens(agent) if agent is not None else 0
+            meta['agent_summary'] = (
+                f"Done ({_tool_uses(state['tools'])} \u00b7 "
+                f"{_format_count(tokens)} tokens \u00b7 "
+                f"{self._duration(elapsed)})")
+            logger.info("sub-agent %s finished: %s", name,
+                        meta['agent_summary'])
+        block.end_progress()
+
+    _SPIN = "".join(SPINNER_FRAMES)
 
     async def _add_tool(self, ev):
         await self._mount_tool(ev.data.get("tool", "tool"),
@@ -1495,6 +2167,11 @@ class PyClawApp(App[None]):
         uid = tool_use_id or name
         block = _ToolBlock(name, raw_input, cwd=self._cwd())
         self._tools[uid] = block
+        if _hidden_card(name, raw_input):
+            self._reset_tool_group()
+            block.display = False
+            await self._conv().mount(block)
+            return
         kinds = _collapsible_kinds(name, raw_input)
         if kinds:
             if self._group is None:
@@ -1569,7 +2246,8 @@ class PyClawApp(App[None]):
         if self._session is not None:
             tokens = int(getattr(self._session.usage, 'total_tokens', 0) or 0)
             if tokens:
-                suffix += f' \u00b7 \u2193 {self._fmt(tokens)} tokens'
+                arrow = '' if self._teammates() else '\u2193 '
+                suffix += f' \u00b7 {arrow}{_format_count(tokens)} tokens'
         return (f"[{self.brand}]{char}[/] {self._turn_verb}\u2026 "
                 f"[dim]({suffix})[/]")
 
@@ -1607,6 +2285,15 @@ class PyClawApp(App[None]):
     def _note_progress(self, ev):
         name = ev.agent or ""
         data = ev.data
+        if data.get('tool_use_id'):
+            self._spawns[name] = str(data['tool_use_id'])
+            state = self._state(name)
+            state['busy'] = True
+            state['started_at'] = time.monotonic()
+            state['idle_since'] = None
+            logger.info("sub-agent %s started (tool_use_id=%s, type=%s)",
+                        name, data['tool_use_id'],
+                        data.get('subagent_type') or '')
         st = self._subagents.get(name)
         if st is None:
             st = {'type': data.get('subagent_type') or 'Agent', 'tools': 0,
@@ -1615,6 +2302,7 @@ class PyClawApp(App[None]):
             self._subagents[name] = st
         if data.get('done'):
             st['done'] = True
+            self._finish_agent(name)
             return
         msg = data.get('message')
         if msg is None:
@@ -1628,6 +2316,12 @@ class PyClawApp(App[None]):
                 for b in content:
                     if isinstance(b, dict) and b.get('type') == 'tool_use':
                         st['tool_names'][b.get('id', '')] = b.get('name', 'tool')
+            block = self._spawn_block(name)
+            if block is not None:
+                rows, uses = _agent_progress_rows(msg, self._cwd(),
+                                                  block._width())
+                if rows or uses:
+                    block.add_progress(rows, uses)
         elif msg.get('role') == 'user':
             content = msg.get('content')
             if isinstance(content, list):
@@ -1640,7 +2334,7 @@ class PyClawApp(App[None]):
                                            f"{_summarize(b.get('content', ''))}")
 
     def _tool_spin_tick(self):
-        if not self._tools and not self._think:
+        if not self._tools and not self._think and self._agents_pane is None:
             return
         conv = next(iter(self.query(_Conv)), None)
         if conv is None:
@@ -1656,6 +2350,11 @@ class PyClawApp(App[None]):
             self._group.tick(char)
         for block in self.query(_ToolBlock):
             block.tick(char)
+        if self._agents_pane is not None:
+            teammates = self._teammates()
+            rows = bool(teammates) and self._expanded_view == 'teammates'
+            idle_line = bool(teammates) and self._processing is None
+            self._agents_pane.update(self._tree_markup(rows, idle_line))
         if self._follow:
             conv.scroll_end(animate=False)
 
@@ -1678,6 +2377,24 @@ class PyClawApp(App[None]):
         self._history_index = None
         if text and (not self._history or self._history[-1] != text):
             self._history.append(text)
+        if self._view_selection == 'selecting-agent':
+            await self._confirm_selection()
+            return
+        if self._viewing is not None and text and not text.startswith('/'):
+            agent = self._agent_by_name(self._viewing)
+            if agent is not None:
+                self.query_one("#input", Input).value = ""
+                agent.submit(text)
+                await self._render_agent_view()
+                self._render_status()
+                return
+        direct = None if self._viewing is not None else _direct_message(text)
+        if direct is not None:
+            target = self._agent_by_name(direct[0])
+            if target is not None:
+                self.query_one("#input", Input).value = ""
+                await self._send_direct(target, direct[1])
+                return
         if text == '/permissions':
             self.query_one("#input", Input).value = ""
             await self._append_user(text)
@@ -1833,7 +2550,7 @@ class PyClawApp(App[None]):
 
     async def _render_queued(self):
         inp = self.query_one("#input", Input)
-        queued = self._peek_queue()
+        queued = [] if self._viewing is not None else self._peek_queue()
         inp.placeholder = ("Press up to edit queued messages" if queued
                            else "Message PyClaw\u2026")
         if not queued:
@@ -1862,6 +2579,7 @@ class PyClawApp(App[None]):
                 self._processing = text
                 self._render_status()
                 await self._render_queued()
+                await self._refresh_agents()
                 await self._append_user(text)
                 self._begin_turn()
                 await self._mount_spinner()
@@ -1870,6 +2588,7 @@ class PyClawApp(App[None]):
                 self._processing = None
                 self._render_status()
                 await self._render_queued()
+                await self._refresh_agents()
         finally:
             self._driving = False
 
@@ -1897,6 +2616,20 @@ class PyClawApp(App[None]):
     async def action_escape(self):
         if self._suggest_items:
             self.action_suggest_dismiss()
+            return
+        if self._viewing is not None:
+            agent = self._agent_by_name(self._viewing)
+            if agent is not None and self._agent_running(agent):
+                agent.abort_work()
+                await self._render_agent_view()
+                return
+            await self._exit_agent_view()
+            await self._refresh_agents()
+            return
+        if self._view_selection == 'selecting-agent':
+            self._view_selection = 'none'
+            self._selected_index = -1
+            await self._refresh_agents()
             return
         if self._processing is None:
             return
@@ -1933,17 +2666,26 @@ class PyClawApp(App[None]):
         await done.wait()
 
     async def _wait_session_idle(self):
+        lead = self._team.lead
         while True:
-            members = list(self._team.agents.values())
-            if not any(getattr(a, 'busy', False) for a in members) \
-                    and await self._team.lead.idle():
+            if not getattr(lead, 'busy', False) and await lead.idle():
                 return
             await asyncio.sleep(0.05)
+
+    def _teammates_running(self) -> bool:
+        return any(a is not self._team.lead and getattr(a, 'busy', False)
+                   for a in self._team.agents.values())
+
+    async def _finish_work_when_settled(self):
+        while self._teammates_running():
+            await asyncio.sleep(0.1)
+        await self._finish_work()
 
     async def _converse(self, text: str):
         try:
             out = await self._session.chat(text)
         except Exception as exc:
+            logger.exception("chat failed for prompt %r", _log_data(text))
             await self._append_error(str(exc))
             return
         await self._wait_session_idle()
@@ -1954,7 +2696,7 @@ class PyClawApp(App[None]):
         self._render_status()
 
     def _note(self, name, tools=None, think=None, busy=None):
-        st = self._agent_state.setdefault(name, {"tools": 0, "think": False, "busy": False})
+        st = self._state(name)
         if tools:
             st["tools"] += tools
         if think is not None:
@@ -1978,14 +2720,24 @@ class PyClawApp(App[None]):
         s = self._session
         if s is None:
             return
-        left = ["esc to interrupt" if self._processing is not None
-                else "? for shortcuts"]
+        viewing = self._viewing is not None
+        viewing_busy = viewing and self._agent_running(
+            self._agent_by_name(self._viewing))
+        if viewing and not viewing_busy:
+            left = [TEAMMATE_VIEW_HINT]
+        elif viewing or self._processing is not None:
+            left = ["esc to interrupt"]
+        else:
+            left = ["? for shortcuts"]
         perm = s.permission_mode
         symbol = MODE_SYMBOLS.get(perm)
         if symbol:
             color = MODE_COLORS.get(perm, "#9A9A9A")
             left.append(f"[{color}]{symbol} {MODE_TITLES[perm]} on[/] "
                         f"[dim](shift+tab to cycle)[/]")
+        hint = self._tasks_hint()
+        if hint:
+            left.append(hint)
         self.query_one("#status", Static).update(
             "  [dim]\u00b7[/]  ".join(left))
         used = self._context_percent()
@@ -1997,6 +2749,17 @@ class PyClawApp(App[None]):
             right = (f"[#FFC107]{used}% context used \u00b7 "
                      f"run /compact to compact & continue[/]")
         self.query_one("#status-right", Static).update(right)
+
+    def _tasks_hint(self) -> str:
+        if self._viewing is not None or not self._teammates():
+            return ''
+        if self._expanded_view == 'none':
+            action = 'show tasks'
+        elif self._expanded_view == 'tasks':
+            action = 'show teammates'
+        else:
+            action = 'hide'
+        return f"[dim]ctrl+t to {action}[/]"
 
     def _render_tasks(self):
         if self._team is None:
@@ -2012,7 +2775,7 @@ class PyClawApp(App[None]):
             status = ("working\u2026" if st.get("think")
                       else ("busy" if st.get("busy") else "idle"))
             lines.append(f"{prefix}{marker} {escape(a.name)} \u00b7 "
-                         f"{st.get('tools', 0)} tools ({status})")
+                         f"{_tool_uses(st.get('tools', 0))} ({status})")
             kids = sorted(self._team.children.get(agent_id, ()))
             sub = prefix + ("   " if is_last else "\u2502  ")
             for i, k in enumerate(kids):
@@ -2026,15 +2789,14 @@ class PyClawApp(App[None]):
             for i, (name, st) in enumerate(subs):
                 is_last = i == len(subs) - 1
                 tc = "\u2514\u2500" if is_last else "\u251c\u2500"
-                uses = "use" if st['tools'] == 1 else "uses"
-                tokens = (f" \u00b7 {self._fmt(st['tokens'])} tokens"
+                tokens = (f" \u00b7 {_format_count(st['tokens'])} tokens"
                           if st['tokens'] is not None else "")
                 status = ("Done" if st['done']
                           else (st['last_tool'] or "Initializing\u2026"))
                 stat_pre = "   " if is_last else "\u2502  "
-                label = escape(str(st['type'])) or "Task"
-                lines.append(f"{tc} [bold]{label}[/] \u00b7 {st['tools']} "
-                             f"tool {uses}{tokens}")
+                label = escape(str(st['type'])) or "Agent"
+                lines.append(f"{tc} [bold]{label}[/] \u00b7 "
+                             f"{_tool_uses(st['tools'])}{tokens}")
                 lines.append(f"{stat_pre}{RESULT_GLYPH}  {escape(status)}")
         lines.append("")
         lines.append(f"[bold]Tools[/bold] {len(self._session.available_tools)}")
@@ -2043,10 +2805,22 @@ class PyClawApp(App[None]):
         self._tasks_pane.update("\n".join(lines))
 
     async def action_toggle_tasks(self):
+        teammates = bool(self._teammates())
+        view = self._expanded_view
+        if teammates:
+            order = {'none': 'tasks', 'tasks': 'teammates'}
+            nxt = order.get(view, 'none')
+        else:
+            nxt = 'none' if view == 'tasks' else 'tasks'
+        self._expanded_view = nxt
+        if nxt != 'teammates':
+            self._view_selection = 'none'
+            self._selected_index = -1
         pane = self.query_one("#tasks", VerticalScroll)
-        pane.display = not pane.display
-        if pane.display:
+        pane.display = nxt == 'tasks'
+        if nxt == 'tasks':
             self._render_tasks()
+        await self._refresh_agents()
 
     def action_redraw(self):
         self.refresh()

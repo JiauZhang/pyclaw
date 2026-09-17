@@ -10,24 +10,41 @@ from chatchat.cli.config import parse_config, cli_config
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+_QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore",
+                  "aiohttp", "urllib3", "websockets", "PIL")
 
-def setup_logging(level: str = "INFO"):
+
+def _level(name: str) -> int:
+    return getattr(logging, str(name).upper(), logging.INFO)
+
+
+def setup_logging(level: str = "INFO", *, console: bool = True):
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(getattr(logging, level.upper()))
-    console.setFormatter(logging.Formatter(_LOG_FORMAT))
-    root.addHandler(console)
+    if console and not any(
+            isinstance(h, logging.StreamHandler)
+            and not isinstance(h, RotatingFileHandler)
+            for h in root.handlers):
+        stream = logging.StreamHandler(sys.stdout)
+        stream.setLevel(_level(level))
+        stream.setFormatter(logging.Formatter(_LOG_FORMAT))
+        root.addHandler(stream)
 
     log_dir = Path(__pyclaw_home__) / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
-    file_handler = RotatingFileHandler(
-        log_dir / "pyclaw.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8",
-    )
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
-    root.addHandler(file_handler)
+    if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
+        file_handler = RotatingFileHandler(
+            log_dir / "pyclaw.log", maxBytes=5 * 1024 * 1024, backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        root.addHandler(file_handler)
+
+    for name in _QUIET_LOGGERS:
+        logging.getLogger(name).setLevel(logging.WARNING)
+    return log_dir / "pyclaw.log"
 
 
 def _apply_overrides(config: dict, args) -> bool:
@@ -119,6 +136,9 @@ def render_output(output_fmt: str, out: dict):
 
 
 async def run_headless(args):
+    # No `level` here: the console handler would corrupt the machine-readable
+    # stdout of `-p`, and the file log is always DEBUG anyway.
+    setup_logging(console=False)
     config = load_config()
     provider = args.provider or config.get("provider")
     model = args.model or config.get("model")
@@ -138,6 +158,7 @@ async def run_headless(args):
 def run_tui(args):
     from chatchat.hooks.events import clear_runtime_sinks
     clear_runtime_sinks()
+    log_path = setup_logging(console=False)
     config = load_config()
     provider = args.provider or config.get("provider")
     model = args.model or config.get("model")
@@ -145,6 +166,9 @@ def run_tui(args):
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
     from pyclaw.tui import PyClawApp
+    logging.getLogger(__name__).info(
+        "tui session starting (provider=%s model=%s team=%s log=%s)",
+        provider, model, args.use_team, log_path)
     session_id, resume_from = _cli_session(args)
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,

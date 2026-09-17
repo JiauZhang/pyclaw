@@ -111,3 +111,95 @@ def test_start_server_runs_with_default_args(monkeypatch):
     args = __main__._finalize_args(__main__._build_parser().parse_args([]))
     _asyncio.run(__main__.start_server(args))
     assert captured["config"].provider == "p"
+
+
+def _strip_root_handlers():
+    import logging
+    from logging.handlers import RotatingFileHandler
+    root = logging.getLogger()
+    saved = list(root.handlers)
+    root.handlers = [h for h in root.handlers
+                     if not isinstance(h, RotatingFileHandler)]
+    return saved
+
+
+def test_tui_logging_never_writes_to_stdout():
+    import logging
+    from logging.handlers import RotatingFileHandler
+    root = logging.getLogger()
+    saved = _strip_root_handlers()
+    try:
+        before = {id(h) for h in root.handlers}
+        __main__.setup_logging("INFO", console=False)
+        added = [h for h in root.handlers if id(h) not in before]
+        assert added
+        assert all(isinstance(h, RotatingFileHandler) for h in added)
+    finally:
+        root.handlers = saved
+
+
+def test_setup_logging_is_idempotent_and_silences_noisy_loggers():
+    import logging
+    root = logging.getLogger()
+    saved = _strip_root_handlers()
+    try:
+        __main__.setup_logging("INFO")
+        count = len([h for h in root.handlers])
+        __main__.setup_logging("INFO")
+        assert len(root.handlers) == count
+        for name in ("asyncio", "markdown_it", "httpx"):
+            assert logging.getLogger(name).level == logging.WARNING
+    finally:
+        root.handlers = saved
+        for name in __main__._QUIET_LOGGERS:
+            logging.getLogger(name).setLevel(logging.NOTSET)
+
+
+def test_setup_logging_returns_the_log_path():
+    import logging
+    root = logging.getLogger()
+    saved = _strip_root_handlers()
+    try:
+        path = __main__.setup_logging("INFO", console=False)
+        assert str(path).endswith("pyclaw.log")
+    finally:
+        root.handlers = saved
+
+
+def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
+    """run_tui / run_headless must not reach for flags the parser lacks.
+
+    Regression: both called `setup_logging(args.log_level, console=False)`
+    while neither `pyclaw tui` nor `pyclaw -p` defines --log-level (only the
+    serve/rebind subparsers do), so the TUI died with AttributeError before
+    it painted anything. Hand-built namespaces in other tests hid it.
+    """
+    import asyncio
+    import logging
+
+    import pytest
+
+    from chatchat.hooks import events
+
+    calls = []
+    saved_handlers = _strip_root_handlers()
+    saved_sinks = list(events._runtime_sinks)
+    monkeypatch.setattr(__main__, "setup_logging",
+                        lambda *a, **kw: calls.append((a, kw)))
+    monkeypatch.setattr(__main__, "load_config", lambda: {})
+    try:
+        headless = __main__._build_parser().parse_args(["-p", "hi"])
+        assert not hasattr(headless, "log_level")
+        with pytest.raises(SystemExit):
+            asyncio.run(__main__.run_headless(headless))
+
+        tui = __main__._build_parser().parse_args(["tui"])
+        assert not hasattr(tui, "log_level")
+        with pytest.raises(SystemExit):
+            __main__.run_tui(tui)
+    finally:
+        logging.getLogger().handlers = saved_handlers
+        events._runtime_sinks[:] = saved_sinks
+
+    assert len(calls) == 2
+    assert all(a == () and kw == {"console": False} for a, kw in calls)

@@ -20,6 +20,7 @@ def load() -> dict:
         "permissions": {"defaultMode": "default"},
         "banner": {"style": "random", "from": "#0084E4", "to": "#F0CC00",
                    "angle": 60.0, "seed": None},
+        "welcome": {"seen": 0, "lastVersion": ""},
         "pricing": {},
     }
     if __config_file__.exists():
