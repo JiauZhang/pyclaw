@@ -1627,164 +1627,515 @@ def test_subagent_output_with_brackets_does_not_break_the_tasks_pane():
     assert "\\[/bold]" in tasks
 
 
-def test_permission_amend_saves_edited_rule():
+def _prompts(app) -> list:
     from pyclaw.tui import _PermissionPrompt
+    return [w for w in app._conv().children if isinstance(w, _PermissionPrompt)]
 
+
+async def _asked_prompt(app, pilot, tool="Bash", tool_input=None,
+                        tool_use_id="", agent=None):
+    """Start a real approval and return its task plus its prompt widget."""
+    task = asyncio.ensure_future(
+        app._ask_permission(tool, tool_input or {"command": "git commit -m x"},
+                            tool_use_id=tool_use_id, agent=agent))
+    for _ in range(4):
+        await pilot.pause()
+    prompts = _prompts(app)
+    return task, prompts[0] if prompts else None
+
+
+def test_bash_rule_row_is_editable_where_it_is_focused():
     async def scenario():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            task = asyncio.ensure_future(
-                app._ask_permission("Bash",
-                                    {"command": "git commit -m x"}))
-            for _ in range(4):
-                await pilot.pause()
-            prompt = next(w for w in app._conv().children
-                          if isinstance(w, _PermissionPrompt))
-            await pilot.press("tab")
+            task, prompt = await _asked_prompt(app, pilot)
+            assert [o.value for o in prompt._options()] == ["approved",
+                                                            "dont_ask",
+                                                            "denied"]
+            assert [o.feedback for o in prompt._options()] == ["accept",
+                                                               "rule",
+                                                               "reject"]
+            rule_field = prompt.query_one("#perm-rule", Input)
+            assert not rule_field.display
+            await pilot.press("down")
             await pilot.pause()
-            inp = prompt.query_one("#perm-amend", Input)
-            assert inp.display
-            assert inp.value == "Bash(git commit:*)"
-            inp.value = "Bash(git commit --amend:*)"
+            assert prompt._focused == 1
+            assert rule_field.display
+            assert rule_field.has_focus
+            assert rule_field.value == "Bash(git commit:*)"
+            assert ([o.label for o in prompt._options()][1]
+                    == "Yes, and don\u2019t ask again for: Bash(git commit:*)")
+            rule_field.value = "Bash(git commit --amend:*)"
             await pilot.press("enter")
             await pilot.pause()
             return await task
 
     choice = asyncio.run(scenario())
-    assert choice == ("dont_ask", "Bash(git commit --amend:*)")
+    assert choice.value == "dont_ask"
+    assert choice.rule == "Bash(git commit --amend:*)"
 
 
-def test_permission_amend_escape_returns_to_options():
-    from pyclaw.tui import _PermissionPrompt
-
+def test_escape_denies_even_while_a_feedback_field_is_open():
     async def scenario():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            task = asyncio.ensure_future(
-                app._ask_permission("Edit", {"file_path": "a.txt"}))
-            for _ in range(4):
-                await pilot.pause()
-            prompt = next(w for w in app._conv().children
-                          if isinstance(w, _PermissionPrompt))
+            task, prompt = await _asked_prompt(app, pilot, tool="Edit",
+                                               tool_input={"file_path": "a.txt"})
             await pilot.press("tab")
             await pilot.pause()
-            inp = prompt.query_one("#perm-amend", Input)
-            assert inp.display
-            assert inp.value == "Edit(./a.txt)"
+            accept = prompt.query_one("#perm-accept", Input)
+            assert accept.display and accept.has_focus
             await pilot.press("escape")
             await pilot.pause()
-            assert not inp.display
-            await pilot.press("y")
-            await pilot.pause()
             return await task
 
-    assert asyncio.run(scenario()) == "approved"
+    assert asyncio.run(scenario()).value == "denied"
 
 
-def test_permission_amend_empty_rule_approves_without_saving():
-    from pyclaw.tui import _PermissionPrompt
-
+def test_empty_feedback_submits_the_focused_option():
     async def scenario():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            task = asyncio.ensure_future(
-                app._ask_permission("Bash", {"command": "npm ci"}))
-            for _ in range(4):
-                await pilot.pause()
-            prompt = next(w for w in app._conv().children
-                          if isinstance(w, _PermissionPrompt))
+            task, prompt = await _asked_prompt(app, pilot, tool="Edit",
+                                               tool_input={"file_path": "a.txt"})
             await pilot.press("tab")
             await pilot.pause()
-            inp = prompt.query_one("#perm-amend", Input)
-            inp.value = ""
+            assert prompt.query_one("#perm-accept", Input).value == ""
             await pilot.press("enter")
             await pilot.pause()
             return await task
 
-    assert asyncio.run(scenario()) == "approved"
+    choice = asyncio.run(scenario())
+    assert choice.value == "approved"
+    assert choice.feedback == ""
 
 
-def test_permission_prompt_resolves_through_the_app():
-    from pyclaw.tui import _PermissionPrompt
-
+def test_arrows_move_the_option_pointer_and_wrap():
     async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            task = asyncio.ensure_future(
-                app._ask_permission("Bash", {"command": "ls"}))
-            for _ in range(4):
+            task, prompt = await _asked_prompt(app, pilot)
+            assert prompt._focused == 0
+            for expected in (1, 2, 0):
+                await pilot.press("down")
                 await pilot.pause()
-            prompts = [w for w in app._conv().children
-                       if isinstance(w, _PermissionPrompt)]
-            assert prompts
-            await pilot.press("y")
+                assert prompt._focused == expected
+            await pilot.press("up")
             await pilot.pause()
-            return await task
-
-    assert asyncio.run(scenario()) == "approved"
-
-
-class _BracketSubTeam(_FakeTeam):
-
-    async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
-        self.record("user", prompt)
-        emit(AGENT_PROGRESS, agent="sub-1", prompt="x", subagent_type="coder")
-        emit(AGENT_PROGRESS, agent="sub-1",
-             message={"role": "assistant",
-                      "content": [{"type": "tool_use", "id": "t1",
-                                   "name": "Grep", "input": {"pattern": "x"}}]})
-        emit(AGENT_PROGRESS, agent="sub-1",
-             message={"role": "user",
-                      "content": [{"type": "tool_result", "tool_use_id": "t1",
-                                   "content": "notes.md:96: \u73b0\u8c61\uff1a"
-                                              "[/bold] \u7b49\u65b9\u62ec\u53f7"}]})
-        self.record("assistant", "done")
-        emit(AGENT_TURN_FINISHED, agent="lead")
-        return "done"
-
-
-def test_subagent_output_with_brackets_does_not_break_the_tasks_pane():
-    async def scenario():
-        async with PyClawApp(
-                builder=lambda: _BracketSubTeam()).run_test() as pilot:
-            app = pilot.app
-            await pilot.pause()
-            app.query_one(Input).value = "go"
+            assert prompt._focused == 2
             await pilot.press("enter")
-            for _ in range(8):
-                await pilot.pause()
-            return str(app._tasks_pane.content), _flatten(app)
+            await pilot.pause()
+            return await task
 
-    tasks, flat = asyncio.run(scenario())
-    assert "render error" not in flat
-    assert "Grep" in tasks
-    assert "\\[/bold]" in tasks
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_j_k_and_ctrl_aliases_move_the_pointer():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(
+                app, pilot, tool="Edit", tool_input={"file_path": "a.txt"})
+            for key, expected in (("j", 1), ("k", 0), ("k", 2), ("j", 0),
+                                  ("ctrl+n", 1), ("ctrl+p", 0)):
+                await pilot.press(key)
+                await pilot.pause()
+                assert prompt._focused == expected, key
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_page_keys_jump_across_the_option_list():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(
+                app, pilot, tool="Edit", tool_input={"file_path": "a.txt"})
+            await pilot.press("pagedown")
+            await pilot.pause()
+            assert prompt._focused == 2
+            await pilot.press("pagedown")
+            await pilot.pause()
+            assert prompt._focused == 2
+            await pilot.press("pageup")
+            await pilot.pause()
+            assert prompt._focused == 0
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_digits_pick_the_option_at_that_position():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, _prompt = await _asked_prompt(app, pilot)
+            await pilot.press("3")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_a_digit_selects_the_prefilled_rule_row():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, _prompt = await _asked_prompt(app, pilot)
+            await pilot.press("2")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice.value == "dont_ask"
+    assert choice.rule == "Bash(git commit:*)"
+
+
+def test_a_digit_types_into_an_open_rule_row_instead_of_selecting():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            await pilot.press("down")
+            await pilot.pause()
+            rule_field = prompt.query_one("#perm-rule", Input)
+            assert rule_field.has_focus
+            before = rule_field.value
+            await pilot.press("5")
+            for _ in range(2):
+                await pilot.pause()
+            assert rule_field.value == before + "5"
+            assert not task.done()
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_y_and_n_are_not_shortcuts():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, _prompt = await _asked_prompt(app, pilot)
+            await pilot.press("y")
+            await pilot.press("n")
+            for _ in range(2):
+                await pilot.pause()
+            assert not task.done()
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "approved"
+
+
+def test_tab_opens_and_closes_the_feedback_field():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            accept = prompt.query_one("#perm-accept", Input)
+            assert not accept.display
+            await pilot.press("tab")
+            await pilot.pause()
+            assert accept.display and accept.has_focus
+            await pilot.press("tab")
+            await pilot.pause()
+            assert not accept.display
+            assert app.focused is prompt
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_tab_does_nothing_on_a_row_without_feedback():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(
+                app, pilot, tool="Edit", tool_input={"file_path": "a.txt"})
+            await pilot.press("down")
+            await pilot.pause()
+            assert prompt._focused == 1
+            await pilot.press("tab")
+            await pilot.pause()
+            assert not prompt.query_one("#perm-accept", Input).display
+            assert not prompt.query_one("#perm-reject", Input).display
+            assert app.focused is prompt
+            assert not task.done()
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_the_tab_hint_follows_the_focused_row():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            painted = lambda: _plain(_flatten(app))
+            assert "Tab to amend" in painted()
+            assert "enter to confirm" not in painted()
+            await pilot.press("down")
+            await pilot.pause()
+            assert "Tab to amend" not in painted()
+            await pilot.press("down")
+            await pilot.pause()
+            assert "Tab to amend" in painted()
+            await pilot.press("tab")
+            await pilot.pause()
+            assert "Tab to amend" not in painted()
+            await pilot.press("escape")
+            await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()).value == "denied"
+
+
+def test_an_empty_rule_row_approves_without_saving():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            await pilot.press("down")
+            await pilot.pause()
+            prompt.query_one("#perm-rule", Input).value = ""
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice.value == "approved"
+    assert choice.rule is None
+
+
+def test_accept_feedback_is_carried_on_the_decision():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            await pilot.press("tab")
+            await pilot.pause()
+            prompt.query_one("#perm-accept", Input).value = "run the tests first"
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice.value == "approved"
+    assert choice.feedback == "run the tests first"
+
+
+def test_reject_feedback_is_carried_on_the_decision():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("tab")
+            await pilot.pause()
+            prompt.query_one("#perm-reject", Input).value = "not now"
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice.value == "denied"
+    assert choice.feedback == "not now"
+
+
+def test_whitespace_only_feedback_is_dropped():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, prompt = await _asked_prompt(app, pilot)
+            await pilot.press("tab")
+            await pilot.pause()
+            prompt.query_one("#perm-accept", Input).value = "   "
+            await pilot.press("enter")
+            await pilot.pause()
+            return await task
+
+    choice = asyncio.run(scenario())
+    assert choice.value == "approved"
+    assert choice.feedback == ""
+
+
+def test_chat_keys_are_suppressed_while_an_approval_is_open():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            assert app._session.permission_mode == "default"
+            task, prompt = await _asked_prompt(app, pilot)
+            assert app.modal_overlay_active
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app._session.permission_mode == "default"
+            assert prompt._focused == 0
+            assert app.focused is prompt
+            await pilot.press("enter")
+            await pilot.pause()
+            await task
+            await pilot.press("shift+tab")
+            await pilot.pause()
+            assert app._session.permission_mode == "acceptEdits"
+
+    asyncio.run(scenario())
+
+
+def test_an_open_approval_registers_a_modal_overlay():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            assert app._overlays == set()
+            assert not app.modal_overlay_active
+            task, _prompt = await _asked_prompt(app, pilot)
+            assert "select" in app._overlays
+            assert app.modal_overlay_active
+            await pilot.press("enter")
+            await pilot.pause()
+            await task
+            assert app._overlays == set()
+            assert not app.modal_overlay_active
+
+    asyncio.run(scenario())
+
+
+def test_the_suggestion_list_is_not_a_modal_overlay():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one("#input", Input).value = "/"
+            await pilot.pause()
+            assert app._suggest_items
+            assert "autocomplete" in app._overlays
+            assert not app.modal_overlay_active
+            await pilot.press("up")
+            await pilot.pause()
+            assert app._suggest_selected == len(app._suggest_items) - 1
+
+    asyncio.run(scenario())
+
+
+def test_approvals_are_asked_one_at_a_time_in_arrival_order():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            first = asyncio.ensure_future(app._ask_permission(
+                "Bash", {"command": "ls"}, tool_use_id="a1"))
+            second = asyncio.ensure_future(app._ask_permission(
+                "Bash", {"command": "pwd"}, tool_use_id="a2"))
+            for _ in range(4):
+                await pilot.pause()
+            assert [a.tool_use_id for a in app._approvals] == ["a1", "a2"]
+            assert len(_prompts(app)) == 1
+            assert "git" not in _flatten(app)
+            assert "ls" in _flatten(app)
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            assert (await first).value == "approved"
+            assert len(_prompts(app)) == 1
+            assert "pwd" in _flatten(app)
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            assert (await second).value == "approved"
+            assert app._approvals == []
+            assert _prompts(app) == []
+
+    asyncio.run(scenario())
+
+
+def test_interrupt_clears_every_pending_approval():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            first = asyncio.ensure_future(app._ask_permission(
+                "Bash", {"command": "ls"}, tool_use_id="a1"))
+            second = asyncio.ensure_future(app._ask_permission(
+                "Bash", {"command": "pwd"}, tool_use_id="a2"))
+            for _ in range(4):
+                await pilot.pause()
+            assert len(_prompts(app)) == 1
+            await pilot.press("ctrl+c")
+            for _ in range(6):
+                await pilot.pause()
+            assert (await first).value == "denied"
+            assert (await second).value == "denied"
+            assert app._approvals == []
+            assert _prompts(app) == []
+
+    asyncio.run(scenario())
+
+
+def test_a_teammate_approval_names_the_asking_agent():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, _prompt = await _asked_prompt(app, pilot, agent="watcher")
+            painted = _plain(_flatten(app))
+            assert "\u00b7 @watcher" in painted
+            await pilot.press("enter")
+            await pilot.pause()
+            await task
+            lead, _ = await _asked_prompt(app, pilot, agent="lead")
+            assert "@lead" not in _plain(_flatten(app))
+            await pilot.press("enter")
+            await pilot.pause()
+            await lead
+
+    asyncio.run(scenario())
 
 
 def test_permission_prompt_resolves_through_the_app():
-    from pyclaw.tui import _PermissionPrompt
-
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            task = asyncio.ensure_future(
-                app._ask_permission("Bash", {"command": "ls"}))
-            for _ in range(4):
-                await pilot.pause()
-            prompts = [w for w in app._conv().children
-                       if isinstance(w, _PermissionPrompt)]
-            assert prompts
-            await pilot.press("y")
+            task, prompt = await _asked_prompt(app, pilot,
+                                               tool_input={"command": "ls"})
+            assert prompt is not None
+            await pilot.press("enter")
             await pilot.pause()
             return await task
 
-    assert asyncio.run(scenario()) == "approved"
+    assert asyncio.run(scenario()).value == "approved"
 
 
 def test_conversation_fills_and_input_sits_at_the_bottom():
@@ -1801,38 +2152,6 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
     assert footer == 1
     assert conv == height - 4
     assert input_y == height - 3
-
-
-def test_bash_collapsible_classification():
-    from pyclaw.tui import _bash_kinds
-
-    assert _bash_kinds("grep -rn foo .") == {"search"}
-    assert _bash_kinds("rg --files") == {"search"}
-    assert _bash_kinds("cat a.txt") == {"read"}
-    assert _bash_kinds("cat a.txt | wc -l") == {"read"}
-    assert _bash_kinds("ls -la") == {"list"}
-    assert _bash_kinds("tree") == {"list"}
-    assert _bash_kinds("echo hi") == set()
-    assert _bash_kinds("ls dir && echo ---") == {"list"}
-    assert _bash_kinds("npm test") == {"bash"}
-    assert _bash_kinds("grep x a | sort") == {"search", "read"}
-
-
-def test_tool_collapsible_classification():
-    from pyclaw.tui import _collapsible_kinds
-
-    assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
-    assert _collapsible_kinds("Read", {"file_path": "AGENTS.md"}) == {
-        "memory_read"}
-    assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
-    assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
-    assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
-    assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Write", {"file_path": "AGENTS.md"}) == {
-        "memory_write"}
-    assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
-    assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
 
 
 def test_bash_collapsible_classification():
@@ -2771,17 +3090,16 @@ def test_the_teammate_spawn_card_never_trails_after_it_resolves():
     asyncio.run(scenario())
 
 
-async def _pending_approval(app, pilot, tool_use_id="a1", tool="create_agent"):
+async def _pending_approval(app, pilot, tool_use_id="a1", tool="create_agent",
+                            agent=None):
     """Start a real approval request and hand back its task + prompt."""
-    from pyclaw.tui import _PermissionPrompt
     task = asyncio.ensure_future(
         app._ask_permission(tool, {"prompt": "go"},
-                            tool_use_id=tool_use_id))
+                            tool_use_id=tool_use_id, agent=agent))
     for _ in range(4):
         await pilot.pause()
-    prompt = next((w for w in app._conv().children
-                   if isinstance(w, _PermissionPrompt)), None)
-    return task, prompt
+    prompts = _prompts(app)
+    return task, prompts[0] if prompts else None
 
 
 def test_a_tool_call_waiting_on_approval_says_so():
@@ -2795,11 +3113,11 @@ def test_a_tool_call_waiting_on_approval_says_so():
                 "tool_use_id": "a1"}))
             assert "Initializing" in _card(app._tools["a1"])
             task, prompt = await _pending_approval(app, pilot)
-            # claude-code parks the card on "Waiting for permission…" instead
-            # of leaving it on the start-up line (AssistantToolUseMessage.tsx:240).
+            # While an approval is being answered the card says so instead of
+            # sitting on the start-up line.
             assert "\u23bf  Waiting for permission\u2026" in _card(app._tools["a1"])
             assert "Initializing" not in _card(app._tools["a1"])
-            await pilot.press("y")
+            await pilot.press("enter")
             await pilot.pause()
             await task
             assert "Waiting for permission" not in _card(app._tools["a1"])
@@ -2807,8 +3125,6 @@ def test_a_tool_call_waiting_on_approval_says_so():
 
 
 def test_interrupting_while_an_approval_is_pending_settles_the_call():
-    from pyclaw.tui import _PermissionPrompt
-
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
@@ -2823,10 +3139,9 @@ def test_interrupting_while_an_approval_is_pending_settles_the_call():
             await pilot.pause()
             for _ in range(6):
                 await pilot.pause()
-            assert await task == "denied"
-            assert app._permission_request is None
-            assert not [w for w in app._conv().children
-                        if isinstance(w, _PermissionPrompt)]
+            assert (await task).value == "denied"
+            assert app._approvals == []
+            assert _prompts(app) == []
             text = _card(app._tools["a1"])
             assert "Agent(go)" in text
             assert "\u23bf  Interrupted \u00b7 What should PyClaw do instead?" in text
@@ -2849,20 +3164,18 @@ def test_an_approval_cannot_outlive_the_turn_it_belongs_to():
             await pilot.press("ctrl+c")
             for _ in range(4):
                 await pilot.pause()
-            assert await task == "denied"
+            assert (await task).value == "denied"
             # Nothing is left to approve, so the next Enter is an ordinary
             # submit instead of a stray approval of a dead turn.
             app.query_one(Input).value = "still here"
             await pilot.press("enter")
             await pilot.pause()
             assert app.query_one(Input).value == ""
-            assert app._permission_request is None
+            assert app._approvals == []
     asyncio.run(scenario())
 
 
 def test_escape_still_denies_a_prompt_that_is_being_answered():
-    from pyclaw.tui import _PermissionPrompt
-
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
@@ -2871,9 +3184,8 @@ def test_escape_still_denies_a_prompt_that_is_being_answered():
             assert prompt.has_focus
             await pilot.press("escape")
             await pilot.pause()
-            assert await task == "denied"
-            assert not [w for w in app._conv().children
-                        if isinstance(w, _PermissionPrompt)]
+            assert (await task).value == "denied"
+            assert _prompts(app) == []
     asyncio.run(scenario())
 
 

@@ -39,6 +39,7 @@ from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
+from pyclaw.tools.coding.permission import BASH_TOOL, PermissionChoice
 
 
 logger = logging.getLogger(__name__)
@@ -75,22 +76,33 @@ IDLE_TEXT = "Idle"
 AGENT_TEAMMATES_HINT = "teammates running"
 TEAMMATE_VIEW_HINT = "esc to return to team lead"
 
-# Sub-agent progress trail. Mirrors claude-code's AgentTool UI, which renders
-# the last MAX_PROGRESS_MESSAGES_TO_SHOW (3) progress messages of a running
-# sub-agent under its tool call, then a "+N more tool uses" line. See
-# tools/AgentTool/UI.tsx:33,445-570 in the claude-code source.
+# Only the last few progress messages of a running sub-agent stay visible
+# under its tool call; older ones collapse into a "+N more tool uses" line.
 AGENT_TRAIL_LIMIT = 3
 INITIALIZING_TEXT = "Initializing\u2026"
 EXPAND_HINT = "ctrl+o to expand"
 
-# claude-code renders these in place of a running tool's progress:
-# "Waiting for permission…" while an approval is pending
-# (components/messages/AssistantToolUseMessage.tsx:240) and
-# "Interrupted · What should Claude do instead?" as the result of a call the
-# user killed (components/InterruptedByUser.tsx:8, reached through
-# FallbackToolUseRejectedMessage / UserToolCanceledMessage).
+# These replace a running tool's progress line so a stalled call is visible:
+# an approval that has not been answered yet reads "Waiting for permission…"
+# and a call the user killed reports what to do instead.
 WAITING_PERMISSION_TEXT = "Waiting for permission\u2026"
 INTERRUPTED_TEXT = "Interrupted \u00b7 What should PyClaw do instead?"
+
+# How far a page key jumps in an option list.
+OPTION_PAGE_SIZE = 5
+ACCEPT_FEEDBACK_HINT = "and tell PyClaw what to do next"
+REJECT_FEEDBACK_HINT = "and tell PyClaw what to do differently"
+RULE_FEEDBACK_HINT = "command prefix (e.g., npm run:*)"
+
+# Overlays that only suggest, never own the keyboard, so the chat keys stay
+# live under them. Everything else registered takes the keys over.
+NON_MODAL_OVERLAYS = frozenset({'autocomplete'})
+
+# Chat-level actions an open modal overlay answers instead. Focus traversal is
+# among them: while a dialog owns the keyboard the caret stays inside it.
+OVERLAY_GATED_ACTIONS = frozenset({
+    'suggest_tab', 'prompt_next', 'prompt_prev', 'agent_next', 'agent_prev',
+    'stop_agent', 'cycle_permission', 'focus_next', 'focus_previous'})
 
 AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
                 "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
@@ -570,10 +582,9 @@ def _single_line(value, limit: int) -> str:
 def _agent_progress_rows(message, cwd, width: int) -> tuple[list[str], int]:
     """Condense one sub-agent progress message into display rows.
 
-    Mirrors claude-code's non-ant path in `processProgressMessages`
-    (tools/AgentTool/UI.tsx:100-107): only the sub-agent's *assistant*
-    messages are shown - its narration text and the tool calls it made.
-    Tool results are dropped, because the count line already reports them.
+    Only the sub-agent's *assistant* messages are shown - its narration text
+    and the tool calls it made. Tool results are dropped, because the count
+    line already reports them.
     """
     if not isinstance(message, dict) or message.get('role') != 'assistant':
         return [], 0
@@ -1279,144 +1290,215 @@ class PermissionsScreen(Screen):
         self._refresh_body()
 
 
+@dataclasses.dataclass
+class _PermOption:
+    value: str
+    label: str
+    feedback: str = ''
+
+
+@dataclasses.dataclass
+class _Approval:
+    """One tool call waiting for the human, held in arrival order."""
+    tool_use_id: str
+    tool_name: str
+    prompt: '_PermissionPrompt'
+    block: object
+    future: asyncio.Future
+
+
 class _PermissionPrompt(Vertical):
+    """The approval list, keyed like the option selectors elsewhere in the
+    product: arrows, j/k and ctrl+n/ctrl+p walk it with wrap-around, page
+    keys jump a screenful, digits pick by position, tab opens the feedback
+    field a row carries, and escape denies however the dialog is sitting."""
 
     can_focus = True
+
     BINDINGS = [
-        ("y", "pick_yes", "Yes"),
-        ("n", "pick_no", "No"),
-        ("up", "move_up", "Previous option"),
-        ("down", "move_down", "Next option"),
-        ("enter", "choose", "Confirm"),
+        ("up", "opt_prev", "Previous option"),
+        ("down", "opt_next", "Next option"),
+        ("k", "opt_prev", "Previous option"),
+        ("j", "opt_next", "Next option"),
+        ("ctrl+p", "opt_prev", "Previous option"),
+        ("ctrl+n", "opt_next", "Next option"),
+        ("pageup", "opt_prev_page", "Page up"),
+        ("pagedown", "opt_next_page", "Page down"),
+        ("enter", "accept_option", "Confirm"),
         ("escape", "cancel", "Cancel"),
-        ("tab", "amend", "Amend rule"),
-    ]
+        ("tab", "toggle_feedback", "Amend"),
+    ] + [Binding(str(index), f"pick_option({index})", "Pick option")
+         for index in range(1, 10)]
 
     def __init__(self, tool_name: str, tool_input, cwd: str = ".",
-                 rememberable: bool = True, rule: str = "", **kw):
+                 rememberable: bool = True, rule: str = "", agent: str = "",
+                 **kw):
         super().__init__(classes="permission", **kw)
         self._tool = tool_name
         self._input = tool_input
         self._cwd = cwd
         self._rememberable = rememberable
         self._rule = rule
-        self._selected = 0
-        self._amending = False
+        self._agent = agent
+        self._focused = 0
+        self._open_accept = False
+        self._open_reject = False
         self.on_choice = None
 
     def compose(self) -> ComposeResult:
         yield Static("", id="perm-body", markup=True)
-        yield Input("", id="perm-amend")
+        yield Input("", placeholder=ACCEPT_FEEDBACK_HINT, id="perm-accept",
+                    select_on_focus=False)
+        yield Input("", placeholder=REJECT_FEEDBACK_HINT, id="perm-reject",
+                    select_on_focus=False)
+        yield Input(self._rule, placeholder=RULE_FEEDBACK_HINT, id="perm-rule",
+                    select_on_focus=False)
 
     def on_mount(self):
+        self.app.register_overlay("select")
         self._draw()
-        self.focus()
+        self._sync_row()
 
-    def _options(self) -> list:
-        options = [('approved', 'Yes')]
+    def on_unmount(self):
+        self.app.unregister_overlay("select")
+
+    def _options(self) -> list[_PermOption]:
+        options = [_PermOption("approved", "Yes", "accept")]
         if self._rememberable:
-            if self._rule:
-                label = f"Yes, and don't ask again for: {self._rule}"
+            if self._tool == BASH_TOOL and self._rule:
+                options.append(_PermOption(
+                    "dont_ask",
+                    f"Yes, and don\u2019t ask again for: {self._rule}", "rule"))
             else:
-                label = (f"Yes, and don't ask again for {self._tool} "
-                         f"commands in {self._cwd}")
-            options.append(('dont_ask', label))
-        options.append(('denied', 'No'))
+                options.append(_PermOption(
+                    "dont_ask",
+                    f"Yes, and don't ask again for {self._tool} commands "
+                    f"in {self._cwd}", ""))
+        options.append(_PermOption("denied", "No", "reject"))
         return options
 
-    def _draw(self):
-        body = self.query_one("#perm-body", Static)
-        if self._amending:
-            body.update(
-                f"[#B1B9F9]{BULLET}[/] [bold]Amend rule[/bold]\n"
-                f"[dim]  Esc to cancel \u00b7 enter to approve "
-                f"with this rule[/]")
-            return
-        args = _tool_use_args(self._tool, self._input, self._cwd)
-        intent = ''
-        if isinstance(self._input, dict):
-            intent = str(self._input.get('description') or '').strip()
-        lines = [f"[#B1B9F9]{BULLET}[/] [bold]Tool use[/bold]",
-                 f"  {escape(_display_name(self._tool))}"
-                 f"({escape(args)})"]
-        if intent:
-            lines.append(f"  [dim]{escape(intent)}[/]")
-        lines.append("  Do you want to proceed?")
-        for index, (_value, label) in enumerate(self._options()):
-            marker = POINTER if index == self._selected else ' '
-            row = escape(f"  {marker} {index + 1}. {label}")
-            lines.append(f"[#B1B9F9]{row}[/]" if index == self._selected
-                         else f"[dim]{row}[/]")
-        lines.append("[dim]  Esc to cancel \u00b7 enter to confirm"
-                     + (" \u00b7 tab to amend" if self._rememberable else "")
-                     + "[/]")
-        body.update("\n".join(lines))
+    def _row_field(self, option: _PermOption) -> Input | None:
+        if option.feedback == "rule":
+            return self.query_one("#perm-rule", Input)
+        if option.feedback == "accept" and self._open_accept:
+            return self.query_one("#perm-accept", Input)
+        if option.feedback == "reject" and self._open_reject:
+            return self.query_one("#perm-reject", Input)
+        return None
 
-    def action_move_up(self):
-        if self._amending:
-            return
-        self._selected = max(0, self._selected - 1)
-        self._draw()
+    def _fields(self) -> list[Input]:
+        return [self.query_one(f"#perm-{name}", Input)
+                for name in ("accept", "reject", "rule")]
 
-    def action_move_down(self):
-        if self._amending:
-            return
-        self._selected = min(len(self._options()) - 1, self._selected + 1)
-        self._draw()
-
-    async def action_choose(self):
-        if self._amending:
-            return
-        options = self._options()
-        await self._finish(options[min(self._selected, len(options) - 1)][0])
-
-    async def action_pick_yes(self):
-        if not self._amending:
-            await self._finish('approved')
-
-    async def action_pick_no(self):
-        if not self._amending:
-            await self._finish('denied')
-
-    async def action_cancel(self):
-        if self._amending:
-            self._set_amend(False)
-            return
-        await self._finish('denied')
-
-    def action_amend(self):
-        if not self._rememberable:
-            return
-        self._set_amend(not self._amending)
-
-    def _set_amend(self, on: bool):
-        self._amending = on
-        inp = self.query_one("#perm-amend", Input)
-        inp.display = on
-        if on:
-            inp.value = self._rule
-            inp.focus()
+    def _sync_row(self):
+        active = self._row_field(self._options()[self._focused])
+        for field in self._fields():
+            field.display = field is active
+        if active is not None:
+            active.cursor_position = len(active.value)
+            active.focus()
         else:
             self.focus()
         self._draw()
 
+    def _draw(self):
+        options = self._options()
+        focused = options[self._focused]
+        title = "[bold]Tool use[/bold]"
+        if self._agent:
+            title += f" [dim]\u00b7 @{escape(self._agent)}[/]"
+        args = _tool_use_args(self._tool, self._input, self._cwd)
+        lines = [f"[#B1B9F9]{BULLET}[/] {title}",
+                 f"  {escape(_display_name(self._tool))}({escape(args)})"]
+        intent = ''
+        if isinstance(self._input, dict):
+            intent = str(self._input.get('description') or '').strip()
+        if intent:
+            lines.append(f"  [dim]{escape(intent)}[/]")
+        lines.append("  Do you want to proceed?")
+        for index, option in enumerate(options):
+            marker = POINTER if index == self._focused else ' '
+            row = escape(f"  {marker} {index + 1}. {option.label}")
+            lines.append(f"[#B1B9F9]{row}[/]" if index == self._focused
+                         else f"[dim]{row}[/]")
+        hint = ((focused.feedback == "accept" and not self._open_accept)
+                or (focused.feedback == "reject" and not self._open_reject))
+        lines.append("[dim]  Esc to cancel"
+                     + (" \u00b7 Tab to amend" if hint else "") + "[/]")
+        self.query_one("#perm-body", Static).update("\n".join(lines))
+
+    def _move(self, delta: int, wrap: bool):
+        total = len(self._options())
+        self._focused = ((self._focused + delta) % total if wrap
+                         else min(max(0, self._focused + delta), total - 1))
+        option = self._options()[self._focused].feedback
+        if option != "accept" and self._open_accept:
+            self._open_accept = bool(
+                self.query_one("#perm-accept", Input).value.strip())
+        if option != "reject" and self._open_reject:
+            self._open_reject = bool(
+                self.query_one("#perm-reject", Input).value.strip())
+        self._sync_row()
+
+    def action_opt_next(self):
+        self._move(1, wrap=True)
+
+    def action_opt_prev(self):
+        self._move(-1, wrap=True)
+
+    def action_opt_next_page(self):
+        self._move(OPTION_PAGE_SIZE, wrap=False)
+
+    def action_opt_prev_page(self):
+        self._move(-OPTION_PAGE_SIZE, wrap=False)
+
+    def action_toggle_feedback(self):
+        option = self._options()[self._focused]
+        if option.feedback == "accept":
+            self._open_accept = not self._open_accept
+        elif option.feedback == "reject":
+            self._open_reject = not self._open_reject
+        else:
+            return
+        self._sync_row()
+
+    async def action_accept_option(self):
+        await self._submit(self._options()[self._focused])
+
+    async def action_pick_option(self, index: int):
+        options = self._options()
+        if index > len(options):
+            return
+        await self._submit(options[index - 1])
+
+    async def action_cancel(self):
+        await self._finish(PermissionChoice("denied"))
+
+    def _choice(self, option: _PermOption, text: str) -> PermissionChoice:
+        text = text.strip()
+        if option.feedback == "rule":
+            return (PermissionChoice("approved") if not text
+                    else PermissionChoice("dont_ask", rule=text))
+        if self._row_field(option) is not None:
+            return PermissionChoice(option.value, feedback=text)
+        return PermissionChoice(option.value)
+
+    async def _submit(self, option: _PermOption):
+        field = self._row_field(option)
+        await self._finish(self._choice(option, field.value if field else ""))
+
     async def on_input_submitted(self, event: Input.Submitted):
         event.stop()
-        rule = event.value.strip()
-        if rule:
-            await self._finish(('dont_ask', rule))
-        else:
-            await self._finish('approved')
+        await self._submit(self._options()[self._focused])
 
-    async def _finish(self, decision: str):
+    async def _finish(self, choice: PermissionChoice):
         if self.on_choice is not None:
-            self.on_choice(decision)
-        self.remove()
-        self.app.query_one("#input", Input).focus()
+            self.on_choice(choice)
 
 
 class PyClawApp(App[None]):
     TITLE = "PyClaw"
+    ENABLE_COMMAND_PALETTE = False
     CSS = """
     $background: #101010;
     $text: #FFFFFF;
@@ -1445,9 +1527,9 @@ class PyClawApp(App[None]):
     .diff { border-top: dashed $subtle; border-bottom: dashed $subtle;
             border-left: none; border-right: none; padding: 0 1; }
     .permission { width: 100%; margin-bottom: 1; }
-    #perm-amend { display: none; width: 100%; height: 1; margin-top: 1;
-                  border: round $permission; background: $background;
-                  color: $text; padding: 0 1; }
+    .permission Input { display: none; width: 100%; height: 1; margin-top: 1;
+                        border: round $permission; background: $background;
+                        color: $text; padding: 0 1; }
     .logo { width: auto; margin-bottom: 1; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }
@@ -1510,6 +1592,8 @@ class PyClawApp(App[None]):
                         priority=True)]
 
     def check_action(self, action: str, parameters) -> bool:
+        if action in OVERLAY_GATED_ACTIONS and self.modal_overlay_active:
+            return False
         if action in ('suggest_tab', 'suggest_dismiss'):
             return bool(self._suggest_items)
         if action in ('prompt_next', 'prompt_prev'):
@@ -1520,6 +1604,16 @@ class PyClawApp(App[None]):
         if action in ('agent_next', 'agent_prev'):
             return bool(self._teammates())
         return True
+
+    def register_overlay(self, name: str):
+        self._overlays.add(name)
+
+    def unregister_overlay(self, name: str):
+        self._overlays.discard(name)
+
+    @property
+    def modal_overlay_active(self) -> bool:
+        return bool(self._overlays - NON_MODAL_OVERLAYS)
 
     def __init__(self, *, builder, session_id=None, resume=False,
                  resume_from=None):
@@ -1556,7 +1650,8 @@ class PyClawApp(App[None]):
         self._spin_timer = None
         self._spin_i = 0
         self._think: dict | None = None
-        self._permission_request: tuple | None = None
+        self._overlays: set[str] = set()
+        self._approvals: list[_Approval] = []
         self._interrupted_call = False
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
@@ -2501,6 +2596,10 @@ class PyClawApp(App[None]):
         self._show_suggest_widget(True)
 
     def _show_suggest_widget(self, show: bool):
+        if show:
+            self.register_overlay('autocomplete')
+        else:
+            self.unregister_overlay('autocomplete')
         try:
             self.query_one('#suggest', Static).display = show
         except Exception:
@@ -2629,43 +2728,65 @@ class PyClawApp(App[None]):
             self._driving = False
 
     async def _ask_permission(self, tool_name: str, tool_input,
-                              *, tool_use_id: str = '') -> str:
+                              *, tool_use_id: str = '',
+                              agent: str | None = None) -> PermissionChoice:
         inp = tool_input if isinstance(tool_input, dict) else {}
         rule = self._session.permission_rule(tool_name, inp)
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
                                    rememberable=bool(rule) or tool_name != 'Bash',
-                                   rule=rule)
-        fut = asyncio.get_running_loop().create_future()
-        prompt.on_choice = fut.set_result
+                                   rule=rule, agent=self._badge(agent))
         block = self._tools.get(tool_use_id) if tool_use_id else None
+        approval = _Approval(tool_use_id, tool_name, prompt, block,
+                             asyncio.get_running_loop().create_future())
+        prompt.on_choice = lambda choice: self._answer_approval(approval, choice)
+        self._approvals.append(approval)
+        if self._approvals[0] is approval:
+            await self._mount_approval(approval)
+        return await approval.future
+
+    def _badge(self, agent: str | None) -> str:
+        """Who is asking, unless it is the agent the user is talking to."""
+        if not agent:
+            return ''
+        return '' if agent == self._team.lead.name else agent
+
+    async def _mount_approval(self, approval: _Approval):
+        block = approval.block
         if isinstance(block, _ToolBlock):
             block.set_waiting_permission(True)
-        self._permission_request = (prompt, block)
-        try:
-            conv = self._conv()
-            await conv.mount(prompt)
-            await self._after_mount()
-            return await fut
-        finally:
-            self._permission_request = None
-            if isinstance(block, _ToolBlock):
-                block.set_waiting_permission(False)
+        await self._conv().mount(approval.prompt)
+        await self._after_mount()
+
+    def _answer_approval(self, approval: _Approval, choice: PermissionChoice):
+        self._settle_approval(approval, choice)
+        if self._approvals:
+            asyncio.create_task(self._mount_approval(self._approvals[0]))
+
+    def _settle_approval(self, approval: _Approval, choice: PermissionChoice):
+        if approval in self._approvals:
+            self._approvals.remove(approval)
+        approval.prompt.remove()
+        block = approval.block
+        if isinstance(block, _ToolBlock):
+            block.set_waiting_permission(False)
+        if not approval.future.done():
+            approval.future.set_result(choice)
+        self.query_one("#input", Input).focus()
 
     async def _deny_pending_permission(self) -> bool:
-        """Settle an approval the user was answering when they interrupted.
+        """Settle the approvals the user was answering when they interrupted.
 
-        Left alone, the prompt outlives the turn it belongs to: the card sits
-        on "Initializing…" for good, and answering the orphaned prompt would
-        still run the tool the user just killed.
+        Left alone, a prompt outlives the turn it belongs to: its card sits on
+        "Initializing…" for good, and answering an orphaned prompt would still
+        run the tool the user just killed.
         """
-        pending = self._permission_request
-        if pending is None:
+        if not self._approvals:
             return False
-        prompt, block = pending
-        self._permission_request = None
-        await prompt.action_cancel()
-        if isinstance(block, _ToolBlock) and not block._done:
-            block.reject()
+        for approval in list(self._approvals):
+            self._settle_approval(approval, PermissionChoice("denied"))
+            block = approval.block
+            if isinstance(block, _ToolBlock) and not block._done:
+                block.reject()
         self._interrupted_call = True
         return True
 

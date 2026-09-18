@@ -1,9 +1,9 @@
 """The greeting drawn under the wordmark.
 
-Mirrors claude-code's `LogoV2` for the text half of its landing screen: a
-welcome line, the product/version, the model facts and the working directory,
-then up to two feeds — "Tips for getting started" while project onboarding is
-still pending, and "Recent activity" built from saved sessions.
+The text half of the landing screen: a welcome line, the product/version, the
+model facts and the working directory, then up to two feeds — "Tips for
+getting started" while project onboarding is still pending, and "Recent
+activity" built from saved sessions.
 
 Everything here is pure: the data half reads the filesystem/config, the render
 half returns Rich markup lines. `tui.py` owns the widget.

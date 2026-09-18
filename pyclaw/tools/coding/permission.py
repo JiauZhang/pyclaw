@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 
@@ -16,20 +17,53 @@ BASH_TOOL = 'Bash'
 
 # Calls that orchestrate the agents this one already owns. They are not part
 # of the coding tool registry, so without this they fell through to the
-# "unknown tool" branch and asked the human every single time.
-#
-# claude-code auto-approves all three classes: spawning a sub-agent is allowed
-# in every mode ("Only route through auto mode classifier when in auto mode /
-# In all other modes, auto-approve sub-agent generation" —
-# tools/AgentTool/AgentTool.tsx:1281-1297), and send_message only asks when the
-# address crosses machines to another Claude
-# (tools/SendMessageTool/SendMessageTool.ts:585-604, a `bridge` scheme pyclaw
-# has no counterpart for). task_stop is scoped to the caller's own children
-# (chatchat/core/tools.py, `is not your sub-agent`).
+# "unknown tool" branch and asked the human every single time. Spawning a
+# sub-agent is allowed in every mode, send_message only asks when the address
+# crosses machines, and task_stop is scoped to the caller's own children.
 #
 # An explicit `ask`/`deny` rule still wins, because decide() checks the rule
 # buckets first — so this only changes the default.
 AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop'})
+
+REJECT_MESSAGE = (
+    "The user doesn't want to proceed with this tool use. The tool use was "
+    "rejected (eg. if it was a file edit, the new_string was NOT written to "
+    "the file). STOP what you are doing and wait for the user to tell you "
+    "how to proceed.")
+REJECT_MESSAGE_WITH_REASON_PREFIX = (
+    "The user doesn't want to proceed with this tool use. The tool use was "
+    "rejected (eg. if it was a file edit, the new_string was NOT written to "
+    "the file). To tell you how to proceed, the user said:\n")
+SUBAGENT_REJECT_MESSAGE = (
+    "Permission for this tool use was denied. The tool use was rejected (eg. "
+    "if it was a file edit, the new_string was NOT written to the file). Try "
+    "a different approach or report the limitation to complete your task.")
+SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX = (
+    "Permission for this tool use was denied. The tool use was rejected (eg. "
+    "if it was a file edit, the new_string was NOT written to the file). The "
+    "user said:\n")
+
+
+def reject_message(feedback: str = '', teammate: bool = False) -> str:
+    if teammate:
+        return (SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX + feedback
+                if feedback else SUBAGENT_REJECT_MESSAGE)
+    return (REJECT_MESSAGE_WITH_REASON_PREFIX + feedback
+            if feedback else REJECT_MESSAGE)
+
+
+@dataclass
+class PermissionChoice:
+    """What the human answered an approval with.
+
+    `value` is 'approved', 'dont_ask' or 'denied'; `rule` narrows what
+    'dont_ask' remembers; `feedback` is the free text they attached, which
+    travels to the model either as the reason for the denial or as extra
+    context next to the tool result.
+    """
+    value: str
+    rule: str | None = None
+    feedback: str = ''
 
 _MODE_NAMES = {
     'default': 'default',
@@ -339,12 +373,14 @@ class PermissionController:
         return 'ask'
 
     async def authorize(self, tool_name: str, tool_input,
-                        mode=None, tool_use_id: str = '') -> bool | dict:
+                        mode=None, tool_use_id: str = '',
+                        agent: str = '') -> bool | dict:
         """Decide whether a call may run.
 
         `request` is called as `await request(tool_name, tool_input,
-        tool_use_id=...)`; the id is what lets the UI attach the pending
-        decision to the tool call the human is being asked about.
+        tool_use_id=..., agent=...)`; the id lets the UI attach the pending
+        decision to the tool call the human is being asked about, and `agent`
+        names the teammate that asked, empty for the conversation's own agent.
         """
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
@@ -359,15 +395,15 @@ class PermissionController:
                     'reason': f'{tool_name} needs approval but no app is '
                               f'present to ask.'}
         choice = await self.request(tool_name, tool_input,
-                                    tool_use_id=tool_use_id)
-        rule = None
-        if isinstance(choice, tuple):
-            choice, rule = choice
-        if choice == 'dont_ask':
-            if rule:
-                self.remember_allow(tool_name, tool_input, rule=rule)
+                                    tool_use_id=tool_use_id, agent=agent)
+        if choice.value == 'dont_ask':
+            if choice.rule:
+                self.remember_allow(tool_name, tool_input, rule=choice.rule)
             elif self._rememberable(tool_name, tool_input):
                 self.remember_allow(tool_name, tool_input)
-        if choice in ('approved', 'dont_ask'):
-            return True
-        return {'decision': 'block', 'reason': f'{tool_name} was not approved.'}
+        if choice.value in ('approved', 'dont_ask'):
+            if not choice.feedback:
+                return True
+            return {'decision': 'allow', 'additionalContext': choice.feedback}
+        return {'decision': 'block',
+                'reason': reject_message(choice.feedback, bool(agent))}

@@ -359,11 +359,14 @@ def build_team(
             defn = team.agent_defs.find(agent_type)
             mode = (defn.permission_mode if defn is not None else None) \
                 or 'acceptEdits'
+        asker = str(hook_input.get('agent_id') or '')
         return await gate.authorize(hook_input.get('tool_name', ''),
                                     hook_input.get('tool_input') or {},
                                     mode=mode,
                                     tool_use_id=str(
-                                        hook_input.get('tool_use_id') or ''))
+                                        hook_input.get('tool_use_id') or ''),
+                                    agent='' if asker == team.lead.name
+                                    else asker)
 
     team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
     return team

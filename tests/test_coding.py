@@ -7,6 +7,11 @@ from conippets import json
 
 from pyclaw.tools.coding import (CODING_TOOLS, PermissionController,
                                  next_mode, parse_mode)
+from pyclaw.tools.coding.permission import (REJECT_MESSAGE,
+                                            REJECT_MESSAGE_WITH_REASON_PREFIX,
+                                            SUBAGENT_REJECT_MESSAGE,
+                                            SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
+                                            PermissionChoice)
 from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
                                              is_dangerous_removal,
                                              is_read_only, parse_bash_rule)
@@ -359,14 +364,14 @@ def test_non_bash_tool_rules_match_their_path_argument():
 def test_ask_flow_authorize():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp, *, tool_use_id=''):
-            return "approved"
+        async def approve(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("approved")
 
         g = PermissionController(mode="default", cwd=d, request=approve)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
 
-        async def denied(name, inp, *, tool_use_id=''):
-            return "denied"
+        async def denied(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("denied")
 
         g2 = PermissionController(mode="default", cwd=d, request=denied)
         res = asyncio.run(g2.authorize("Edit", {"file_path": "a.txt"}))
@@ -375,6 +380,68 @@ def test_ask_flow_authorize():
         g3 = PermissionController(mode="default", cwd=d)
         res3 = asyncio.run(g3.authorize("Edit", {"file_path": "a.txt"}))
         assert isinstance(res3, dict) and res3["decision"] == "block"
+
+
+def test_the_asking_agent_reaches_the_prompt():
+    with tempfile.TemporaryDirectory() as d:
+        seen = {}
+
+        async def ask(name, inp, *, tool_use_id='', agent=''):
+            seen["agent"] = agent
+            return PermissionChoice("approved")
+
+        g = PermissionController(mode="default", cwd=d, request=ask)
+        asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}, agent="watcher"))
+        assert seen["agent"] == "watcher"
+
+
+def test_a_denial_reports_differently_for_a_teammate():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def denied(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("denied")
+
+        g = PermissionController(mode="default", cwd=d, request=denied)
+        main = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
+        assert main["reason"] == REJECT_MESSAGE
+
+        teammate = asyncio.run(
+            g.authorize("Edit", {"file_path": "a.txt"}, agent="watcher"))
+        assert teammate["reason"] == SUBAGENT_REJECT_MESSAGE
+        assert teammate["reason"] != main["reason"]
+
+
+def test_feedback_tells_the_model_why():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def denied(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("denied", feedback="not now")
+
+        g = PermissionController(mode="default", cwd=d, request=denied)
+        main = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
+        assert main["reason"] == REJECT_MESSAGE_WITH_REASON_PREFIX + "not now"
+
+        async def denied_by_teammate(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("denied", feedback="not now")
+
+        g2 = PermissionController(mode="default", cwd=d,
+                                  request=denied_by_teammate)
+        teammate = asyncio.run(
+            g2.authorize("Edit", {"file_path": "a.txt"}, agent="watcher"))
+        assert (teammate["reason"]
+                == SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX + "not now")
+
+
+def test_approval_feedback_travels_as_additional_context():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def approve(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("approved", feedback="run the tests first")
+
+        g = PermissionController(mode="default", cwd=d, request=approve)
+        res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
+        assert res == {"decision": "allow",
+                       "additionalContext": "run the tests first"}
 
 
 def test_bash_tool_runs_in_workspace():
@@ -581,8 +648,8 @@ def test_bash_dangerous_removal_asks_even_when_allowed():
 def test_bash_dangerous_removal_is_not_remembered():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id=''):
-            return "dont_ask"
+        async def once(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once)
         assert asyncio.run(g.authorize("Bash", {"command": "rm -rf /"})) is True
@@ -624,8 +691,29 @@ def test_build_team_wires_bash_through_permission_hook():
 
     names, blocked, allowed = asyncio.run(main())
     assert "Bash" in names
-    assert "hook blocked" in blocked
-    assert "hi" in allowed
+    assert "hook blocked" in blocked.text
+    assert "hi" in allowed.text
+
+
+def test_approval_feedback_lands_beside_the_tool_result():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            from pyclaw.agents import build_team
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+
+            async def approve(name, inp, *, tool_use_id='', agent=''):
+                return PermissionChoice("approved",
+                                        feedback="run the tests first")
+
+            team._pyclaw_gate.request = approve
+            return await team.execute_tool("Bash",
+                                           {"command": "touch marker.txt"},
+                                           team.lead, "t1")
+
+        outcome = asyncio.run(main())
+        assert Path(d, "marker.txt").exists()
+        assert outcome.additional_context == "run the tests first"
 
 
 def test_build_team_removes_bash_when_denied_by_bare_name():
@@ -678,8 +766,8 @@ def test_build_team_tools_differ_by_mode():
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id=''):
-            return "dont_ask"
+        async def once(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once,
                                  tools=CODING_TOOLS)
@@ -734,8 +822,9 @@ def test_suggested_rule_uses_the_addressed_path():
 def test_authorize_accepts_amended_rule():
     with tempfile.TemporaryDirectory() as d:
 
-        async def amend(name, inp, *, tool_use_id=''):
-            return ("dont_ask", "Bash(git commit --amend:*)")
+        async def amend(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice(
+                "dont_ask", rule="Bash(git commit --amend:*)")
 
         g = PermissionController(mode="default", cwd=d, request=amend)
         ok = asyncio.run(g.authorize(
@@ -774,8 +863,8 @@ def test_suggested_rule_refuses_risky_commands():
 def test_dont_ask_saves_rule_to_local_settings():
     with tempfile.TemporaryDirectory() as d:
 
-        async def always(name, inp, *, tool_use_id=''):
-            return "dont_ask"
+        async def always(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=always)
         assert asyncio.run(
@@ -1066,8 +1155,7 @@ def test_team_tools_never_ask_the_human():
     They are absent from the coding tool registry, so decide() used to fall
     through to its "unknown tool" branch and prompt on every single call --
     which in a fresh cwd meant the human had to approve each delegation.
-    claude-code allows all three by default (AgentTool.tsx:1281-1297,
-    SendMessageTool.ts:585-604).
+    Team tools are always allowed.
     """
     from pyclaw.tools.coding.permission import AUTO_TOOLS
 

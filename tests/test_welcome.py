@@ -20,7 +20,7 @@ def test_home_path_shortens_the_home_directory():
     assert welcome.home_path("") == ""
 
 
-def test_relative_time_uses_claude_style_units():
+def test_relative_time_reads_in_words():
     assert welcome.relative_time(0) == "0 seconds ago"
     assert welcome.relative_time(30) == "30 seconds ago"
     assert welcome.relative_time(60) == "1 minute ago"
