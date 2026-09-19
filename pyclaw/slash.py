@@ -10,9 +10,12 @@ COMMANDS = [
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
+    {'name': 'agents', 'desc': 'List and manage the agent definitions PyClaw can delegate to', 'hint': ''},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
     {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
     {'name': 'cost', 'desc': 'Show token usage and estimated cost', 'hint': ''},
+    {'name': 'statusline', 'desc': "Set up PyClaw's status line",
+     'hint': '[instructions]'},
 ]
 
 
@@ -163,6 +166,17 @@ def _handle_permissions(session, arg: str) -> str:
     return '\n'.join(lines)
 
 
+def _handle_agents(session) -> str:
+    agents = getattr(session, 'agent_types', None) or []
+    if not agents:
+        return 'No agent definitions loaded.'
+    lines = ['Available agents:']
+    lines += [f'  {name}: {desc}' for name, desc in agents]
+    lines.append('Create, edit and delete them from the terminal UI with '
+                 '/agents.')
+    return '\n'.join(lines)
+
+
 def _handle_resume(session, arg: str) -> str:
     from pyclaw.agents import list_sessions
     if not arg:
@@ -215,6 +229,16 @@ def _handle_cost(session, arg: str) -> str:
             f"Cost: {detail}")
 
 
+STATUSLINE_PROMPT = 'Configure my statusLine from my shell PS1 configuration'
+
+
+def _handle_statusline(arg: str) -> tuple:
+    prompt = arg or STATUSLINE_PROMPT
+    return ('Setting up the status line…',
+            f'Create an agent with create_agent, subagent_type '
+            f'"statusline-setup" and the prompt "{prompt}"')
+
+
 async def handle_slash(text: str, session, session_key: str = '') -> str | None | tuple:
     text = text.strip()
     if not text.startswith('/'):
@@ -261,11 +285,15 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _status(session, session_key)
     if cmd == 'permissions':
         return _handle_permissions(session, arg)
+    if cmd == 'agents':
+        return _handle_agents(session)
     if cmd == 'plan':
         return _handle_plan(session, arg)
     if cmd == 'model':
         return _handle_model(session, arg)
     if cmd == 'cost':
         return _handle_cost(session, arg)
+    if cmd == 'statusline':
+        return _handle_statusline(arg)
 
     return (f'Unknown command: /{cmd}.\n\n{HELP}')

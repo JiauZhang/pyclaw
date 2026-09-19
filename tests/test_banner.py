@@ -113,6 +113,25 @@ def test_the_brand_colour_is_the_middle_of_the_logo():
         banner.BLUE, banner.YELLOW, 0.5)
 
 
+def test_dimming_puts_the_brightest_channel_at_the_requested_lightness():
+    triple = (banner.BLUE, banner.YELLOW, 60.0)
+    mid = banner.ramp(banner.BLUE, banner.YELLOW, 0.5)
+    assert banner.dimmed(triple, 55) == banner.rgb_to_hex(
+        tuple(round(c * 55 / max(mid)) for c in mid))
+    assert max(banner.hex_to_rgb(banner.dimmed(triple, 55))) == 55
+
+
+def test_dimmed_paint_keeps_the_hue_and_the_contrast_budget():
+    import random
+    rng = random.Random(7)
+    for _ in range(200):
+        for lightness in (banner.BAND_LIGHTNESS, banner.RULE_LIGHTNESS):
+            paint = banner.hex_to_rgb(
+                banner.dimmed(banner.random_triple(rng), lightness))
+            assert max(paint) == lightness
+            assert len(set(paint)) > 1
+
+
 def test_the_config_defaults_start_with_a_random_palette(tmp_path):
     from pyclaw import config
     real = config.__config_file__

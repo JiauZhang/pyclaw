@@ -1,6 +1,9 @@
 import asyncio
+import os
 import re
+import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,7 +18,7 @@ from chatchat.hooks.events import (
     RuntimeEvent,
 )
 from chatchat.tool import ToolContext
-from pyclaw.tui import PyClawApp, _TextBlock
+from pyclaw.tui import PyClawApp, _TextBlock, _display_cwd, _token_rate
 
 
 @pytest.fixture(autouse=True)
@@ -32,11 +35,26 @@ def _no_welcome_state_writes(monkeypatch):
     monkeypatch.setattr(welcome, 'remember', lambda **kwargs: None)
 
 
+@pytest.fixture(autouse=True)
+def _no_status_line(monkeypatch):
+    from pyclaw import statusline
+    monkeypatch.setattr(statusline, 'user_command', lambda: '')
+
+
 class _FakeTeam:
     provider = "p"
     model = "m"
     thinking = False
     name = "t"
+    compact_threshold = 0
+    context_tokens = 0
+    auto_compact = False
+
+    def last_usage(self):
+        class _U:
+            prompt_tokens = 0
+            completion_tokens = 0
+        return _U()
 
     def __init__(self):
         self._running = False
@@ -207,7 +225,8 @@ class _GateTeam(_FakeTeam):
 
 def test_shift_tab_cycles_permission_mode():
     async def scenario():
-        async with PyClawApp(builder=lambda: _GateTeam()).run_test() as pilot:
+        async with PyClawApp(builder=lambda: _GateTeam()).run_test(
+                size=(120, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
             assert app._session.permission_mode == "default"
@@ -215,9 +234,9 @@ def test_shift_tab_cycles_permission_mode():
             assert app._session.permission_mode == "acceptEdits"
             await pilot.press("shift+tab")
             assert app._session.permission_mode == "plan"
-            status = str(app.query_one("#status").content)
-            assert "plan mode on" in status
-            assert "shift+tab to cycle" in status
+            row = str(app.query_one("#hud2").content)
+            assert "plan mode on" in row
+            assert "shift+tab to cycle" in row
     asyncio.run(scenario())
 
 
@@ -396,49 +415,521 @@ def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
     asyncio.run(scenario())
 
 
-def test_spinner_row_shows_a_verb_and_the_interrupt_hint():
-    from pyclaw.spinner_verbs import SPINNER_VERBS
+def _working_spinner(app, *, seconds: int = 0, chars: int = 0):
+    app._processing = "hi"
+    app._turn_verb = "Thinking"
+    app._turn_started_at = time.monotonic() - seconds
+    app._response_chars = chars
+    app._shown_chars = chars
 
+
+def _rendered_spinner(builder, prepare) -> str:
     async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
+        async with PyClawApp(builder=builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app._turn_verb = "Thinking"
+            prepare(app)
             return app._spinner_text("\u273b")
 
-    text = asyncio.run(scenario())
-    assert "Thinking\u2026" in text
-    assert "esc to interrupt" in text
-    assert "\u2193 2.4k tokens" in text
+    return asyncio.run(scenario())
+
+
+def test_the_turn_timer_and_rate_show_from_the_first_second():
+    """PyClaw keeps the reference's 30s gate off: the clock and the rate are
+    the reason a turn is worth watching, so they read from the start."""
+    from pyclaw.spinner_verbs import SPINNER_VERBS
+
+    text = _rendered_spinner(_builder, lambda app: _working_spinner(
+        app, seconds=4, chars=4000))
+    assert _plain(text) == "\u273b Thinking\u2026 (4s \u00b7 \u2193 1k tokens \u00b7 250 tok/s)"
     assert len(SPINNER_VERBS) > 100
 
 
-def test_status_shows_shortcut_hint_and_context_usage():
-    class _ThresholdTeam(_FakeTeam):
-        compact_threshold = 4802
-
-    async def scenario():
-        async with PyClawApp(
-                builder=lambda: _ThresholdTeam()).run_test() as pilot:
-            app = pilot.app
-            await pilot.pause()
-            await pilot.pause()
-            return (str(app.query_one("#status").content),
-                    str(app.query_one("#status-right").content))
-
-    status, right = asyncio.run(scenario())
-    assert "? for shortcuts" in status
-    assert "50% context used" in right
+def test_a_slow_turn_reads_its_timer_tokens_and_rate():
+    text = _rendered_spinner(_builder, lambda app: _working_spinner(
+        app, seconds=31, chars=4 * 1200))
+    assert _plain(text) == \
+        "\u273b Thinking\u2026 (31s \u00b7 \u2193 1.2k tokens \u00b7 39 tok/s)"
 
 
-def test_status_right_is_blank_without_compact_threshold():
+def test_a_fractional_rate_keeps_one_decimal():
+    assert _token_rate(13, 31) == "0.4 tok/s"
+    assert _token_rate(1200, 31) == "39 tok/s"
+
+
+def test_the_token_counter_climbs_in_steps_toward_the_response():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
             await pilot.pause()
-            await pilot.pause()
-            return str(pilot.app.query_one("#status-right").content)
+            _working_spinner(app, seconds=31, chars=1000)
+            app._shown_chars = 0
+            return [_plain(app._spinner_text("\u273b")) for _ in range(60)]
 
-    assert asyncio.run(scenario()) == ""
+    frames = asyncio.run(scenario())
+    assert frames[0] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 13 tokens \u00b7 0.4 tok/s)"
+    assert frames[1] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 25 tokens \u00b7 0.8 tok/s)"
+    assert frames[-1] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 250 tokens \u00b7 8.1 tok/s)"
+
+
+def test_spinner_row_drops_the_arrow_while_teammates_run():
+    def prepare(app):
+        _working_spinner(app, seconds=3, chars=1600)
+        app._team.worker_busy = True
+        app._team.worker.total_usage = SimpleNamespace(total_tokens=2000)
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Thinking\u2026 (3s \u00b7 2.4k tokens \u00b7 800 tok/s)"
+
+
+def test_spinner_row_leaves_the_teammate_counts_to_the_tree():
+    def prepare(app):
+        _working_spinner(app, seconds=3, chars=1600)
+        app._team.worker_busy = True
+        app._team.worker.total_usage = SimpleNamespace(total_tokens=2000)
+        app._expanded_view = 'teammates'
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Thinking\u2026 (3s \u00b7 400 tokens \u00b7 133 tok/s)"
+
+
+def test_spinner_row_names_the_teammate_being_viewed():
+    seen = {}
+
+    def prepare(app):
+        _working_spinner(app, seconds=3, chars=1600)
+        app._team.worker_busy = True
+        app._viewing = "worker"
+        app._state("worker")["verb"] = "Cogitated"
+        seen["color"] = app._agent_color("worker")
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Cogitated\u2026 (esc to interrupt @worker)"
+    assert f"[{seen['color']}]@worker[/]" in text
+
+
+def test_spinner_row_goes_static_while_teammates_carry_on():
+    def prepare(app):
+        app._turn_verb = "Thinking"
+        app._team.worker_busy = True
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Idle \u00b7 teammates running"
+
+
+def test_a_stopped_teammate_view_reads_how_long_it_worked():
+    def prepare(app):
+        app._turn_verb = "Thinking"
+        app._viewing = "worker"
+        app._state("worker")["started_at"] = time.monotonic() - 42
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Worked for 42s"
+
+
+def test_a_stopped_teammate_view_only_says_idle_while_others_run():
+    def prepare(app):
+        app._turn_verb = "Thinking"
+        app._viewing = "worker"
+        app._team.agents["other@t"] = SimpleNamespace(
+            name="other", agent_id="other@t", is_running=True, busy=True)
+
+    team = _SwarmTeam()
+    text = _rendered_spinner(lambda: team, prepare)
+    assert _plain(text) == "\u273b Idle"
+
+
+def test_spinner_row_says_thinking_while_the_leader_is_reasoning():
+    def prepare(app):
+        _working_spinner(app, seconds=31, chars=4 * 1200)
+        app._note("lead", think=True)
+
+    text = _rendered_spinner(_builder, prepare)
+    assert _plain(text) == ("\u273b Thinking\u2026 (31s \u00b7 \u2193 1.2k tokens"
+                            " \u00b7 39 tok/s \u00b7 thinking)")
+
+
+def _status_right(builder, window: int = 0, size=(120, 40)) -> str:
+    """The footer's right edge with the model window pinned to `window`."""
+    from unittest import mock
+    from pyclaw import config
+    base = dict(config.load())
+
+    async def scenario():
+        with mock.patch.object(config, 'load',
+                               lambda: {**base, 'contextWindow': window}):
+            async with PyClawApp(builder=builder).run_test(size=size) as pilot:
+                await pilot.pause()
+                await pilot.pause()
+                return str(pilot.app.query_one("#status-right").content)
+
+    return asyncio.run(scenario())
+
+
+def _status_left(builder, prepare=None) -> str:
+    async def scenario():
+        async with PyClawApp(builder=builder).run_test(size=(120, 40)) as pilot:
+            if prepare is not None:
+                prepare(pilot.app)
+            pilot.app._render_status()
+            return str(pilot.app.query_one("#status").content)
+
+    return asyncio.run(scenario())
+
+
+def test_default_mode_shows_only_the_shortcut_hint():
+    assert _plain(_status_left(_builder)) == "? for shortcuts"
+
+
+def test_the_mode_pill_is_on_the_second_row_with_the_directory():
+    team = _GateTeam()
+
+    def prepare(app):
+        app._team = team
+        app._session.set_permission_mode("plan")
+
+    row = _status_row2(lambda: team, prepare)
+    assert row.endswith('\u23f8 plan mode on (shift+tab to cycle)')
+    assert len(row.split(' \u00b7 ')) == 2
+    assert "\u23f8" not in _plain(_status_left(lambda: team, prepare))
+
+
+def test_the_running_hint_sits_alone_in_the_footer():
+    team = _GateTeam()
+
+    def prepare(app):
+        app._team = team
+        app._session.set_permission_mode("plan")
+        app._processing = "hello"
+
+    assert _plain(_status_left(lambda: team, prepare)) == "esc to interrupt"
+    assert "plan mode on" in _status_row2(lambda: team, prepare)
+
+
+def test_the_cycle_hint_steps_back_once_a_second_item_shares_the_row():
+    team = _GateTeam()
+
+    def prepare(app):
+        app._team = team
+        app._session.set_permission_mode("plan")
+        app._subagents["a@t"] = {"type": "Agent", "done": False, "tools": 0,
+                                 "tokens": 0, "last_tool": "", "label": ""}
+
+    assert _status_row2(lambda: team, prepare).endswith("\u23f8 plan mode on")
+
+
+def test_a_teammate_view_counts_as_a_second_item_and_shows_its_hint():
+    team = _GateSwarm()
+
+    def prepare(app):
+        app._team = team
+        app._session.set_permission_mode("plan")
+        app._viewing = "worker"
+        app._expanded_view = "teammates"
+
+    assert _plain(_status_left(lambda: team, prepare)) == \
+        "esc to return to team lead"
+
+
+def test_a_running_teammate_keeps_the_interrupt_and_toggle_hints():
+    team = _SwarmTeam()
+
+    def prepare(app):
+        app._team = team
+        team.worker_busy = True
+        app._viewing = "worker"
+        app._expanded_view = "teammates"
+
+    assert _plain(_status_left(lambda: team, prepare)) == \
+        "esc to interrupt \u00b7 ctrl+t to hide"
+
+
+def test_the_shortcut_hint_steps_back_while_typing():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            idle = _plain(str(pilot.app.query_one("#status").content))
+            await pilot.press("h", "i")
+            await pilot.pause()
+            typing = _plain(str(pilot.app.query_one("#status").content))
+            return idle, typing
+
+    idle, typing = asyncio.run(scenario())
+    assert idle == "? for shortcuts"
+    assert typing == ""
+
+
+def _row1(builder=_builder, prepare=None, size=(120, 40),
+          window: int = 0) -> str:
+    """The first readout row with the model's context window pinned."""
+    from unittest import mock
+    from pyclaw import config
+    base = dict(config.load())
+
+    async def scenario():
+        with mock.patch.object(config, 'load',
+                               lambda: {**base, 'contextWindow': window}):
+            async with PyClawApp(builder=builder).run_test(size=size) as pilot:
+                await pilot.pause()
+                if prepare is not None:
+                    prepare(pilot.app)
+                pilot.app._render_readouts()
+                return _plain(str(pilot.app.query_one("#hud").content))
+
+    return asyncio.run(scenario())
+
+
+def _row2(builder=_builder, prepare=None, git: str = '') -> str:
+    """The second readout row with git's answer pinned."""
+    from unittest import mock
+    from pyclaw import tui as tui_module
+
+    async def scenario():
+        with mock.patch.object(tui_module, 'git_status', lambda cwd: git):
+            async with PyClawApp(builder=builder).run_test(
+                    size=(120, 40)) as pilot:
+                await pilot.pause()
+                if prepare is not None:
+                    prepare(pilot.app)
+                pilot.app._render_readouts()
+                return _plain(str(pilot.app.query_one("#hud2").content))
+
+    return asyncio.run(scenario())
+
+
+_status_row2 = _row2
+
+
+def _statusline_rows(builder=_builder, command: str = ''):
+    async def scenario():
+        async with PyClawApp(builder=builder).run_test(size=(120, 40)) as pilot:
+            app = pilot.app
+            for _ in range(20):
+                await pilot.pause(0.05)
+            widget = app.query_one("#statusline")
+            return (widget.display, str(widget.content),
+                    _plain(str(app.query_one("#status").content)))
+
+    return asyncio.run(scenario())
+
+
+def test_an_unconfigured_status_line_takes_no_row(monkeypatch):
+    from pyclaw import statusline
+    monkeypatch.setattr(statusline, 'user_command', lambda: '')
+    assert _statusline_rows() == (False, "", "? for shortcuts")
+
+
+def test_a_configured_status_line_paints_every_output_line(monkeypatch):
+    from pyclaw import statusline
+    monkeypatch.setattr(statusline, 'user_command',
+                        lambda: "printf 'first\\n\\nsecond\\n'")
+    display, text, hints = _statusline_rows()
+    assert display is True
+    assert text == "first\nsecond"
+    assert hints == ""
+
+
+def test_a_configured_status_line_replaces_the_first_row(monkeypatch):
+    from pyclaw import statusline
+    monkeypatch.setattr(statusline, 'user_command',
+                        lambda: "printf 'ready'")
+    team = _GateTeam()
+
+    def prepare(app):
+        app._team = team
+        app._session.set_permission_mode("plan")
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            prepare(pilot.app)
+            for _ in range(20):
+                await pilot.pause(0.05)
+            return (pilot.app.query_one("#statusline").display,
+                    pilot.app.query_one("#hud").display,
+                    _plain(str(pilot.app.query_one("#hud2").content)))
+
+    display, first_row, second_row = asyncio.run(scenario())
+    assert display is True
+    assert first_row is False
+    assert "\u23f8 plan mode on" in second_row
+
+
+def test_the_status_line_reruns_when_the_session_state_changes(monkeypatch):
+    import sys
+    from pyclaw import statusline
+    command = ('"{py}" -c \'import json,sys; '
+               'print(json.load(sys.stdin)["permission_mode"])\'').format(
+        py=sys.executable)
+    monkeypatch.setattr(statusline, 'user_command', lambda: command)
+    team = _GateTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            for _ in range(20):
+                await pilot.pause(0.05)
+            first = str(app.query_one("#statusline").content)
+            app._session.set_permission_mode("plan")
+            app._render_status()
+            for _ in range(30):
+                await pilot.pause(0.05)
+            return first, str(app.query_one("#statusline").content)
+
+    first, second = asyncio.run(scenario())
+    assert first == "default"
+    assert second == "plan"
+
+
+def test_configuring_the_status_line_mid_session_adds_the_row(monkeypatch):
+    from pyclaw import statusline
+    commands = ['']
+    monkeypatch.setattr(statusline, 'user_command', lambda: commands[0])
+    team = _GateTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            for _ in range(20):
+                await pilot.pause(0.05)
+            assert app.query_one("#statusline").display is False
+            commands[0] = "printf 'live'"
+            app._render_status()
+            for _ in range(30):
+                await pilot.pause(0.05)
+            return str(app.query_one("#statusline").content)
+
+    assert asyncio.run(scenario()) == "live"
+
+
+def test_context_note_is_blank_without_a_context_budget():
+    assert _status_right(_builder) == ""
+
+
+def test_context_note_stays_hidden_while_there_is_room():
+    class _RoomyTeam(_FakeTeam):
+        compact_threshold = 200_000
+        context_tokens = 150_000
+        auto_compact = True
+
+    assert _status_right(lambda: _RoomyTeam()) == ""
+
+
+def test_context_note_counts_the_room_left_down_to_auto_compact():
+    class _NearlyFullTeam(_FakeTeam):
+        compact_threshold = 200_000
+        context_tokens = 180_000
+        auto_compact = True
+
+    assert _status_right(lambda: _NearlyFullTeam()) == \
+        "[dim]10% until auto-compact[/]"
+
+
+def test_context_note_asks_for_a_manual_compact_without_auto_compact():
+    class _NoStrategyTeam(_FakeTeam):
+        compact_threshold = 200_000
+        context_tokens = 190_000
+
+    assert _status_right(lambda: _NoStrategyTeam()) == (
+        "[error]Context low (5% remaining) \u00b7 "
+        "Run /compact to compact & continue[/]")
+
+
+def _meter_team(used: int):
+    """A team whose last response measured `used` tokens."""
+    class _Metered(_FakeTeam):
+        def last_usage(self):
+            class _U:
+                prompt_tokens = used
+                completion_tokens = 0
+            return _U()
+    return _Metered
+
+
+def test_the_first_row_leads_with_the_model_and_its_context_meter():
+    assert _row1(lambda: _meter_team(68_000)(), window=200_000).startswith(
+        "m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34%")
+
+
+def test_the_note_stays_on_the_footer_while_its_own_row():
+    """The compact warning keeps the footer's right edge; the meter moved up to
+    the readout row, so the two no longer compete for one slot."""
+    class _TightTeam(_meter_team(100_000)):
+        compact_threshold = 200_000
+        context_tokens = 190_000
+
+    assert _plain(_status_right(lambda: _TightTeam(),
+                                window=200_000)) == (
+        "Context low (5% remaining) \u00b7 Run /compact to compact & continue")
+    assert "│█████░░░░░│ 50%" in _row1(lambda: _TightTeam(), window=200_000)
+
+
+def test_the_first_row_shortens_its_meters_on_a_narrow_terminal():
+    assert _row1(lambda: _meter_team(80_000)(), window=200_000,
+                 size=(60, 40)).startswith("m \u00b7 thinking off \u00b7 │██░░░│ 40%")
+
+
+def test_a_resized_terminal_gets_meters_of_the_right_length():
+    async def scenario():
+        async with PyClawApp(
+                builder=lambda: _meter_team(68_000)()
+                ).run_test(size=(120, 40)) as pilot:
+            from unittest import mock
+            from pyclaw import config
+            base = dict(config.load())
+            with mock.patch.object(config, 'load',
+                                   lambda: {**base, 'contextWindow': 200_000}):
+                await pilot.pause()
+                wide = _plain(str(pilot.app.query_one("#hud").content))
+                await pilot.resize_terminal(60, 40)
+                await pilot.pause()
+                pilot.app._render_readouts()
+                return wide, _plain(str(pilot.app.query_one("#hud").content))
+
+    wide, narrow = asyncio.run(scenario())
+    assert "│███░░░░░░░│ 34%" in wide
+    assert "│███░░░░░░░│ 34%" not in narrow
+    assert "│██░░░│ 34%" in narrow
+
+
+def _hud_row(git: str = '', prepare=None, size: tuple = (80, 40)) -> str:
+    """The HUD line with git's answer pinned to `git`."""
+    from unittest import mock
+    from pyclaw import tui as tui_module
+
+    async def scenario():
+        with mock.patch.object(tui_module, 'git_status', lambda cwd: git):
+            async with PyClawApp(builder=_builder).run_test() as pilot:
+                await pilot.pause()
+                await pilot.resize_terminal(*size)
+                if prepare is not None:
+                    prepare(pilot.app)
+                pilot.app._render_readouts()
+                return _plain(str(pilot.app.query_one("#hud").content))
+
+    return asyncio.run(scenario())
+
+
+def test_the_first_row_carries_the_usage_bar_and_its_counts():
+    """No context meter here: with no window configured there is nothing for
+    the bar to measure against."""
+    assert _row1() == (
+        "m \u00b7 thinking off \u00b7 │▒▒▒▒▒▓▓▓██│ \u00b7 in: 1.9k  out: 500  "
+        "cache: 63%  total: 2.4k \u00b7 0 msg \u00b7 \u23f1 0s")
+
+
+def test_the_first_row_ends_with_the_time_worked():
+    def prepare(app):
+        app._hud_started = time.monotonic() - 754
+
+    assert _row1(prepare=prepare).endswith("\u00b7 \u23f1 12m 34s")
 
 
 def test_status_shows_esc_to_interrupt_while_running():
@@ -492,10 +983,12 @@ def test_status_has_no_model_or_thinking_segments():
 
 
 def test_fmt_compacts():
+    """Trailing zeros go, the way the reference's compact numbers do."""
     from pyclaw.tui import _format_count as fmt
     assert fmt(900) == "900"
-    assert fmt(1000) == "1.0k"
+    assert fmt(1000) == "1k"
     assert fmt(1901) == "1.9k"
+    assert fmt(48_000) == "48k"
     assert fmt(1_200_000) == "1.2m"
 
 
@@ -582,7 +1075,7 @@ def test_subagent_progress_renders_tree_line():
             assert "Sub-agents" in tasks
             assert "[bold]coder[/]" in tasks
             assert "1 tool use" in tasks
-            assert "2.0k tokens" in tasks
+            assert "2k tokens" in tasks
             assert "Done" in tasks
     asyncio.run(scenario())
 
@@ -928,7 +1421,9 @@ def test_slash_menu_shows_and_tab_completes():
             assert "/model" in str(suggest.content)
             await pilot.press("tab")
             await pilot.pause()
-            assert app.query_one("#input", Input).value == "/model "
+            inp = app.query_one("#input", Input)
+            assert inp.value == "/model "
+            assert inp.cursor_position == len("/model ")
             assert not suggest.display
     asyncio.run(scenario())
 
@@ -949,7 +1444,9 @@ def test_slash_menu_enter_executes_noarg_and_waits_for_args():
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            assert app.query_one("#input", Input).value == "/model "
+            inp = app.query_one("#input", Input)
+            assert inp.value == "/model "
+            assert inp.cursor_position == len("/model ")
             assert not app.query_one("#suggest", Static).display
     asyncio.run(scenario())
 
@@ -1257,6 +1754,10 @@ class _SwarmTeam(_FakeTeam):
         return "lead answer"
 
 
+class _GateSwarm(_GateTeam, _SwarmTeam):
+    pass
+
+
 async def _run_turn(pilot, text="go", rounds=8):
     pilot.app.query_one(Input).value = text
     await pilot.press("enter")
@@ -1352,6 +1853,167 @@ def test_page_keys_scroll_conversation():
                 await pilot.pause()
             assert app._follow is True
             assert app._hint is None
+    asyncio.run(scenario())
+
+
+def _half(view) -> int:
+    return max(1, view.scrollable_content_region.height // 2)
+
+
+def test_page_keys_scroll_half_a_viewport():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            for i in range(40):
+                await app._append_block(f"line {i}")
+            await pilot.pause()
+            conv = app._conv()
+            conv.scroll_end(animate=False)
+            await pilot.pause()
+            step = _half(conv)
+            assert step < conv.scrollable_content_region.height
+            bottom = conv.scroll_y
+            await pilot.press("pageup")
+            await pilot.pause()
+            assert bottom - conv.scroll_y == step
+            await pilot.press("pagedown")
+            await pilot.pause()
+            assert conv.scroll_y == bottom
+    asyncio.run(scenario())
+
+
+def test_the_transcript_reads_with_pager_keys():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(100, 24)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            for i in range(40):
+                await app._append_block(f"line {i}")
+            await pilot.pause()
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            view = app.screen.query_one("#transcript")
+            assert view.max_scroll_y > 0
+            await pilot.press("g")
+            await pilot.pause()
+            assert view.scroll_y == 0
+            await pilot.press("j")
+            await pilot.pause()
+            assert view.scroll_y == 1
+            await pilot.press("k")
+            await pilot.pause()
+            assert view.scroll_y == 0
+            await pilot.press("ctrl+d")
+            await pilot.pause()
+            assert view.scroll_y == _half(view)
+            await pilot.press("ctrl+u")
+            await pilot.pause()
+            assert view.scroll_y == 0
+            await pilot.press("space")
+            await pilot.pause()
+            assert view.scroll_y == view.scrollable_content_region.height
+            await pilot.press("b")
+            await pilot.pause()
+            assert view.scroll_y == 0
+            await pilot.press("G")
+            await pilot.pause()
+            assert view.scroll_y == view.max_scroll_y
+            assert type(app.screen).__name__ == "TranscriptScreen"
+    asyncio.run(scenario())
+
+
+def test_the_help_screen_documents_the_pager_keys():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("?")
+            await pilot.pause()
+            return "".join(str(w.content)
+                           for w in pilot.app.screen.query_one(
+                               "#help").children)
+
+    body = asyncio.run(scenario())
+    assert "Reading the transcript" in body
+    for key in ("j", "k", "g", "G", "b", "ctrl+u", "ctrl+d", "space"):
+        assert f"  {key}  " in body
+
+
+def test_the_status_row_is_painted_as_soon_as_it_is_mounted():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            if app._spin_timer is not None:
+                app._spin_timer.stop()
+            app._turn_verb = "Thinking"
+            await app._mount_spinner()
+            return str(app._think["widget"].content)
+
+    frame = asyncio.run(scenario())
+    assert "Thinking…" in frame
+
+
+def test_a_leading_blank_delta_keeps_the_status_row():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
+            await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
+                                           data={"delta": "\n"}))
+            assert app._think is not None
+            assert str(app._think["widget"].content).strip()
+            await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
+                                           data={"delta": "answer"}))
+            assert app._think is None
+            assert "answer" in _flatten(app)
+    asyncio.run(scenario())
+
+
+def test_the_status_row_hands_over_to_the_tool_row():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
+            alive = []
+            real = app._add_tool
+
+            async def spy(ev):
+                alive.append(app._think is not None)
+                await real(ev)
+
+            app._add_tool = spy
+            await app._handle(RuntimeEvent(
+                AGENT_TOOL_CALL, agent="lead",
+                data={"tool": "Grep", "input": {"pattern": "x"},
+                      "tool_use_id": "g1"}))
+            rows = [_block_text(w) for w in app._conv().children if w.display]
+            assert alive == [True]
+            assert all(row.strip() for row in rows)
+            assert "Search" in rows[-1]
+    asyncio.run(scenario())
+
+
+def test_the_status_row_outlives_the_leader_while_teammates_run():
+    team = _TeammateTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            team.worker_busy = True
+            await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
+            await app._handle(RuntimeEvent(AGENT_TURN_FINISHED, agent="lead"))
+            assert app._think is not None
+            assert str(app._think["widget"].content).strip()
+            team.worker_busy = False
+            for _ in range(6):
+                await pilot.pause()
+                await asyncio.sleep(0.05)
+            assert app._think is None
+            assert "Worked for" in _flatten(app)
     asyncio.run(scenario())
 
 
@@ -2150,8 +2812,8 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
 
     height, conv, footer, input_y = asyncio.run(scenario())
     assert footer == 1
-    assert conv == height - 4
-    assert input_y == height - 3
+    assert conv == height - 6
+    assert input_y == height - 5
 
 
 def test_bash_collapsible_classification():
@@ -2271,9 +2933,9 @@ def test_every_spinner_verb_renders_on_one_line():
                 rendered.append(app._spinner_text("\u273b"))
             return rendered
 
-    for text in asyncio.run(scenario()):
+    for verb, text in zip(SPINNER_VERBS, asyncio.run(scenario())):
         assert "\n" not in text
-        assert "esc to interrupt" in text
+        assert _plain(text) == f"\u273b {verb}\u2026 (0s)"
 
 
 def test_leading_blank_lines_do_not_orphan_the_bullet():
@@ -2427,6 +3089,85 @@ def test_the_accent_colour_follows_the_launch_palette(monkeypatch):
     computed, brand = asyncio.run(scenario())
     assert brand == banner.brand((banner.BLUE, banner.YELLOW, 60.0))
     assert computed == brand
+
+
+def test_the_user_message_band_follows_the_launch_palette(monkeypatch):
+    from pyclaw import banner
+    _gradient_cfg(monkeypatch)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await pilot.pause()
+            block = await pilot.app._append_user("hello")
+            await pilot.pause()
+            return block.styles.background.hex, pilot.app._triple
+
+    band, triple = asyncio.run(scenario())
+    assert band == banner.dimmed(triple, banner.BAND_LIGHTNESS)
+    assert band.lower() != "#373737"
+
+
+def test_the_prompt_frame_is_the_palette_dimmed_to_a_rule(monkeypatch):
+    from pyclaw import banner
+    _gradient_cfg(monkeypatch)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            frame = app.query_one("#prompt")
+            return (frame.styles.border_top[1].hex,
+                    frame.styles.border_bottom[1].hex, app._triple)
+
+    top, bottom, triple = asyncio.run(scenario())
+    assert top == bottom == banner.dimmed(triple, banner.RULE_LIGHTNESS)
+    assert max(banner.hex_to_rgb(top)) == banner.RULE_LIGHTNESS
+
+
+def test_the_prompt_pointer_is_the_accent_and_dims_while_working(monkeypatch):
+    from pyclaw import banner
+    _gradient_cfg(monkeypatch)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            pointer = app.query_one("#prompt-pointer")
+            idle = (pointer.styles.color.hex, bool(pointer.styles.text_style))
+            app._processing = "hi"
+            app._render_status()
+            await pilot.pause()
+            busy = (pointer.styles.color.hex, bool(pointer.styles.text_style))
+            app._processing = None
+            app._render_status()
+            await pilot.pause()
+            return idle, busy, (pointer.styles.color.hex,
+                                bool(pointer.styles.text_style))
+
+    idle, busy, back = asyncio.run(scenario())
+    brand = banner.brand((banner.BLUE, banner.YELLOW, 60.0))
+    assert idle == back == (brand, False)
+    assert busy == (brand, True)
+
+
+def test_the_prompt_frame_takes_the_viewed_teammate_s_colour():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._enter_agent_view(app._agent_by_name("worker"))
+            await pilot.pause()
+            frame = app.query_one("#prompt")
+            pointer = app.query_one("#prompt-pointer")
+            border = frame.styles.border_top[1].hex
+            colour = pointer.styles.color.hex
+            await app._exit_agent_view()
+            await pilot.pause()
+            return border, colour, app.query_one("#prompt").styles.border_top[1].hex
+
+    border, colour, restored = asyncio.run(scenario())
+    assert border == colour
+    assert restored != border
 
 
 def test_the_default_config_picks_a_fresh_palette_per_app():
@@ -3222,3 +3963,32 @@ def test_a_killed_call_is_not_narrated_twice():
     assert asyncio.run(run(True)) == []
     assert asyncio.run(run(False)) == [
         'Error: hook blocked tool "create_agent": nope.']
+
+
+def test_a_late_timer_refresh_does_not_paint_into_a_torn_down_dom():
+    async def start():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            return pilot.app
+
+    app = asyncio.run(start())
+    app._render_readouts()
+    asyncio.run(app._refresh_statusline())
+
+
+def test_a_row_drops_its_tail_instead_of_being_cut_through_a_number():
+    """Each readout row is one line tall, so what has no room is dropped from
+    the right rather than clipped mid-digit."""
+    narrow = _row1(size=(60, 40))
+    assert len(narrow) <= 58
+    assert "msg" not in narrow
+    assert narrow.startswith("m \u00b7 thinking off")
+
+
+def test_the_second_row_holds_the_directory_then_git():
+    row = _row2(git="# branch.head main\n1 N... pyclaw/tui.py\n")
+    assert row.endswith(' \u00b7 main \u00b11')
+    assert len(row.split(' \u00b7 ')) == 2
+
+
+def test_the_second_row_leaves_the_branch_out_outside_a_repository():
+    assert "\u00b1" not in _row2()

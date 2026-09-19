@@ -188,7 +188,29 @@ def test_mode_switch_commands_removed():
     assert "Unknown command" in out
     out = asyncio.run(_call("/team", _fake_session()))
     assert "Unknown command" in out
-    assert "/agent" not in slash.HELP and "/team" not in slash.HELP
+    names = {entry['name'] for entry in slash.COMMANDS}
+    assert 'agent' not in names and 'team' not in names
+
+
+def test_statusline_command_queues_the_setup_agent():
+    class _S:
+        pass
+
+    info, prompt = asyncio.run(_call("/statusline", _S()))
+    assert isinstance(info, str) and info
+    assert "statusline-setup" in prompt
+    assert "Configure my statusLine from my shell PS1 configuration" in prompt
+    assert "/statusline" in slash.HELP
+
+
+def test_statusline_command_forwards_the_user_instructions():
+    class _S:
+        pass
+
+    _, prompt = asyncio.run(_call("/statusline show the model in green", _S()))
+    assert "show the model in green" in prompt
+    assert "statusline-setup" in prompt
+    assert "Configure my statusLine" not in prompt
 
 
 def test_compact_calls_session_compactor():

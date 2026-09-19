@@ -332,7 +332,9 @@ def build_team(
     if memory:
         team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)
 
-    from .agent_defs import load_agent_defs
+    from .agent_defs import builtin_agent_defs, load_agent_defs
+    for defn in builtin_agent_defs(all_tools=resolved):
+        team.register_agent_definition(defn)
     for defn in load_agent_defs(cwd, all_tools=resolved):
         team.register_agent_definition(defn)
 
@@ -431,6 +433,12 @@ class Session:
         return len(self._team.agents) - 1
 
     @property
+    def agent_types(self) -> list:
+        """(agent type, description) for every definition this session can
+        delegate to."""
+        return self._team.agent_defs.describe()
+
+    @property
     def total_usage(self) -> dict:
         return {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
 
@@ -457,7 +465,28 @@ class Session:
 
     @property
     def compact_threshold(self) -> int:
-        return int(getattr(self._team, 'compact_threshold', 0) or 0)
+        return int(self._team.compact_threshold)
+
+    @property
+    def context_tokens(self) -> int:
+        return int(self._team.context_tokens)
+
+    @property
+    def context_window(self) -> int:
+        """The model's input budget; 0 when unset, which hides the meter."""
+        from .config import load
+        return int(load().get('contextWindow') or 0)
+
+    @property
+    def used_context(self) -> int:
+        """Tokens the last response measured against the window, input plus
+        output. Cached reads are already inside ``prompt_tokens``."""
+        last = self._team.last_usage()
+        return int(last.prompt_tokens + last.completion_tokens)
+
+    @property
+    def auto_compact(self) -> bool:
+        return bool(self._team.auto_compact)
 
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:

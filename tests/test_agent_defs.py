@@ -2,11 +2,22 @@ import asyncio
 import tempfile
 from pathlib import Path
 
+import pytest
+
 from conippets import json  # noqa: F401
 
 from pyclaw.agent_defs import load_agent_defs
 from pyclaw.agents import build_team
 from pyclaw.tools.coding import CODING_TOOLS
+
+
+@pytest.fixture(autouse=True)
+def _private_user_agents_dir(tmp_path, monkeypatch):
+    """Keeps every test's user-scope agents inside its own temporary home."""
+    from pyclaw import agent_defs as mod
+    user = tmp_path / "home" / "agents"
+    monkeypatch.setattr(mod, "_user_agents_dir", lambda: user)
+    return user
 
 
 def _write_agent(root: Path, filename: str, text: str):
@@ -93,3 +104,272 @@ def test_build_team_registers_agent_defs_and_lists_in_tool_description(tmp_path)
     assert defn.agent_type == 'reviewer'
     assert 'reviewer' in description
     assert 'Reviews code changes' in description
+
+
+def test_the_status_line_setup_agent_is_a_builtin(tmp_path):
+    defn = asyncio.run(_agent_def(tmp_path, 'statusline-setup'))
+    assert {t.name for t in defn.tools} == {'Read', 'Edit'}
+    assert 'statusLine' in defn.system_prompt
+    assert 'context_window' in defn.system_prompt
+    assert 'PS1' in defn.system_prompt
+    assert 'status line' in defn.description
+
+
+def test_builtins_are_offered_to_the_model_by_build_team(tmp_path):
+    async def main():
+        team = build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
+        schema = next(t for t in team.tool_schemas(team.tool_context)
+                      if t['name'] == 'create_agent')
+        return team.agent_defs.find('statusline-setup'), schema['description']
+
+    defn, description = asyncio.run(main())
+    assert defn is not None
+    assert 'statusline-setup' in description
+
+
+def test_a_user_definition_replaces_the_builtin(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    user_dir = tmp_path / 'user-agents'
+    _write_agent(user_dir, 'statusline-setup.md', '''---
+name: statusline-setup
+description: Local status line setup
+tools: Read
+---
+
+Local override.
+''')
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: user_dir)
+    defn = asyncio.run(_agent_def(tmp_path, 'statusline-setup'))
+    assert {t.name for t in defn.tools} == {'Read'}
+    assert defn.system_prompt == 'Local override.'
+
+
+async def _agent_def(cwd, agent_type):
+    team = build_team('agnes', 'agnes-2.5-flash', cwd=str(cwd))
+    return team.agent_defs.get(agent_type)
+
+
+ALL_TOOLS = list(CODING_TOOLS)
+
+
+def _project(tmp_path, filename, text):
+    root = tmp_path / '.pyclaw' / 'agents'
+    _write_agent(root, filename, text)
+    return root
+
+
+def test_discovery_lists_builtins_then_user_then_project(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import discover
+    user = tmp_path / 'user-agents'
+    _write_agent(user, 'reviewer.md', REVIEWER)
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: user)
+    _project(tmp_path, 'planner.md', NO_TOOLS)
+
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    assert [(r.agent_type, r.scope) for r in rows] == [
+        ('statusline-setup', 'built-in'), ('reviewer', 'user'),
+        ('planner', 'project')]
+    assert rows[0].path is None
+    assert rows[2].path.name == 'planner.md'
+
+
+def test_discovery_marks_the_scope_that_wins(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import discover
+    user = tmp_path / 'user-agents'
+    _write_agent(user, 'reviewer.md', REVIEWER)
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: user)
+    _project(tmp_path, 'reviewer.md', REVIEWER)
+    rows = {r.scope: r for r in discover(str(tmp_path), all_tools=ALL_TOOLS)
+            if r.agent_type == 'reviewer'}
+    assert rows['user'].shadowed_by == 'project'
+    assert rows['project'].shadowed_by is None
+
+
+def test_a_builtin_can_be_shadowed_by_a_user_file(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import discover
+    _write_agent(tmp_path / 'user-agents', 'statusline-setup.md', REVIEWER
+                 .replace('name: reviewer', 'name: statusline-setup'))
+    monkeypatch.setattr(mod, '_user_agents_dir',
+                        lambda: tmp_path / 'user-agents')
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    assert rows[0].shadowed_by == 'user'
+
+
+def test_writing_an_agent_produces_a_file_the_loader_reads_back(tmp_path):
+    from pyclaw.agent_defs import write_agent
+    from chatchat.core.agents import AgentDefinition
+    defn = AgentDefinition('worker',
+                           system_prompt='Do the work carefully.\nMore detail.',
+                           tools=[t for t in ALL_TOOLS if t.name in ('Read',)],
+                           description='He said "hi" and\nkept going',
+                           model='some-model')
+    path = write_agent(defn, 'project', str(tmp_path), all_tools=ALL_TOOLS)
+    assert path == tmp_path / '.pyclaw' / 'agents' / 'worker.md'
+    loaded = {d.agent_type: d for d in load_agent_defs(str(tmp_path),
+                                                       all_tools=ALL_TOOLS)}
+    assert loaded['worker'].description == 'He said "hi" and\nkept going'
+    assert [t.name for t in loaded['worker'].tools] == ['Read']
+    assert loaded['worker'].model == 'some-model'
+    assert 'Do the work carefully.' in loaded['worker'].system_prompt
+
+
+def test_an_all_tools_agent_omits_the_tools_line(tmp_path):
+    from pyclaw.agent_defs import write_agent
+    from chatchat.core.agents import AgentDefinition
+    text = write_agent(AgentDefinition('wide', system_prompt='prompt body',
+                                       tools=list(ALL_TOOLS)),
+                       'user', str(tmp_path), all_tools=ALL_TOOLS
+                       ).read_text(encoding='utf-8')
+    assert 'tools:' not in text
+
+
+def test_writing_over_an_existing_file_in_the_same_scope_refuses(tmp_path):
+    from pyclaw.agent_defs import write_agent
+    from chatchat.core.agents import AgentDefinition
+    _project(tmp_path, 'worker.md', REVIEWER)
+    with pytest.raises(FileExistsError) as caught:
+        write_agent(AgentDefinition('worker', system_prompt='x'),
+                    'project', str(tmp_path), all_tools=ALL_TOOLS)
+    assert 'already exists' in str(caught.value)
+
+
+def test_removing_an_agent_deletes_only_that_scope(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import discover, remove_agent
+    _write_agent(tmp_path / 'user-agents', 'reviewer.md', REVIEWER)
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: tmp_path / 'user-agents')
+    _project(tmp_path, 'reviewer.md', REVIEWER)
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    project = [r for r in rows if r.agent_type == 'reviewer'
+               and r.scope == 'project'][0]
+    remove_agent(project)
+    assert not project.path.exists()
+    assert (tmp_path / 'user-agents' / 'reviewer.md').exists()
+
+
+def test_a_builtin_cannot_be_removed(tmp_path):
+    from pyclaw.agent_defs import discover, remove_agent
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    builtin = [r for r in rows if r.scope == 'built-in'][0]
+    with pytest.raises(ValueError):
+        remove_agent(builtin)
+
+
+def _draft(name='code-reviewer', prompt=None, tools=('Read', 'Grep'),
+           description='Reviews changes for defects'):
+    from chatchat.core.agents import AgentDefinition
+    chosen = [t for t in ALL_TOOLS if t.name in tools]
+    return AgentDefinition(
+        name,
+        system_prompt=prompt or ('Report only real defects, with the file and '
+                                 'line number for each one.'),
+        tools=chosen, description=description)
+
+
+def test_validation_reports_name_prompt_and_tool_problems():
+    from pyclaw.agent_defs import validate
+    errors, warnings = validate(_draft(name='ab', prompt='too short',
+                                       description='hi'),
+                                known_tools=['Read', 'Edit'], taken=[])
+    assert any('at least 3 characters' in e for e in errors)
+    assert any('too short' in e for e in errors)
+    assert any('Description' in w for w in warnings)
+
+
+def test_validation_accepts_a_well_formed_draft():
+    from pyclaw.agent_defs import validate
+    errors, warnings = validate(_draft(), known_tools=['Read', 'Grep'],
+                                taken=[])
+    assert errors == []
+    assert warnings == []
+
+
+def test_validation_flags_an_empty_tool_pick_and_a_cross_scope_twin():
+    from pyclaw.agent_defs import validate
+    errors, warnings = validate(_draft(tools=()), known_tools=['Read'],
+                                taken=[('code-reviewer', 'user')])
+    assert any('tool' in e for e in errors)
+    assert any('already exists in User agents' in e for e in errors)
+    assert warnings == []
+
+
+def test_the_identifier_step_rejects_a_name_that_cannot_be_a_file():
+    from pyclaw.agent_defs import validate_type
+    assert validate_type('') == 'Agent type is required'
+    assert validate_type('my agent') is not None
+    assert 'hyphens' in validate_type('my agent')
+    assert validate_type('code-reviewer') is None
+
+
+def test_the_detail_view_shows_a_display_path_per_scope(tmp_path):
+    from pyclaw.agent_defs import BUILT_IN, AgentEntry, relative_path
+    from chatchat.core.agents import AgentDefinition
+    built_in = AgentEntry('a', BUILT_IN, None, AgentDefinition('a'))
+    project = AgentEntry('a', 'project', tmp_path / 'a.md', AgentDefinition('a'))
+    user = AgentEntry('a', 'user', tmp_path / 'a.md', AgentDefinition('a'))
+    assert relative_path(built_in) == 'Built-in agents'
+    assert relative_path(project) == '.pyclaw/agents/a.md'
+    assert relative_path(user) == '~/.pyclaw/agents/a.md' 
+
+
+def test_tools_are_grouped_by_their_kind():
+    from pyclaw.agent_defs import tool_buckets
+    names = [t.name for t in ALL_TOOLS]
+    assert tool_buckets(names) == [
+        ('Read-only tools', ['Read', 'Glob', 'Grep', 'TaskOutput', 'TaskStop']),
+        ('Edit tools', ['Write', 'Edit', 'MultiEdit']),
+        ('Execution tools', ['Bash']),
+        ('Other tools', ['LS'])]
+    assert tool_buckets([]) == []
+
+
+def test_the_panel_groups_by_scope_and_sorts_each_group(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import discover, list_order
+    user = tmp_path / 'user-agents'
+    _write_agent(user, 'zeta.md', REVIEWER)
+    _write_agent(user, 'beta.md', REVIEWER.replace('reviewer', 'beta'))
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: user)
+    _project(tmp_path, 'alpha.md', REVIEWER.replace('reviewer', 'alpha'))
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    assert [(r.agent_type, r.scope) for r in list_order(rows)] == [
+        ('beta', 'user'), ('reviewer', 'user'),
+        ('alpha', 'project'), ('statusline-setup', 'built-in')]
+
+
+def test_the_header_count_excludes_shadowed_scopes(tmp_path, monkeypatch):
+    from pyclaw import agent_defs as mod
+    from pyclaw.agent_defs import agent_count, discover
+    user = tmp_path / 'user-agents'
+    _write_agent(user, 'reviewer.md', REVIEWER)
+    monkeypatch.setattr(mod, '_user_agents_dir', lambda: user)
+    _project(tmp_path, 'reviewer.md', REVIEWER)
+    rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
+    assert agent_count(rows) == 2
+
+
+def test_an_agent_without_a_model_shows_the_team_default():
+    from pyclaw.agent_defs import model_display
+    from chatchat.core.agents import AgentDefinition
+    assert model_display(AgentDefinition('a'), 'team-model') == 'team-model'
+    assert model_display(AgentDefinition('a', model='other'), 'team-model') \
+        == 'other'
+
+
+def test_editing_an_agent_rewrites_its_own_file(tmp_path):
+    from pyclaw.agent_defs import load_agent_defs, write_agent
+    from chatchat.core.agents import AgentDefinition
+    _project(tmp_path, 'worker.md', REVIEWER)
+    write_agent(AgentDefinition('worker', system_prompt='New body.',
+                                tools=[t for t in ALL_TOOLS
+                                       if t.name == 'Read'],
+                                description='Reviews code for real defects'),
+                'project', str(tmp_path), all_tools=ALL_TOOLS,
+                overwrite=True)
+    loaded = {d.agent_type: d for d in
+              load_agent_defs(str(tmp_path), all_tools=ALL_TOOLS)}
+    assert loaded['worker'].system_prompt == 'New body.'
+    assert [t.name for t in loaded['worker'].tools] == ['Read']

@@ -27,6 +27,9 @@ MIN_VALUE = 0.85
 ANGLE_RANGE = (15.0, 105.0)
 CELL_RATIO = 2.0
 
+BAND_LIGHTNESS = 55
+RULE_LIGHTNESS = 136
+
 LAST_ROW = len(WORDMARK) - 1
 LAST_COL = max(len(row) for row in WORDMARK) - 1
 
@@ -100,3 +103,10 @@ def palette(cfg: dict) -> tuple:
 def brand(triple: tuple) -> str:
     top, bottom, _ = triple
     return rgb_to_hex(ramp(top, bottom, 0.5))
+
+
+def dimmed(triple: tuple, lightness: int) -> str:
+    """The brand's midpoint scaled until its brightest channel hits lightness."""
+    top, bottom, _ = triple
+    mid = ramp(top, bottom, 0.5)
+    return rgb_to_hex(tuple(round(c * lightness / max(mid)) for c in mid))
