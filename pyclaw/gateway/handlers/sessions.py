@@ -13,7 +13,7 @@ async def handle_sessions_get(params: Dict[str, Any], context: Dict[str, Any]) -
     
     session = runtime.get_session(key)
     if not session:
-        return {"error": "Session not found"}
+        return {"error": "No such session"}
     
     return {
         "key": key,

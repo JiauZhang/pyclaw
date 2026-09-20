@@ -43,12 +43,12 @@ def get_max_output_chars() -> int:
                     MAX_OUTPUT_UPPER_LIMIT)
 
 EXIT_CODE_MESSAGES = {
-    'grep': (1, 'No matches found'),
-    'rg': (1, 'No matches found'),
-    'find': (1, 'Some directories were inaccessible'),
-    'diff': (1, 'Files differ'),
-    'test': (1, 'Condition is false'),
-    '[': (1, 'Condition is false'),
+    'grep': (1, 'Nothing matched'),
+    'rg': (1, 'Nothing matched'),
+    'find': (1, 'Parts of the tree could not be read'),
+    'diff': (1, 'The files are not identical'),
+    'test': (1, 'The condition did not hold'),
+    '[': (1, 'The condition did not hold'),
 }
 
 
@@ -83,7 +83,7 @@ def _truncate(text: str) -> str:
     if len(text) <= limit:
         return text
     rest = text[limit:]
-    note = f'{rest.count(chr(10)) + 1} lines truncated'
+    note = f'{rest.count(chr(10)) + 1} more lines left out'
     path = _persist_output(text)
     if path:
         note += f', full output: {path}'
@@ -156,12 +156,12 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
     except subprocess.TimeoutExpired:
         if autobackground_allowed(text):
             task_id = adopt(text, process, output_path)
-            return (f'Command timed out after {limit}ms and was moved to the '
-                    f'background with ID: {task_id}. Read its output with '
-                    f'TaskOutput.')
+            return (f'{limit}ms passed with the command still running, so it moved '
+                    f'to the background as {task_id}. Read its output with '
+                    'TaskOutput.')
         _kill(process)
         process.wait()
-        return _join(f'Error: command timed out after {limit}ms',
+        return _join(f'Error: the command ran past {limit}ms',
                      _clean(_read_output(output_path)))
     body = _clean(_read_output(output_path))
     code = process.returncode
@@ -172,7 +172,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
     if message is not None:
         return ToolResult(text=_join(message, body),
                           meta={'exit_code': code})
-    return ToolResult(text=_join(f'Exit code {code}', body),
+    return ToolResult(text=_join(f'Command exited with {code}', body),
                       meta={'exit_code': code})
 
 
@@ -221,7 +221,6 @@ def Bash(context, command: str, timeout: int | None = None,
     if run_in_background:
         from .background import _output_path, spawn
         task_id = spawn(context.cwd, command)
-        return (f'Command running in background with ID: {task_id}. '
-                f'Output is being written to: {_output_path(task_id)}. '
-                'Read the output with TaskOutput.')
+        return (f'Started in the background as {task_id}; output goes to '
+                f'{_output_path(task_id)}. Read it with TaskOutput.')
     return run_command(context.cwd, command, timeout)

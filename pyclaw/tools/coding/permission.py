@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import fnmatch
 import os
 from dataclasses import dataclass
@@ -15,33 +16,21 @@ from .shell_rules import (bash_rule_matches, is_dangerous_removal,
 
 BASH_TOOL = 'Bash'
 
-# Calls that orchestrate the agents this one already owns. They are not part
-# of the coding tool registry, so without this they fell through to the
-# "unknown tool" branch and asked the human every single time. Spawning a
-# sub-agent is allowed in every mode, send_message only asks when the address
-# crosses machines, and task_stop is scoped to the caller's own children.
-#
-# An explicit `ask`/`deny` rule still wins, because decide() checks the rule
-# buckets first — so this only changes the default.
 AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop'})
 
 REJECT_MESSAGE = (
-    "The user doesn't want to proceed with this tool use. The tool use was "
-    "rejected (eg. if it was a file edit, the new_string was NOT written to "
-    "the file). STOP what you are doing and wait for the user to tell you "
-    "how to proceed.")
+    "The user refused this tool call, so nothing ran; a refused edit left the "
+    "file exactly as it was. Stop here and wait for them to say what next.")
 REJECT_MESSAGE_WITH_REASON_PREFIX = (
-    "The user doesn't want to proceed with this tool use. The tool use was "
-    "rejected (eg. if it was a file edit, the new_string was NOT written to "
-    "the file). To tell you how to proceed, the user said:\n")
+    "The user refused this tool call, so nothing ran; a refused edit left the "
+    "file exactly as it was. What they said instead:\n")
 SUBAGENT_REJECT_MESSAGE = (
-    "Permission for this tool use was denied. The tool use was rejected (eg. "
-    "if it was a file edit, the new_string was NOT written to the file). Try "
-    "a different approach or report the limitation to complete your task.")
+    "This tool call was refused, so nothing ran; a refused edit left the file "
+    "exactly as it was. Route around it: try another way, or report the "
+    "blocker in your result and finish the task.")
 SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX = (
-    "Permission for this tool use was denied. The tool use was rejected (eg. "
-    "if it was a file edit, the new_string was NOT written to the file). The "
-    "user said:\n")
+    "This tool call was refused, so nothing ran; a refused edit left the file "
+    "exactly as it was. What they added:\n")
 
 
 def reject_message(feedback: str = '', teammate: bool = False) -> str:
@@ -52,15 +41,20 @@ def reject_message(feedback: str = '', teammate: bool = False) -> str:
             if feedback else REJECT_MESSAGE)
 
 
+def _pre_tool_decision(decision: str, reason: str = '',
+                       context: str = '', updated_input: dict | None = None) -> dict:
+    specific = {'hookEventName': 'PreToolUse', 'permissionDecision': decision}
+    if reason:
+        specific['permissionDecisionReason'] = reason
+    if context:
+        specific['additionalContext'] = context
+    if updated_input:
+        specific['updatedInput'] = updated_input
+    return {'hookSpecificOutput': specific}
+
+
 @dataclass
 class PermissionChoice:
-    """What the human answered an approval with.
-
-    `value` is 'approved', 'dont_ask' or 'denied'; `rule` narrows what
-    'dont_ask' remembers; `feedback` is the free text they attached, which
-    travels to the model either as the reason for the denial or as extra
-    context next to the tool result.
-    """
     value: str
     rule: str | None = None
     feedback: str = ''
@@ -230,6 +224,7 @@ class PermissionController:
         self._deny = merged['deny']
         self.bypass_available = self.mode is PermissionMode.bypass_permissions
         self.request = request
+        self.permission_hooks = None
 
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)
@@ -372,30 +367,69 @@ class PermissionController:
             return 'allow'
         return 'ask'
 
+    async def _hook_decision(self, tool_name: str, tool_input,
+                             tool_use_id: str, agent: str):
+        if self.permission_hooks is None:
+            return None
+        decision = await self.permission_hooks(tool_name, tool_input,
+                                               tool_use_id, agent)
+        if decision is None:
+            return None
+        if decision['behavior'] == 'allow':
+            return _pre_tool_decision('allow',
+                                      updated_input=decision['updated_input'])
+        return _pre_tool_decision(
+            'deny',
+            reason=decision['message'] or 'Permission denied by hook')
+
+    async def _ask_with_hooks(self, tool_name: str, tool_input,
+                              tool_use_id: str, agent: str):
+        prompt = asyncio.create_task(
+            self.request(tool_name, tool_input, tool_use_id=tool_use_id,
+                         agent=agent))
+        if self.permission_hooks is None:
+            return await prompt
+        hooks = asyncio.create_task(self._hook_decision(tool_name, tool_input,
+                                                        tool_use_id, agent))
+        pending = {prompt, hooks}
+        try:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED)
+                if prompt in done:
+                    return prompt.result()
+                decision = hooks.result()
+                if decision is not None:
+                    return decision
+        finally:
+            for task in (prompt, hooks):
+                if not task.done():
+                    task.cancel()
+
     async def authorize(self, tool_name: str, tool_input,
                         mode=None, tool_use_id: str = '',
                         agent: str = '') -> bool | dict:
-        """Decide whether a call may run.
-
-        `request` is called as `await request(tool_name, tool_input,
-        tool_use_id=..., agent=...)`; the id lets the UI attach the pending
-        decision to the tool call the human is being asked about, and `agent`
-        names the teammate that asked, empty for the conversation's own agent.
-        """
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
         if decision == 'allow':
             return True
         if decision == 'deny':
-            return {'decision': 'block',
-                    'reason': f'{tool_name} is not allowed in {mode.value} '
-                              f'mode / by your permission rules.'}
+            return _pre_tool_decision(
+                'deny', reason=f'{tool_name} is not allowed in {mode.value} '
+                               f'mode / by your permission rules.')
         if self.request is None:
-            return {'decision': 'block',
-                    'reason': f'{tool_name} needs approval but no app is '
-                              f'present to ask.'}
-        choice = await self.request(tool_name, tool_input,
-                                    tool_use_id=tool_use_id, agent=agent)
+            decided = await self._hook_decision(tool_name, tool_input,
+                                                tool_use_id, agent)
+            if decided is not None:
+                return decided
+            return _pre_tool_decision(
+                'deny', reason=f'{tool_name} needs approval but no app is '
+                               f'present to ask.')
+        answer = await self._ask_with_hooks(tool_name, tool_input, tool_use_id,
+                                            agent)
+        if isinstance(answer, dict):
+            return answer
+        choice = answer
         if choice.value == 'dont_ask':
             if choice.rule:
                 self.remember_allow(tool_name, tool_input, rule=choice.rule)
@@ -404,6 +438,6 @@ class PermissionController:
         if choice.value in ('approved', 'dont_ask'):
             if not choice.feedback:
                 return True
-            return {'decision': 'allow', 'additionalContext': choice.feedback}
-        return {'decision': 'block',
-                'reason': reject_message(choice.feedback, bool(agent))}
+            return _pre_tool_decision('allow', context=choice.feedback)
+        return _pre_tool_decision(
+            'deny', reason=reject_message(choice.feedback, bool(agent)))

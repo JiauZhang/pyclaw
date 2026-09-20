@@ -122,7 +122,6 @@ def test_dimming_puts_the_brightest_channel_at_the_requested_lightness():
 
 
 def test_dimmed_paint_keeps_the_hue_and_the_contrast_budget():
-    import random
     rng = random.Random(7)
     for _ in range(200):
         for lightness in (banner.BAND_LIGHTNESS, banner.RULE_LIGHTNESS):
@@ -132,27 +131,7 @@ def test_dimmed_paint_keeps_the_hue_and_the_contrast_budget():
             assert len(set(paint)) > 1
 
 
-def test_the_config_defaults_start_with_a_random_palette(tmp_path):
-    from pyclaw import config
-    real = config.__config_file__
-    config.__config_file__ = tmp_path / "config.json"
-    try:
-        config.reload()
-        assert config.load()["banner"]["style"] == "random"
-    finally:
-        config.__config_file__ = real
-        config.reload()
-
-
-def test_the_config_defaults_start_with_a_random_palette(tmp_path):
-    from pyclaw import config
-    real = config.__config_file__
-    config.__config_file__ = tmp_path / "config.json"
-    try:
-        config.reload()
-        cfg = config.load()["banner"]
-        assert cfg["style"] == "random"
-        assert cfg["seed"] is None
-    finally:
-        config.__config_file__ = real
-        config.reload()
+def test_the_config_defaults_start_with_a_random_palette(isolated_config):
+    cfg = isolated_config.load()["banner"]
+    assert cfg["style"] == "random"
+    assert cfg["seed"] is None

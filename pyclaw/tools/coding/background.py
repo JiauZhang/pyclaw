@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import atexit
 import secrets
+import string
 import subprocess
 import tempfile
 import threading
@@ -16,7 +17,7 @@ TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
 TASK_DEFAULT_TIMEOUT_MS = 30_000
 TASK_MAX_TIMEOUT_MS = 600_000
-_TASK_ID_ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+_TASK_ID_ALPHABET = string.ascii_lowercase + string.digits
 
 _tasks: dict = {}
 _notifier = None
@@ -154,12 +155,12 @@ def TaskOutput(context, task_id: str, block: bool = True,
         retrieval, status = 'timeout', 'running'
     else:
         retrieval, status = 'not_ready', 'running'
-    lines = [f'<retrieval_status>{retrieval}</retrieval_status>',
-             f'<task_id>{task_id}</task_id>',
-             '<task_type>shell</task_type>',
-             f'<status>{status}</status>']
+    lines = [f'<fetch_result>{retrieval}</fetch_result>',
+             f'<task_ref>{task_id}</task_ref>',
+             '<task_kind>shell</task_kind>',
+             f'<run_state>{status}</run_state>']
     if code is not None:
-        lines.append(f'<exit_code>{code}</exit_code>')
+        lines.append(f'<return_code>{code}</return_code>')
     body = _tail(task['output']).rstrip('\n')
     lines.append(body if body.strip() else '(no output yet)')
     meta = {'status': status}
@@ -195,5 +196,5 @@ def TaskStop(context, task_id: str) -> str:
         except subprocess.TimeoutExpired:
             pass
     return ToolResult(
-        text=f'Successfully stopped task: {task_id} ({task["command"]})',
+        text=f'Stopped {task_id} ({task["command"]})',
         meta={'stopped': True})

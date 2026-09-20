@@ -43,7 +43,7 @@ async def schedule_task(command: str, when: str, repeat: bool = False) -> str:
     job = schedule(command, when, repeat)
     interval = f' every {job["delay"]:g}s' if repeat else ''
     at = job['next'].strftime('%Y-%m-%d %H:%M:%S')
-    return f"Scheduled {job['id']} to run at {at}{interval}: {command}"
+    return f"Job {job['id']} set for {at}{interval}: {command}"
 
 
 @tool(
@@ -56,7 +56,7 @@ async def list_tasks_tool() -> str:
     if not jobs:
         return 'No scheduled tasks.'
     lines = [f"{j['id']} | next={j['next'].strftime('%H:%M:%S')} | repeat={j['repeat']} | {j['command']}" for j in jobs]
-    return 'Scheduled tasks:\n' + '\n'.join(lines)
+    return 'Queued jobs:\n' + '\n'.join(lines)
 
 
 @tool(
@@ -69,4 +69,5 @@ async def list_tasks_tool() -> str:
     },
 )
 async def cancel_task_tool(task_id: str) -> str:
-    return f"Cancelled {task_id}." if cancel(task_id) else f"Task not found: {task_id}"
+    return (f"Removed {task_id}." if cancel(task_id)
+            else f"No job {task_id}.")

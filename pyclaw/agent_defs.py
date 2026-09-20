@@ -32,30 +32,29 @@ def agents_dir(scope: str, cwd: str) -> Path:
     raise ValueError(f'agents cannot be stored in the {scope} scope')
 
 
-SCOPE_LABELS = {BUILT_IN: 'Built-in agents', USER: 'User agents',
-                PROJECT: 'Project agents'}
+SCOPE_LABELS = {BUILT_IN: 'Bundled agents', USER: 'Your agents',
+                PROJECT: 'This project'}
 SCOPE_ORDER = (USER, PROJECT, BUILT_IN)
 _DISPLAY_DIRS = {USER: '~/.pyclaw/agents', PROJECT: '.pyclaw/agents'}
 
 _READ_ONLY = frozenset({'Glob', 'Grep', 'Read', 'TaskOutput', 'TaskStop'})
 _EDIT = frozenset({'Edit', 'Write', 'MultiEdit'})
 _EXECUTION = frozenset({'Bash'})
-BUCKET_NAMES = ('Read-only tools', 'Edit tools', 'Execution tools',
+BUCKET_NAMES = ('Reading and search', 'Editing files', 'Running commands',
                 'Other tools')
 
 
 def bucket_of(name: str) -> str:
     if name in _READ_ONLY:
-        return 'Read-only tools'
+        return 'Reading and search'
     if name in _EDIT:
-        return 'Edit tools'
+        return 'Editing files'
     if name in _EXECUTION:
-        return 'Execution tools'
+        return 'Running commands'
     return 'Other tools'
 
 
 def tool_buckets(names: list) -> list:
-    """(bucket name, tool names) in display order; empty buckets dropped."""
     grouped: dict = {}
     for name in names:
         grouped.setdefault(bucket_of(name), []).append(name)
@@ -64,8 +63,6 @@ def tool_buckets(names: list) -> list:
 
 
 def list_order(entries: list) -> list:
-    """Rows in the order the panel shows them: user, then project, then
-    built-in, each group alphabetical."""
     ordered = []
     for scope in SCOPE_ORDER:
         ordered += sorted((e for e in entries if e.scope == scope),
@@ -164,7 +161,6 @@ def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None
 
 
 def discover(cwd: str, all_tools: list) -> list[AgentEntry]:
-    """Every agent definition on disk, in load order, with the loser marked."""
     entries = [AgentEntry(d.agent_type, BUILT_IN, None, d)
                for d in builtin_agent_defs(all_tools)]
     for scope in (USER, PROJECT):
@@ -209,7 +205,7 @@ def write_agent(defn: AgentDefinition, scope: str, cwd: str,
     try:
         handle = path.open('w' if overwrite else 'x', encoding='utf-8')
     except FileExistsError:
-        raise FileExistsError(f'Agent file already exists: {path}') from None
+        raise FileExistsError(f'an agent is already defined in {path}') from None
     with handle:
         handle.write(render_agent_md(defn, all_tools))
     return path
@@ -222,16 +218,15 @@ def remove_agent(entry: AgentEntry) -> None:
 
 
 def validate_type(name: str) -> str | None:
-    """The error that blocks the identifier step, or None."""
     if not name:
-        return 'Agent type is required'
+        return 'An agent needs a name'
     if not _NAME.match(name):
-        return ('Agent type must start and end with a letter or digit and '
-                'contain only letters, digits and hyphens')
+        return ('A name is letters, digits and hyphens only, starting and '
+                'ending with a letter or digit')
     if len(name) < _NAME_RANGE[0]:
-        return f'Agent type must be at least {_NAME_RANGE[0]} characters long'
+        return f'A name is at least {_NAME_RANGE[0]} characters'
     if len(name) > _NAME_RANGE[1]:
-        return f'Agent type must be less than {_NAME_RANGE[1]} characters'
+        return f'A name is at most {_NAME_RANGE[1]} characters'
     return None
 
 
@@ -243,7 +238,6 @@ def relative_path(entry: AgentEntry) -> str:
 
 def validate(defn: AgentDefinition, known_tools: list[str],
              taken: list[tuple]) -> tuple[list[str], list[str]]:
-    """(errors, warnings) for a draft definition. Neither blocks a save."""
     errors: list[str] = []
     warnings: list[str] = []
     name_error = validate_type(defn.agent_type)
@@ -251,30 +245,30 @@ def validate(defn: AgentDefinition, known_tools: list[str],
         errors.append(name_error)
     for other, scope in taken:
         if other == defn.agent_type:
-            errors.append(f'Agent type "{defn.agent_type}" already exists '
-                          f'in {SCOPE_LABELS[scope]}')
+            errors.append(f'"{defn.agent_type}" is already taken by '
+                          f'{SCOPE_LABELS[scope].lower()}')
     if not defn.description.strip():
-        errors.append('Description is required: it tells when to use this agent')
+        errors.append('Add a description: it is how the model picks this agent')
     elif not _DESCRIPTION_RANGE[0] <= len(defn.description) \
             <= _DESCRIPTION_RANGE[1]:
-        warnings.append(f'Description is {len(defn.description)} characters; '
+        warnings.append(f'{len(defn.description)} characters of description; '
                         f'{_DESCRIPTION_RANGE[0]}-{_DESCRIPTION_RANGE[1]} '
-                        f'reads better')
+                        f'is easier to read')
     names = [t.name for t in defn.tools]
     if not names:
-        errors.append('No tools selected: this agent could not do anything')
+        errors.append('Select at least one tool, or this agent does nothing')
     unknown = [n for n in names if n not in known_tools]
     if unknown:
-        errors.append('Invalid tools: ' + ', '.join(unknown))
+        errors.append('Unknown tools: ' + ', '.join(unknown))
     prompt = defn.system_prompt.strip()
     if not prompt:
-        errors.append('System prompt is required')
+        errors.append('A system prompt is required')
     elif len(prompt) < _PROMPT_MIN:
-        errors.append(f'System prompt is too short '
-                      f'({len(prompt)} characters)')
+        errors.append(f'{len(prompt)} characters of system prompt '
+                      f'is not enough')
     elif len(prompt) > _PROMPT_MAX:
-        warnings.append(f'System prompt is {len(prompt)} characters; it is '
-                        'sent on every run')
+        warnings.append(f'{len(prompt)} characters of system prompt ride '
+                        'along on every run')
     return errors, warnings
 
 
@@ -283,7 +277,7 @@ def _statusline_prompt() -> str:
     home = __config_file__.parent
     return STATUSLINE_SYSTEM_PROMPT.format(
         config_file=__config_file__,
-        script=home / 'statusline-command.sh',
+        script=home / 'statusline.sh',
     )
 
 
@@ -293,48 +287,45 @@ def builtin_agent_defs(all_tools: list) -> list[AgentDefinition]:
         'statusline-setup',
         system_prompt=_statusline_prompt(),
         tools=[by_name[n] for n in ('Read', 'Edit') if n in by_name],
-        description="Use this agent to configure the user's PyClaw status line "
-                    "setting.")]
+        description="Sets up or edits PyClaw's status line setting.")]
 
 
-STATUSLINE_SYSTEM_PROMPT = '''You are a status line setup agent for PyClaw. Your \
-job is to create or update the statusLine command in PyClaw's config at \
-{config_file}.
+STATUSLINE_SYSTEM_PROMPT = '''You configure PyClaw's status line. The setting is \
+the "statusLine" key of {config_file}.
 
-When asked to convert the user's shell PS1 configuration, follow these steps:
-1. Read the user's shell configuration files in this order of preference: \
-~/.zshrc, ~/.bashrc, ~/.bash_profile, ~/.profile.
-2. Extract the PS1 value with this regex: \
+To turn the user's shell prompt into a status line:
+1. Look for a PS1 assignment, checking ~/.zshrc, then ~/.bashrc, \
+~/.bash_profile, ~/.profile.
+2. Take its value with this pattern: \
 (?:^|\\n)\\s*(?:export\\s+)?PS1\\s*=\\s*["']([^"']+)["']
-3. Convert PS1 escape sequences to shell commands:
+3. Replace every prompt escape with a command printing the same text:
    \\u -> $(whoami)     \\h -> $(hostname -s)   \\H -> $(hostname)
    \\w -> $(pwd)        \\W -> $(basename "$(pwd)")
    \\t -> $(date +%H:%M:%S)      \\d -> $(date "+%a %b %d")
    \\@ -> $(date +%I:%M%p)       \\$ -> $      \\n -> \\n      \\# -> #      \\! -> !
-4. When using ANSI color codes use printf, and keep the colours. The status \
-line is printed in a terminal using dimmed colors.
-5. If the imported PS1 ends with a trailing "$" or ">" character, remove it.
-6. If no PS1 is found and the user gave no other instructions, ask for further \
-instructions.
+4. Keep the colours and emit them through printf; the row is drawn in a \
+terminal that dims its colors.
+5. Drop a trailing "$" or ">" from the prompt.
+6. With no PS1 and nothing else to go on, ask the user what they want.
 
-How to use the statusLine command:
-1. The command receives this JSON on stdin:
+How the statusLine command works:
+1. PyClaw writes this JSON to the command's stdin:
    {{
-     "session_id": "string",       // Unique session ID
-     "transcript_path": "string",  // Path to the conversation transcript
-     "cwd": "string",              // Current working directory
+     "session_id": "string",       // one session, one id
+     "transcript_path": "string",  // where the conversation is stored
+     "cwd": "string",              // directory PyClaw runs in
      "permission_mode": "string",  // default | acceptEdits | plan | bypassPermissions
      "model": {{
-       "id": "string",             // Model ID
-       "display_name": "string"    // Model name shown in the UI
+       "id": "string",             // model id
+       "display_name": "string"    // model name as shown to the user
      }},
      "workspace": {{
-       "current_dir": "string",    // Current working directory path
-       "project_dir": "string",    // Project root directory path
+       "current_dir": "string",    // current directory
+       "project_dir": "string",    // project root
        "added_dirs": ["string"]
      }},
      "version": "string",          // PyClaw version
-     "usage": {{                   // Cumulative session token usage
+     "usage": {{                   // session totals so far
        "prompt_tokens": number,
        "completion_tokens": number,
        "total_tokens": number,
@@ -343,38 +334,38 @@ How to use the statusLine command:
      "context_window": {{
        "total_input_tokens": number,
        "total_output_tokens": number,
-       "context_window_size": number,      // Occupancy that triggers compaction
+       "context_window_size": number,      // occupancy that triggers compaction
        "current_usage": {{"input_tokens": number}},
        "used_percentage": number,          // 0-100
        "remaining_percentage": number      // 0-100
      }}
    }}
 
-   Read fields with jq, e.g.:
+   Read a field with jq, e.g.:
    - input=$(cat); echo "$(echo "$input" | jq -r '.model.display_name') in \
 $(echo "$input" | jq -r '.workspace.current_dir')"
    - input=$(cat); remaining=$(echo "$input" | jq -r \
 '.context_window.remaining_percentage // empty'); [ -n "$remaining" ] && echo \
 "Context: $remaining% remaining"
 
-2. For longer commands save {script} and reference that file from the config.
-3. Update the config with:
+2. When the command outgrows a config line, save it to {script} and call that \
+file from the config instead.
+3. Save the setting like this:
    {{
      "statusLine": {{
        "type": "command",
        "command": "your_command_here"
      }}
    }}
-   PyClaw re-reads its config before every status line refresh, so the row \
-appears as soon as the file is saved.
+   PyClaw reloads the config before each redraw, so the row changes as soon as \
+the file is written.
 
-Guidelines:
-- Preserve every other setting in the config when updating it.
-- If the config file is a symlink, update the file it points to.
-- Return a summary of what was configured, including the script file name if \
-one was used.
-- If the script runs git commands, make them skip optional locks.
-- At the end of your response, tell the parent agent that the "statusline-setup" \
-agent must be used for further status line changes, and tell the user they can \
-ask to keep tuning the status line.
+Rules:
+- Touch no other key in the config.
+- When the config is a symlink, write to the file it points at.
+- Report what you configured, naming the script file if you wrote one.
+- Skip git's optional locks in any git command the script runs.
+- Close your reply by telling the parent agent that later status line edits go \
+through the "statusline-setup" agent, and that the user can keep asking for \
+tweaks.
 '''

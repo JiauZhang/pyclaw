@@ -13,7 +13,7 @@ def _read_text(path) -> tuple[str | None, str | None]:
     except UnicodeDecodeError:
         return None, f'Error: not a text file: {path}'
     except OSError as e:
-        return None, f'Error reading {path}: {e}'
+        return None, f'Read of {path} failed: {e}'
 
 
 def _diff_counts(before: str, after: str):
@@ -66,15 +66,15 @@ def Write(context, file_path: str, content: str) -> str:
         existed = path.exists()
         path.write_text(content, encoding='utf-8')
     except OSError as e:
-        return f'Error writing {file_path}: {e}'
+        return f'Write to {file_path} failed: {e}'
     if existed:
         added, removed = _diff_counts(old_text or '', content)
         return ToolResult(
-            text=(f'The file {rel} has been updated successfully.\n\n'
+            text=(f'Saved {rel}.\n\n'
                   + _diff(rel, old_text or '', content)),
             meta={'path': rel, 'mode': 'updated',
                   'num_added': added, 'num_removed': removed})
-    return ToolResult(text=f'File created successfully at: {rel}',
+    return ToolResult(text=f'Created {rel}.',
                       meta={'path': rel, 'mode': 'wrote'})
 
 
@@ -161,10 +161,10 @@ def _replace(context, file_path: str, pairs) -> str:
     try:
         path.write_text(working, encoding='utf-8')
     except OSError as e:
-        return f'Error writing {file_path}: {e}'
+        return f'Write to {file_path} failed: {e}'
     rel = relative(context.cwd, path)
     added, removed = _diff_counts(text, working)
     return ToolResult(
-        text=(f'The file {rel} has been updated successfully.\n\n'
+        text=(f'Saved {rel}.\n\n'
               + _diff(rel, text, working)),
         meta={'path': rel, 'num_added': added, 'num_removed': removed})

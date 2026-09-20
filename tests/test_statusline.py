@@ -5,16 +5,10 @@ import os
 
 import pytest
 
+from fakes import Usage
 from pyclaw import config as config_module
-from pyclaw.statusline import (build_payload, clean_output, configured_command,
-                               context_percentages, run)
-
-
-class _Usage:
-    prompt_tokens = 1200
-    completion_tokens = 300
-    total_tokens = 1500
-    prompt_tokens_details = {'cached_tokens': 200}
+from pyclaw.statusline import (build_payload, clean_output,
+                               context_percentages, run, user_command)
 
 
 class _StatusSession:
@@ -24,7 +18,7 @@ class _StatusSession:
     model = 'test-model'
     compact_threshold = 200_000
     context_tokens = 40_000
-    usage = _Usage()
+    usage = Usage(1200, 300, 1500, 200)
 
     def __init__(self, cwd=None):
         self.cwd = cwd or os.getcwd()
@@ -53,11 +47,19 @@ def _use_command(command):
     _write_config({'statusLine': {'type': 'command', 'command': command}})
 
 
-def test_the_gate_only_accepts_a_command_status_line():
-    _write_config({'statusLine': {'type': 'http', 'command': 'echo hi'}})
-    assert configured_command() == ''
+def test_only_a_command_status_line_is_accepted():
+    for cfg in ({}, {'statusLine': {'type': 'off'}},
+                {'statusLine': {'type': 'http', 'command': 'echo hi'}}):
+        _write_config(cfg)
+        assert user_command() == ''
     _use_command('echo hi')
-    assert configured_command() == 'echo hi'
+    assert user_command() == 'echo hi'
+
+
+def test_editing_the_config_file_takes_effect_without_a_restart():
+    assert user_command() == ''
+    _use_command('echo hi')
+    assert user_command() == 'echo hi'
 
 
 def test_the_payload_names_the_session_model_and_workspace():
@@ -97,59 +99,17 @@ def test_blank_lines_are_dropped_and_edges_trimmed():
     assert clean_output('  one\n\n  two  \n\n') == 'one\ntwo'
 
 
-def test_editing_the_config_file_takes_effect_without_a_restart():
-    _write_config({'statusLine': {'type': 'off'}})
-    assert configured_command() == ''
-    _use_command('echo hi')
-    assert configured_command() == 'echo hi'
-
-
-def test_an_explicitly_disabled_status_line_takes_no_row():
-    _write_config({'statusLine': {'type': 'off'}})
-    assert configured_command() == ''
-
-
-def test_an_unset_status_line_falls_back_to_the_default_command():
-    from pyclaw.statusline import DEFAULT_COMMAND
-    _write_config({})
-    assert configured_command() == DEFAULT_COMMAND
-
-
-def test_an_unset_status_line_is_not_the_users_command():
-    """The built-in default is only for whoever runs the command; the app's own
-    readout rows take its place when nobody configured a line."""
-    from pyclaw.statusline import user_command
-    _write_config({})
-    assert user_command() == ''
-    _write_config({'statusLine': {'type': 'off'}})
-    assert user_command() == ''
-    _use_command('echo hi')
-    assert user_command() == 'echo hi'
-
-
-def test_the_default_line_names_the_model_and_directory(tmp_path):
-    """Room left belongs to the footer's meter, so the default line stays short."""
-    _write_config({})
-    line = asyncio.run(run(_StatusSession(str(tmp_path))))
-    assert 'test-model' in line
-    assert str(tmp_path) in line
-    assert 'context left' not in line
-
-
 def test_the_command_reads_its_payload_from_stdin():
     _use_command('cat')
     session = _StatusSession()
-    assert json.loads(asyncio.run(run(session))) == build_payload(session)
+    assert json.loads(asyncio.run(run(session, user_command()))) == \
+        build_payload(session)
 
 
-def test_a_failing_command_blanks_the_line():
-    _use_command('echo shown; exit 1')
-    assert asyncio.run(run(_StatusSession())) == ''
-
-
-def test_a_silent_command_blanks_the_line():
-    _use_command('true')
-    assert asyncio.run(run(_StatusSession())) == ''
+def test_a_command_that_prints_nothing_usable_blanks_the_line():
+    for command in ('echo shown; exit 1', 'true'):
+        _use_command(command)
+        assert asyncio.run(run(_StatusSession(), user_command())) == ''
 
 
 def test_a_slow_command_is_cut_off(monkeypatch):
@@ -157,9 +117,8 @@ def test_a_slow_command_is_cut_off(monkeypatch):
     _use_command('sleep 5')
     monkeypatch.setattr(statusline, 'STATUS_LINE_TIMEOUT_SECONDS', 0.1)
     with pytest.raises(asyncio.TimeoutError):
-        asyncio.run(run(_StatusSession()))
+        asyncio.run(run(_StatusSession(), user_command()))
 
 
-def test_running_without_a_configured_command_starts_nothing():
-    _write_config({'statusLine': {'type': 'off'}})
-    assert asyncio.run(run(_StatusSession())) == ''
+def test_running_without_a_command_starts_nothing():
+    assert asyncio.run(run(_StatusSession(), user_command())) == ''

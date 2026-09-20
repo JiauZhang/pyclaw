@@ -53,7 +53,7 @@ class WebChannelAdapter(ChannelAdapter):
             await websocket.send_json(payload)
             return True
         except Exception as e:
-            logger.error(f"Failed to send message to {to}: {e}")
+            logger.error(f"Web send to {to} failed: {e}")
             return False
 
     async def receive_messages(self) -> AsyncIterator[InboundMessage]:

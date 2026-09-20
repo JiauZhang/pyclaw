@@ -1,13 +1,3 @@
-"""The greeting drawn under the wordmark.
-
-The text half of the landing screen: a welcome line, the product/version, the
-model facts and the working directory, then up to two feeds — "Tips for
-getting started" while project onboarding is still pending, and "Recent
-activity" built from saved sessions.
-
-Everything here is pure: the data half reads the filesystem/config, the render
-half returns Rich markup lines. `tui.py` owns the widget.
-"""
 from __future__ import annotations
 
 import os
@@ -54,8 +44,8 @@ def relative_time(seconds: float) -> str:
 
 def welcome_message(username=None) -> str:
     if not username or len(str(username)) > MAX_USERNAME_LENGTH:
-        return 'Welcome back!'
-    return f'Welcome back {username}!'
+        return 'Good to see you.'
+    return f'Good to see you, {username}.'
 
 
 def onboarding_steps(cwd) -> list[dict]:
@@ -139,17 +129,17 @@ def tips_feed(steps: list[dict], cwd) -> dict | None:
         lines.append({'text': note})
     if not lines:
         return None
-    return {'title': 'Tips for getting started', 'lines': lines}
+    return {'title': 'Getting oriented', 'lines': lines}
 
 
 def activity_feed(entries: list[dict]) -> dict:
     return {
-        'title': 'Recent activity',
+        'title': 'Last sessions',
         'lines': [{'text': entry['text'],
                    'timestamp': entry.get('timestamp', '')}
                   for entry in entries],
         'footer': '/resume for more' if entries else None,
-        'empty': 'No recent activity',
+        'empty': 'No sessions yet',
     }
 
 

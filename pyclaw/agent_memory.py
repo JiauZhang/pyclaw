@@ -15,7 +15,8 @@ def load_instruction_files(cwd: str) -> list[dict]:
         try:
             files.append({'path': str(user),
                           'content': user.read_text(encoding='utf-8'),
-                          'load_reason': 'user'})
+                          'memory_type': 'User',
+                          'load_reason': 'session_start'})
         except OSError:
             pass
     current = Path(cwd).resolve()
@@ -28,7 +29,8 @@ def load_instruction_files(cwd: str) -> list[dict]:
         except OSError:
             continue
         files.append({'path': str(candidate), 'content': content,
-                      'load_reason': 'project'})
+                      'memory_type': 'Project',
+                      'load_reason': 'session_start'})
     return files
 
 

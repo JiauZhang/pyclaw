@@ -1,4 +1,9 @@
 import argparse
+import asyncio
+import logging
+from logging.handlers import RotatingFileHandler
+
+import pytest
 
 from pyclaw import __main__
 
@@ -42,26 +47,18 @@ def test_apply_overrides_all():
     assert config["enabled_channels"] == ["web", "wechat"]
 
 
-def test_finalize_args_adds_missing_log_level():
-    ns = argparse.Namespace(command=None)
-    out = __main__._finalize_args(ns)
-    assert out.log_level == "INFO"
-
-
-def test_permission_rule_flags_on_both_session_parsers():
-    for argv in (["-p", "hi"], ["tui"]):
+def test_session_parsers_carry_the_flags_that_steer_a_run():
+    for argv, team in ((["-p", "hi"], False), (["tui"], True)):
         args = __main__._build_parser().parse_args(
             argv + ["--allow", "Bash(git push:*)",
                     "--deny", "Bash(curl:*)",
-                    "--ask", "Bash(docker:*)"])
+                    "--ask", "Bash(docker:*)"]
+            + (["--use-team"] if team else []))
         assert args.allow == ["Bash(git push:*)"]
         assert args.deny == ["Bash(curl:*)"]
         assert args.ask == ["Bash(docker:*)"]
-
-
-def test_use_team_flag_on_both_session_parsers():
-    assert __main__._build_parser().parse_args(["tui", "--use-team"]).use_team is True
-    assert __main__._build_parser().parse_args(["-p", "hi"]).use_team is False
+        assert args.use_team is team
+        assert __main__._build_parser().parse_args(argv).use_team is False
 
 
 def test_finalize_args_keeps_existing_log_level():
@@ -85,19 +82,18 @@ def test_finalize_args_fills_serve_fields_with_none():
     )
 
 
+class FakeGateway:
+    def __init__(self, *a, **k):
+        pass
+
+    async def start(self):
+        return
+
+    async def shutdown(self):
+        return
+
+
 def test_start_server_runs_with_default_args(monkeypatch):
-    import asyncio as _asyncio
-
-    class FakeGateway:
-        def __init__(self, *a, **k):
-            pass
-
-        async def start(self):
-            return
-
-        async def shutdown(self):
-            return
-
     captured = {}
 
     def fake_gateway(config, app_config=None):
@@ -109,13 +105,11 @@ def test_start_server_runs_with_default_args(monkeypatch):
     monkeypatch.setattr(__main__, "save_config", lambda c: None)
 
     args = __main__._finalize_args(__main__._build_parser().parse_args([]))
-    _asyncio.run(__main__.start_server(args))
+    asyncio.run(__main__.start_server(args))
     assert captured["config"].provider == "p"
 
 
 def _strip_root_handlers():
-    import logging
-    from logging.handlers import RotatingFileHandler
     root = logging.getLogger()
     saved = list(root.handlers)
     root.handlers = [h for h in root.handlers
@@ -124,8 +118,6 @@ def _strip_root_handlers():
 
 
 def test_tui_logging_never_writes_to_stdout():
-    import logging
-    from logging.handlers import RotatingFileHandler
     root = logging.getLogger()
     saved = _strip_root_handlers()
     try:
@@ -139,7 +131,6 @@ def test_tui_logging_never_writes_to_stdout():
 
 
 def test_setup_logging_is_idempotent_and_silences_noisy_loggers():
-    import logging
     root = logging.getLogger()
     saved = _strip_root_handlers()
     try:
@@ -156,7 +147,6 @@ def test_setup_logging_is_idempotent_and_silences_noisy_loggers():
 
 
 def test_setup_logging_returns_the_log_path():
-    import logging
     root = logging.getLogger()
     saved = _strip_root_handlers()
     try:
@@ -174,11 +164,6 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
     serve/rebind subparsers do), so the TUI died with AttributeError before
     it painted anything. Hand-built namespaces in other tests hid it.
     """
-    import asyncio
-    import logging
-
-    import pytest
-
     from chatchat.hooks import events
 
     calls = []

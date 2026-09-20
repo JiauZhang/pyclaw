@@ -1,7 +1,6 @@
 import asyncio
 import json
 
-import pytest
 
 from pyclaw import __main__
 
@@ -64,12 +63,9 @@ def test_prompt_once_returns_original_text(monkeypatch):
     assert out["usage"]["total_tokens"] == 0
 
 
-def test_render_output_text(capsys):
-    __main__.render_output("text", {"text": "ok", "mode": "team", "messages": 2})
+def test_render_output_prints_the_requested_format(capsys):
+    payload = {"text": "ok", "mode": "team", "messages": 2}
+    __main__.render_output("text", payload)
     assert capsys.readouterr().out == "ok\n"
-
-
-def test_render_output_json(capsys):
-    __main__.render_output("json", {"text": "ok", "mode": "team", "messages": 2})
-    out = json.loads(capsys.readouterr().out)
-    assert out == {"text": "ok", "mode": "team", "messages": 2}
+    __main__.render_output("json", payload)
+    assert json.loads(capsys.readouterr().out) == payload

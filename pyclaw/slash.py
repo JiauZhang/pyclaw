@@ -2,7 +2,7 @@ import difflib
 from pathlib import Path
 
 COMMANDS = [
-    {'name': 'help', 'aliases': ('h', '?'), 'desc': 'Show this help', 'hint': ''},
+    {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
     {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
     {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
@@ -20,7 +20,7 @@ COMMANDS = [
 
 
 def _help_text() -> str:
-    lines = ['Available commands:']
+    lines = ['Commands:']
     for cmd in COMMANDS:
         name = f"/{cmd['name']}" + ''.join(f" or /{a}"
                                            for a in cmd.get('aliases', ()))
@@ -135,7 +135,7 @@ def _status(session, session_key: str) -> str:
         f"Thinking: {'on' if session.thinking else 'off'}\n"
         f"Context messages: {session.context_messages}\n"
         f"Active sub-agents: {session.active_agents}\n"
-        f"Available tools: {len(session.available_tools)}\n"
+        f"Loaded tools: {len(session.available_tools)}\n"
         f"Usage: {usage.prompt_tokens} in / {usage.completion_tokens} out / "
         f"{usage.total_tokens} total\n"
         f"Cost: {format_cost(_cost_of(session))}"
@@ -170,7 +170,7 @@ def _handle_agents(session) -> str:
     agents = getattr(session, 'agent_types', None) or []
     if not agents:
         return 'No agent definitions loaded.'
-    lines = ['Available agents:']
+    lines = ['Loaded agents:']
     lines += [f'  {name}: {desc}' for name, desc in agents]
     lines.append('Create, edit and delete them from the terminal UI with '
                  '/agents.')
@@ -229,7 +229,7 @@ def _handle_cost(session, arg: str) -> str:
             f"Cost: {detail}")
 
 
-STATUSLINE_PROMPT = 'Configure my statusLine from my shell PS1 configuration'
+STATUSLINE_PROMPT = 'Set up my status line from my shell PS1 configuration'
 
 
 def _handle_statusline(arg: str) -> tuple:
@@ -277,6 +277,7 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         lines.append('loaded: yes' if memory else 'loaded: nothing found')
         return '\n'.join(lines)
     if cmd == 'clear':
+        await session.end_session('clear')
         session.reset()
         return 'Conversation history cleared. Started a new session.'
     if cmd == 'resume':

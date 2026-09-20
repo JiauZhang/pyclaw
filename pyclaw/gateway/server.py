@@ -303,7 +303,7 @@ class GatewayServer:
             return {"type": "pong"}
         if msg_type == "request" or "method" in message:
             return await self._handle_rpc_message(message, client_id)
-        return {"type": "error", "error": "Unknown message type"}
+        return {"type": "error", "error": "Unroutable message"}
 
     async def _handle_rpc_message(
         self,

@@ -44,7 +44,7 @@ async def handle_agent(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[
     try:
         session = await _get_session(resolved)
     except Exception as e:
-        logger.error(f'Failed to create session: {e}')
+        logger.error(f'Session start failed: {e}')
         return {'error': f'Failed to initialize agent: {str(e)}'}
 
     try:
@@ -124,7 +124,7 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
     model_param = params.get('model', 'default')
 
     if not messages:
-        return {'error': 'Messages are required'}
+        return {'error': 'No messages provided'}
 
     resolved = _resolve_params(params, context)
     provider = resolved['provider']

@@ -39,7 +39,7 @@ from chatchat.hooks.events import (
 
 from pyclaw import __version__, agent_defs, banner, config, statusline, welcome
 from pyclaw.agents import Session, append_conv
-from pyclaw.spinner_verbs import SPINNER_VERBS
+from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import next_mode
 from pyclaw.tools.coding.permission import BASH_TOOL, PermissionChoice
@@ -63,7 +63,6 @@ POINTER = "\u276f"
 RESULT_GLYPH = "\u23bf"
 ASTERISK = "\u273b"
 BULLET_PREFIX = f"{BULLET} "
-BULLET_HANG = " " * len(BULLET_PREFIX)
 RESULT_PREFIX = f"  {RESULT_GLYPH}  "
 RESULT_HANG = " " * len(RESULT_PREFIX)
 
@@ -72,46 +71,33 @@ TREE_BRANCH = ("\u251c\u2500", "\u255e\u2550")
 TREE_LAST = ("\u2514\u2500", "\u2558\u2550")
 TREE_INDENT = "   "
 TREE_POINTER = POINTER
-SELECT_HINT = "shift + \u2191/\u2193 to select"
-VIEW_HINT = "enter to view"
-COLLAPSE_HINT = "enter to collapse"
+SELECT_HINT = "shift+\u2191/\u2193 picks a row"
+VIEW_HINT = "enter opens it"
+COLLAPSE_HINT = "enter closes it"
 IDLE_TEXT = "Idle"
-AGENT_TEAMMATES_HINT = "teammates running"
-TEAMMATE_VIEW_HINT = "esc to return to team lead"
+AGENT_TEAMMATES_HINT = "subagents are active"
+TEAMMATE_VIEW_HINT = "esc goes back to the lead"
 
-# Only the last few progress messages of a running sub-agent stay visible
-# under its tool call; older ones collapse into a "+N more tool uses" line.
 AGENT_TRAIL_LIMIT = 3
-INITIALIZING_TEXT = "Initializing\u2026"
-EXPAND_HINT = "ctrl+o to expand"
+INITIALIZING_TEXT = "Starting up\u2026"
+EXPAND_HINT = "ctrl+o shows more"
 
-# These replace a running tool's progress line so a stalled call is visible:
-# an approval that has not been answered yet reads "Waiting for permission…"
-# and a call the user killed reports what to do instead.
-WAITING_PERMISSION_TEXT = "Waiting for permission\u2026"
-INTERRUPTED_TEXT = "Interrupted \u00b7 What should PyClaw do instead?"
+WAITING_PERMISSION_TEXT = "Needs your approval\u2026"
+INTERRUPTED_TEXT = "Stopped \u00b7 tell PyClaw what to do instead"
 
-# How far a page key jumps in an option list.
 OPTION_PAGE_SIZE = 5
 ACCEPT_FEEDBACK_HINT = "and tell PyClaw what to do next"
 REJECT_FEEDBACK_HINT = "and tell PyClaw what to do differently"
-RULE_FEEDBACK_HINT = "command prefix (e.g., npm run:*)"
+RULE_FEEDBACK_HINT = "a command prefix, like npm run:*"
 
-# Overlays that only suggest, never own the keyboard, so the chat keys stay
-# live under them. Everything else registered takes the keys over.
 NON_MODAL_OVERLAYS = frozenset({'autocomplete'})
 
-# Chat-level actions an open modal overlay answers instead. Focus traversal is
-# among them: while a dialog owns the keyboard the caret stays inside it.
 OVERLAY_GATED_ACTIONS = frozenset({
     'suggest_tab', 'prompt_next', 'prompt_prev', 'agent_next', 'agent_prev',
     'stop_agent', 'cycle_permission', 'focus_next', 'focus_previous'})
 
 AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
                 "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
-
-TURN_COMPLETION_VERBS = ("Baked", "Brewed", "Churned", "Cogitated",
-                         "Cooked", "Crunched", "Saut\u00e9ed", "Worked")
 
 TEAMMATE_MESSAGE_RE = re.compile(
     r'<teammate_message\s+teammate_id="([^"]*)"[^>]*>\s*(.*?)\s*'
@@ -123,7 +109,7 @@ DIRECT_MESSAGE_RE = re.compile(r'^@([\w-]+)\s+(.+)$', re.S)
 MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5",
                 "bypassPermissions": "\u23f5\u23f5", "plan": "\u23f8"}
 MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode",
-               "bypassPermissions": "bypass permissions"}
+               "bypassPermissions": "skip permission prompts"}
 MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C",
                "bypassPermissions": "#FF6B80"}
 
@@ -152,7 +138,6 @@ MAX_COMMAND_LINES = 2
 MAX_COMMAND_CHARS = 160
 MAX_RESULT_LINES = 3
 MAX_USE_ARG_CHARS = 80
-MAX_WRITE_PREVIEW_LINES = 10
 
 DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
                  "Glob": "Search", "LS": "List"}
@@ -169,12 +154,12 @@ BASH_NEUTRAL_COMMANDS = frozenset({'echo', 'printf', 'true', 'false', ':'})
 MEMORY_FILE_NAME = 'AGENTS.md'
 
 GROUP_PARTS = (
-    ('search', 'Searching for', 'Searched for', 'pattern', 'patterns'),
-    ('read', 'Reading', 'Read', 'file', 'files'),
-    ('list', 'Listing', 'Listed', 'directory', 'directories'),
-    ('bash', 'Running', 'Ran', 'bash command', 'bash commands'),
-    ('memory_read', 'Recalling', 'Recalled', 'memory', 'memories'),
-    ('memory_write', 'Writing', 'Wrote', 'memory', 'memories'),
+    ('search', 'Looking for', 'Looked for', 'pattern', 'patterns'),
+    ('read', 'Opening', 'Opened', 'file', 'files'),
+    ('list', 'Walking', 'Walked', 'folder', 'folders'),
+    ('bash', 'Executing', 'Executed', 'shell command', 'shell commands'),
+    ('memory_read', 'Remembering', 'Remembered', 'memory', 'memories'),
+    ('memory_write', 'Saving', 'Saved', 'memory', 'memories'),
 )
 
 
@@ -224,7 +209,6 @@ def _collapsible_kinds(name, tool_input) -> set:
 def _read_key(name, tool_input) -> str:
     data = tool_input if isinstance(tool_input, dict) else {}
     return str(data.get('file_path') or data.get('path') or name)
-
 
 
 def _summarize(value, limit: int = 60) -> str:
@@ -301,7 +285,7 @@ def _preview(text, width: int, limit: int = MAX_RESULT_LINES) -> str:
         return "\n".join(rows)
     return "\n".join(rows[:limit]
                      + [f"\u2026 +{len(rows) - limit} lines "
-                        f"(ctrl+o to expand)"])
+                        f"(ctrl+o shows the rest)"])
 
 
 def _edit_summary(added: int, removed: int) -> str:
@@ -480,13 +464,19 @@ def _tool_use_args(name: str, tool_input, cwd) -> str:
     return _clip_lines(pairs, MAX_COMMAND_LINES, MAX_COMMAND_CHARS)
 
 
-def _result_summary(name: str, tool_input, output, cwd, width: int) -> str:
+def _last_assistant_key(messages) -> tuple:
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].get('role') == 'assistant':
+            return (i, len(str(messages[i].get('content') or '')))
+    return (0, 0)
+
+
+def _result_summary(name: str, output, width: int) -> str:
     text = str(output if output is not None else "")
     if not text:
         return "Done"
     if text.startswith("Error"):
         return text.split("\n")[0]
-    data = tool_input if isinstance(tool_input, dict) else {}
     if name == "Read":
         rows = text.split("\n")
         body = rows[1:] if rows and rows[0].endswith(":") else rows
@@ -572,7 +562,6 @@ def _agent_alive(agent) -> bool:
 
 
 def _visible_len(markup: str) -> int:
-    """Columns the markup occupies once the style tags are applied."""
     return len(re.sub(r'\[[^\]]*\]', '', markup))
 
 
@@ -584,13 +573,12 @@ def _format_count(n: int) -> str:
 
 
 def _token_rate(tokens: int, seconds: int) -> str:
-    """Tokens per second, one decimal while the rate is still in single digits."""
     rate = tokens / seconds
     return f'{rate:.1f} tok/s' if rate < 10 else f'{round(rate)} tok/s'
 
 
 def _tool_uses(count: int) -> str:
-    return "1 tool use" if count == 1 else f"{count} tool uses"
+    return f"{count} tool call" if count == 1 else f"{count} tool calls"
 
 
 def _meter_edges() -> str:
@@ -598,8 +586,6 @@ def _meter_edges() -> str:
 
 
 def _split(parts: tuple, cells: int) -> list:
-    """`cells` columns shared out by size. Largest fractional remainder wins
-    what is left, and any kind that exists keeps at least one column."""
     total = sum(parts)
     shares = [p / total * cells for p in parts]
     counts = [int(s) for s in shares]
@@ -618,10 +604,6 @@ def _split(parts: tuple, cells: int) -> list:
 
 def context_meter(triple: tuple, used: int, window: int,
                   cells: int = CONTEXT_METER_CELLS) -> str:
-    """How full the model's context window is, as a bar painted with the logo
-    gradient at the point the fill has reached. The rest of the bar is kept
-    visible by a track in the same palette, darkened, so an empty bar is still
-    legible on a black terminal."""
     if window <= 0 or cells <= 0:
         return ''
     fraction = min(1.0, max(0.0, used / window))
@@ -636,10 +618,6 @@ def context_meter(triple: tuple, used: int, window: int,
 
 def usage_meter(triple: tuple, usage,
                 cells: int = CONTEXT_METER_CELLS) -> str:
-    """One bar of what the session's tokens were: cached reads, input that had
-    to go up again, and the reply. Each kind gets its own glyph as well as its
-    own stop on the logo gradient, so the bar also reads without colour.
-    Before the first response it is the empty track, so nothing pops in."""
     prompt = int(getattr(usage, 'prompt_tokens', 0) or 0)
     completion = int(getattr(usage, 'completion_tokens', 0) or 0)
     total = int(getattr(usage, 'total_tokens', 0) or 0)
@@ -662,9 +640,6 @@ def usage_meter(triple: tuple, usage,
 
 
 def usage_hud(usage) -> str:
-    """The counts the usage bar is drawn from: the cache figure is the hit rate,
-    the share of the input that did not have to go up again. All zero before
-    the first response, which is what the bar is showing then too."""
     prompt = int(getattr(usage, 'prompt_tokens', 0) or 0)
     completion = int(getattr(usage, 'completion_tokens', 0) or 0)
     total = int(getattr(usage, 'total_tokens', 0) or 0)
@@ -676,8 +651,6 @@ def usage_hud(usage) -> str:
 
 
 def _fit(parts: tuple, room: int) -> str:
-    """Join the parts that have room, dropping from the right. A readout row is
-    one line tall, so the alternative is being cut through a number."""
     kept = [part for part in parts if part]
     while len(kept) > 1 and _visible_len(' \u00b7 '.join(kept)) > room:
         kept.pop()
@@ -685,7 +658,6 @@ def _fit(parts: tuple, room: int) -> str:
 
 
 def _display_cwd(path: str) -> str:
-    """The working directory with the home shortened, which is most of it."""
     home = str(Path.home())
     if path == home:
         return '~'
@@ -695,7 +667,6 @@ def _display_cwd(path: str) -> str:
 
 
 def git_label(status: str) -> str:
-    """The branch and the number of paths git reports as changed."""
     branch = ''
     dirty = 0
     for line in status.splitlines():
@@ -735,12 +706,6 @@ def _single_line(value, limit: int) -> str:
 
 
 def _agent_progress_rows(message, cwd, width: int) -> tuple[list[str], int]:
-    """Condense one sub-agent progress message into display rows.
-
-    Only the sub-agent's *assistant* messages are shown - its narration text
-    and the tool calls it made. Tool results are dropped, because the count
-    line already reports them.
-    """
     if not isinstance(message, dict) or message.get('role') != 'assistant':
         return [], 0
     content = message.get('content')
@@ -829,7 +794,6 @@ def _full_page(view) -> int:
 
 
 class _PagerScroll(VerticalScroll):
-    """less-style reading keys, safe only where no prompt claims letters."""
 
     BINDINGS = [
         Binding("up", "line_up", "Scroll up", show=False),
@@ -883,15 +847,6 @@ class _JumpToBottom(Static):
 
 def _hang(prefix: str, body: str) -> str:
     return prefix + body.replace("\n", "\n" + " " * len(prefix))
-
-
-def _input_text(value) -> str:
-    if isinstance(value, str):
-        return value
-    try:
-        return json.dumps(value, ensure_ascii=False, indent=2)
-    except (TypeError, ValueError):
-        return str(value)
 
 
 class _TextBlock(Vertical):
@@ -984,7 +939,7 @@ class _GroupBlock(Static):
             return
         color = self.app.brand if self.active else '#4EBA65'
         marker = self._frame if self.active else BULLET
-        hint = "" if self.active else " [dim](ctrl+o to expand)[/]"
+        hint = "" if self.active else " [dim](ctrl+o for the list)[/]"
         self.update(f"[{color}]{marker}[/] {body}{hint}")
 
 
@@ -1044,14 +999,12 @@ class _ToolBlock(Static):
             self._draw()
 
     def set_waiting_permission(self, waiting: bool):
-        """Mark the call as parked on an approval decision."""
         if self._waiting_permission == waiting:
             return
         self._waiting_permission = waiting
         self._draw()
 
     def reject(self, text: str = INTERRUPTED_TEXT):
-        """Settle a call the user killed before it ever ran."""
         self._done = True
         self._progress = []
         self._progress_done = True
@@ -1061,14 +1014,12 @@ class _ToolBlock(Static):
         self._draw()
 
     def add_progress(self, rows: list[str], tool_uses: int):
-        """Append one sub-agent progress message to the live trail."""
         if self._output is not None:
             return
         self._progress.append((list(rows), int(tool_uses)))
         self._draw()
 
     def end_progress(self):
-        """Drop the live trail; the summary line takes over from here."""
         if not self._progress and self._progress_done:
             return
         self._progress = []
@@ -1090,7 +1041,6 @@ class _ToolBlock(Static):
         return rows
 
     def _trail_markup(self, full: bool = False) -> str | None:
-        """Live sub-agent progress, or None when there is nothing to trail."""
         if self._output is not None or self._progress_done:
             return None
         if self._waiting_permission:
@@ -1194,8 +1144,8 @@ class _ToolBlock(Static):
             return
         summary = self._meta_summary()
         if summary is None:
-            summary = _result_summary(self._name, self._input, self._output,
-                                      self._cwd, self._width())
+            summary = _result_summary(self._name, self._output,
+                                      self._width())
         if self._meta_summary() is not None:
             self.remove_class("diff")
         else:
@@ -1514,39 +1464,34 @@ _WARN = '\u26a0'
 AGENT_STEPS = ('name', 'location', 'prompt', 'description', 'tools', 'model',
                'confirm')
 AGENT_TITLES = {
-    'name': 'Agent type (identifier)',
-    'location': 'Choose location',
+    'name': 'Name (identifier)',
+    'location': 'Where to save',
     'prompt': 'System prompt',
-    'description': 'Description (tell PyClaw when to use this agent)',
-    'tools': 'Select tools',
-    'model': 'Select model',
-    'confirm': 'Confirm and save',
+    'description': 'Description (when PyClaw should delegate)',
+    'tools': 'Pick tools',
+    'model': 'Pick a model',
+    'confirm': 'Review and save',
 }
 AGENT_QUESTIONS = {
-    'name': 'Enter a unique identifier for your agent:',
-    'prompt': 'Describe what this agent should do; it becomes the system '
-              'prompt.',
-    'description': 'Tell PyClaw when to hand work to this agent.',
-    'model': "Model determines the agent's reasoning capabilities and speed.",
+    'name': 'What should this agent be called?',
+    'prompt': 'What should it do? This text becomes its system prompt.',
+    'description': 'When does PyClaw hand work to this agent?',
+    'model': 'A model sets how it reasons and how fast it runs.',
 }
 AGENT_PLACEHOLDERS = {
-    'name': 'e.g., test-runner, tech-lead, etc',
-    'prompt': 'You are a helpful code reviewer who...',
-    'description': "e.g., use this agent after you're done writing code",
-    'model': 'Leave empty to use the session model',
+    'name': 'like test-runner or tech-lead',
+    'prompt': 'You review diffs and point out...',
+    'description': 'like: once a piece of code is written',
+    'model': 'empty keeps the session model',
 }
 AGENT_TEXT_STEPS = ('name', 'prompt', 'description', 'model')
 AGENT_LOCATIONS = (('project', '.pyclaw/agents/'),
                    ('user', '~/.pyclaw/agents/'))
-AGENT_NAV = ('Press \u2191\u2193 to navigate \u00b7 Enter to select \u00b7 '
-             'Esc to go back')
-AGENT_TEXT_NAV = ('Type to enter text \u00b7 Enter to continue \u00b7 Esc to '
-                  'go back')
+AGENT_NAV = ('\u2191\u2193 move \u00b7 enter picks \u00b7 esc goes back')
+AGENT_TEXT_NAV = ('type it in \u00b7 enter continues \u00b7 esc goes back')
 
 
 class _AgentKeys(VerticalScroll):
-    """The keyboard surface of the agents panel; every key is delegated to
-    the screen that owns it."""
 
     can_focus = True
 
@@ -1575,9 +1520,6 @@ class _AgentKeys(VerticalScroll):
 
 
 class _AgentInput(Input):
-    """The free-text field of the agents panel. Escape goes back, which the
-    field itself does not bind, so the keybinding takes priority over the
-    list navigation that would otherwise swallow it."""
 
     BINDINGS = [("escape", "agents_back", "Back")]
 
@@ -1590,9 +1532,6 @@ class _AgentInput(Input):
 
 
 class AgentsScreen(Screen):
-    """The agents panel: every definition that is loaded, and the create,
-    edit and delete flow that maintains the agent files. A change is written
-    to disk and applied to the running team straight away."""
 
     def __init__(self, session, **kw):
         super().__init__(**kw)
@@ -1643,7 +1582,6 @@ class AgentsScreen(Screen):
     def _step_name(self) -> str:
         return AGENT_STEPS[self._step]
 
-    # ---- rendering ----------------------------------------------------
 
     def _refresh(self):
         lines = {
@@ -1678,7 +1616,7 @@ class AgentsScreen(Screen):
     def _header(self, subtitle: str, note=None) -> list:
         lines = ['[bold]Agents[/bold]']
         if self._mode == 'create':
-            lines = ['[bold]Create new agent[/bold]']
+            lines = ['[bold]New agent[/bold]']
         lines.append(f'[#9A9A9A]{escape(subtitle)}[/#9A9A9A]')
         if note:
             lines.append(f'[#9A9A9A]{escape(str(note))}[/#9A9A9A]')
@@ -1703,20 +1641,20 @@ class AgentsScreen(Screen):
 
     def _render_list(self) -> list:
         if not self._selectable:
-            lines = self._header('No agents found')
-            lines += self._options(['Create new agent'], self._pos, indent=0)
+            lines = self._header('Nothing defined yet')
+            lines += self._options(['New agent'], self._pos, indent=0)
             lines += ['',
-                      '[#9A9A9A]No agents found. Create specialized subagents '
-                      'that PyClaw can delegate to.[/]',
-                      '[#9A9A9A]Each subagent has its own context window, '
-                      'custom system prompt, and specific tools.[/]',
-                      '[#9A9A9A]Try creating: Code Reviewer, Code Simplifier, '
-                      'Security Reviewer, Tech Lead, or UX Reviewer.[/]']
+                      '[#9A9A9A]No subagents yet. A subagent is a role PyClaw '
+                      'can hand a job to.[/]',
+                      '[#9A9A9A]Each one brings its own context, prompt and '
+                      'tool set.[/]',
+                      '[#9A9A9A]Ideas: code reviewer, simplifier, security '
+                      'reviewer, tech lead.[/]']
         else:
             count = agent_defs.agent_count(self._entries)
             lines = self._header(f'{count} agents',
                                  self._changes[-1] if self._changes else None)
-            lines += self._options(['Create new agent'], self._pos, indent=0)
+            lines += self._options(['New agent'], self._pos, indent=0)
             lines.append('')
             position = 0
             for scope in (agent_defs.USER, agent_defs.PROJECT):
@@ -1733,8 +1671,7 @@ class AgentsScreen(Screen):
         built_ins = [e for e in self._entries
                      if e.scope == agent_defs.BUILT_IN]
         if built_ins:
-            lines += ['', '[bold][#9A9A9A]Built-in agents'
-                         ' (always available)[/#9A9A9A][/bold]']
+            lines += ['', '[bold][#9A9A9A]Bundled with PyClaw[/#9A9A9A][/bold]']
             lines += [self._row(e, -1) for e in built_ins]
         return lines + self._footer(AGENT_NAV)
 
@@ -1745,7 +1682,7 @@ class AgentsScreen(Screen):
         model = agent_defs.model_display(entry.defn, self._session.model)
         text = f'{marker}{entry.agent_type} \u00b7 {model}'
         if entry.shadowed_by:
-            text += f' {_WARN} shadowed by {entry.shadowed_by}'
+            text += f' {_WARN} hidden behind {entry.shadowed_by}'
         text = escape(text)
         if chosen:
             return f'[{self.app.brand}]{text}[/]'
@@ -1779,22 +1716,21 @@ class AgentsScreen(Screen):
                          f'{escape(defn.permission_mode)}')
         lines += ['', '[bold]System prompt[/bold]',
                   escape(defn.system_prompt or '')]
-        return lines + self._footer('Press Enter or Esc to go back')
+        return lines + self._footer('enter or esc goes back')
 
     def _render_delete(self) -> list:
-        lines = self._header('Delete agent')
-        lines += [escape('Are you sure you want to delete the agent '
-                         f'{self._target.agent_type}?'),
+        lines = self._header('Delete an agent')
+        lines += [escape(f'Remove {self._target.agent_type} for good?'),
                   f'[#9A9A9A]Source: {escape(self._target.scope)}[/#9A9A9A]',
                   '']
-        return lines + self._options(['Yes, delete', 'No, cancel'],
+        return lines + self._options(['Delete it', 'Keep it'],
                                      self._delete_pos) + self._footer(AGENT_NAV)
 
     def _render_edit_menu(self) -> list:
         lines = self._header(self._target.agent_type)
         lines += [f'[#9A9A9A]Source: '
                   f'{escape(self._target.scope)}[/#9A9A9A]', '']
-        return lines + self._options(['Edit tools', 'Edit model'],
+        return lines + self._options(['Change tools', 'Change model'],
                                      self._menu_pos) + self._footer(AGENT_NAV)
 
     def _render_create(self) -> list:
@@ -1816,10 +1752,10 @@ class AgentsScreen(Screen):
 
     def _render_edit_tools(self) -> list:
         return self._tools_lines(
-            self._target.agent_type, title='Edit tools')
+            self._target.agent_type, title='Change tools')
 
     def _tools_lines(self, subtitle: str, title=None) -> list:
-        lines = [f'[bold]{escape(title or "Create new agent")}[/bold]',
+        lines = [f'[bold]{escape(title or "New agent")}[/bold]',
                  f'[#9A9A9A]{escape(subtitle)}[/#9A9A9A]', '']
         labels = []
         for kind, label, payload in self._tool_items():
@@ -1833,12 +1769,11 @@ class AgentsScreen(Screen):
                 labels.append(f'{mark} {label}')
         lines += self._options(labels, self._tools_pos)
         chosen = len([n for n in self._names if n in self._selected_tools])
-        selected = ('All tools selected' if chosen == len(self._names)
-                    else f'{chosen} of {len(self._names)} tools selected')
+        selected = ('Every tool picked' if chosen == len(self._names)
+                    else f'{chosen} of {len(self._names)} picked')
         lines += ['', f'[#9A9A9A]{escape(selected)}[/#9A9A9A]']
         return lines + self._footer(
-            'Enter to toggle selection \u00b7 \u2191\u2193 to navigate \u00b7 '
-            'Esc to go back')
+            'enter toggles \u00b7 \u2191\u2193 move \u00b7 esc goes back')
 
     def _render_edit_model(self) -> list:
         lines = self._header(AGENT_TITLES['model'], self._error or None)
@@ -1865,10 +1800,7 @@ class AgentsScreen(Screen):
             lines += ['', '[bold][#FF6B80]Errors:[/#FF6B80][/bold]']
             lines += [f'[#FF6B80] \u2022 {escape(e)}[/#FF6B80]'
                       for e in errors]
-        return lines + self._footer('Press s or Enter to save \u00b7 Esc to '
-                                    'go back')
-
-    # ---- items --------------------------------------------------------
+        return lines + self._footer('s or enter saves \u00b7 esc goes back')
 
     def _tools_display(self) -> str:
         chosen = self._draft['tools']
@@ -1879,16 +1811,16 @@ class AgentsScreen(Screen):
         for label, members in agent_defs.tool_buckets(self._names):
             items.append(('bucket', label, tuple(members)))
         items.append(('toggle',
-                      'Hide advanced options' if self._tools_individual
-                      else 'Show advanced options', ()))
+                      'Hide the tool list' if self._tools_individual
+                      else 'Show the tool list', ()))
         if self._tools_individual:
             items += [('tool', name, (name,)) for name in self._names]
         return items
 
     def _menu_options(self) -> list:
-        options = [('View agent', 'view')]
+        options = [('Open', 'view')]
         if self._target.scope != agent_defs.BUILT_IN:
-            options += [('Edit agent', 'edit'), ('Delete agent', 'delete')]
+            options += [('Change', 'edit'), ('Delete', 'delete')]
         return options + [('Back', 'back')]
 
     def _menu_values(self) -> list:
@@ -1911,7 +1843,6 @@ class AgentsScreen(Screen):
             tools=tools, model=self._draft['model'] or None,
             description=self._draft['description'])
 
-    # ---- keys ---------------------------------------------------------
 
     def action_move_up(self):
         self._move(-1)
@@ -2028,7 +1959,6 @@ class AgentsScreen(Screen):
             self._mode = 'list'
             self._refresh()
 
-    # ---- steps --------------------------------------------------------
 
     def _start_create(self):
         self._mode = 'create'
@@ -2079,7 +2009,6 @@ class AgentsScreen(Screen):
         self._advance()
         self._refresh()
 
-    # ---- mutations ----------------------------------------------------
 
     def _open(self, entry):
         self._target = entry
@@ -2120,7 +2049,7 @@ class AgentsScreen(Screen):
         except OSError as e:
             self._error = str(e)
             return
-        self._changes.append(f'Updated agent: {defn.agent_type}')
+        self._changes.append(f'Saved changes to {defn.agent_type}')
         self._error = ''
         self._reload()
         self._sync()
@@ -2134,7 +2063,7 @@ class AgentsScreen(Screen):
             self._error = str(e)
             self._mode = 'menu'
             return
-        self._changes.append(f'Deleted agent: {entry.agent_type}')
+        self._changes.append(f'Removed {entry.agent_type}')
         self._reload()
         self._sync(gone=(entry.agent_type,))
         self._mode = 'list'
@@ -2147,14 +2076,13 @@ class AgentsScreen(Screen):
         except (FileExistsError, OSError) as e:
             self._error = str(e)
             return
-        self._changes.append(f'Created agent: {defn.agent_type}')
+        self._changes.append(f'Added {defn.agent_type}')
         self._error = ''
         self._reload()
         self._sync()
         self._mode = 'list'
 
     def _sync(self, gone: tuple = ()):
-        """Make the running team match what is on disk right now."""
         live = set()
         for entry in self._entries:
             if entry.shadowed_by is None:
@@ -2165,8 +2093,8 @@ class AgentsScreen(Screen):
                 self._team.remove_agent_definition(agent_type)
 
     def _exit(self):
-        message = ('Agent changes:\n' + '\n'.join(self._changes)
-                   if self._changes else 'Agents dialog dismissed')
+        message = ('What changed:\n' + '\n'.join(self._changes)
+                   if self._changes else 'Closed the agents list')
         self.app.pop_screen()
         self.app.call_later(self._show, message)
 
@@ -2183,7 +2111,6 @@ class _PermOption:
 
 @dataclasses.dataclass
 class _Approval:
-    """One tool call waiting for the human, held in arrival order."""
     tool_use_id: str
     tool_name: str
     prompt: '_PermissionPrompt'
@@ -2192,10 +2119,6 @@ class _Approval:
 
 
 class _PermissionPrompt(Vertical):
-    """The approval list, keyed like the option selectors elsewhere in the
-    product: arrows, j/k and ctrl+n/ctrl+p walk it with wrap-around, page
-    keys jump a screenful, digits pick by position, tab opens the feedback
-    field a row carries, and escape denies however the dialog is sitting."""
 
     can_focus = True
 
@@ -2252,12 +2175,11 @@ class _PermissionPrompt(Vertical):
             if self._tool == BASH_TOOL and self._rule:
                 options.append(_PermOption(
                     "dont_ask",
-                    f"Yes, and don\u2019t ask again for: {self._rule}", "rule"))
+                    f"Yes, and stop asking about: {self._rule}", "rule"))
             else:
                 options.append(_PermOption(
                     "dont_ask",
-                    f"Yes, and don't ask again for {self._tool} commands "
-                    f"in {self._cwd}", ""))
+                    f"Yes, always allow {self._tool} in {self._cwd}", ""))
         options.append(_PermOption("denied", "No", "reject"))
         return options
 
@@ -2299,7 +2221,7 @@ class _PermissionPrompt(Vertical):
             intent = str(self._input.get('description') or '').strip()
         if intent:
             lines.append(f"  [dim]{escape(intent)}[/]")
-        lines.append("  Do you want to proceed?")
+        lines.append("  Allow this call?")
         for index, option in enumerate(options):
             marker = POINTER if index == self._focused else ' '
             row = escape(f"  {marker} {index + 1}. {option.label}")
@@ -2307,8 +2229,8 @@ class _PermissionPrompt(Vertical):
                          else f"[dim]{row}[/]")
         hint = ((focused.feedback == "accept" and not self._open_accept)
                 or (focused.feedback == "reject" and not self._open_reject))
-        lines.append("[dim]  Esc to cancel"
-                     + (" \u00b7 Tab to amend" if hint else "") + "[/]")
+        lines.append("[dim]  esc cancels"
+                     + (" \u00b7 tab adds a note" if hint else "") + "[/]")
         self.query_one("#perm-body", Static).update("\n".join(lines))
 
     def _move(self, delta: int, wrap: bool):
@@ -2463,7 +2385,7 @@ class PyClawApp(App[None]):
                 ("pageup", "conv_page_up", "Scroll up"),
                 ("pagedown", "conv_page_down", "Scroll down"),
                 Binding("ctrl+home", "conv_scroll_top", "Scroll to top"),
-                Binding("ctrl+end", "jump_to_bottom", "Jump to bottom"),
+                Binding("ctrl+end", "jump_to_bottom", "Scroll to latest"),
                 Binding("shift+up", "agent_prev", "Previous agent",
                         priority=True),
                 Binding("shift+down", "agent_next", "Next agent",
@@ -2490,7 +2412,6 @@ class PyClawApp(App[None]):
         if action in ('agent_next', 'agent_prev'):
             return bool(self._teammates())
         if action == 'quit':
-            # A reading view binds ctrl+d to scroll half a page down.
             return not isinstance(self.focused, _PagerScroll)
         return True
 
@@ -2537,7 +2458,6 @@ class PyClawApp(App[None]):
         self._turn_start = 0
         self._live_text = ""
         self._response_chars = 0
-        self._shown_chars = 0
         self._work_block: Static | None = None
         self._turn_started_at = 0.0
         self._hud_started = time.monotonic()
@@ -2548,6 +2468,7 @@ class PyClawApp(App[None]):
         self._statusline_timer = None
         self._statusline_task = None
         self._turn_verb = SPINNER_VERBS[0]
+        self._turn_past = self._completion_verb()
         self._tools: dict[str, _ToolBlock] = {}
         self._spin_timer = None
         self._spin_i = 0
@@ -2680,12 +2601,16 @@ class PyClawApp(App[None]):
                 return agent
         return None
 
+    def _completion_verb(self) -> str:
+        return random.choice(PAST_TENSE_VERBS)
+
     def _state(self, name: str) -> dict:
         state = self._agent_state.get(name)
         if state is None:
             state = {'tools': 0, 'think': False, 'busy': False,
                      'last_tool': '', 'error': '',
-                     'verb': random.choice(TURN_COMPLETION_VERBS),
+                     'verb': random.choice(SPINNER_VERBS),
+                     'past': self._completion_verb(),
                      'started_at': time.monotonic(), 'idle_since': None}
             self._agent_state[name] = state
         return state
@@ -2715,7 +2640,7 @@ class PyClawApp(App[None]):
                 return f"{state['last_tool']}\u2026"
             return f"{state['verb']}\u2026"
         if all_idle:
-            return (f"{state['verb']} for "
+            return (f"{state['past']} for "
                     f"{self._duration(int(now - state['started_at']))}")
         if state.get('idle_since') is None:
             state['idle_since'] = now
@@ -3009,7 +2934,7 @@ class PyClawApp(App[None]):
                 self._hint.remove()
                 self._hint = None
             return
-        text = f"[#B1B9F9]\u2193 Jump to bottom \u00b7 {self._new_messages} new[/]"
+        text = f"[#B1B9F9]\u2193 Scroll to latest \u00b7 {self._new_messages} new[/]"
         if self._hint is None:
             self._hint = _JumpToBottom(text)
             await self.screen.mount(self._hint,
@@ -3161,7 +3086,6 @@ class PyClawApp(App[None]):
         state['last_tool'] = f"{_tool_label(tool, data.get('input'))}: {args}"
 
     def _spawn_block(self, name: str):
-        """The tool card a sub-agent's progress belongs under, if any."""
         uid = self._spawns.get(name)
         if not uid:
             return None
@@ -3180,11 +3104,6 @@ class PyClawApp(App[None]):
         if block is None or block._done:
             return
         meta = self._tool_meta.setdefault(uid, {})
-        # A sub-agent reports twice - AGENT_TURN_FINISHED, then the spawning
-        # progress message with done=True. By the time the second one lands,
-        # chatchat has already finalized the agent and _refresh_agents has
-        # dropped its state, so recomputing would report "0 tool uses · 0s".
-        # The first report is the accurate one; keep it.
         if 'agent_summary' not in meta:
             started = state['started_at']
             elapsed = max(0, int(time.monotonic() - started))
@@ -3299,10 +3218,10 @@ class PyClawApp(App[None]):
             if self._agent_running(self._agent_by_name(viewed)):
                 verb = self._state(viewed)['verb']
                 return (f"[{self.brand}]{char}[/] {escape(verb)}\u2026 "
-                        f"[dim](esc to interrupt [/]"
+                        f"[dim](esc stops the turn [/]"
                         f"[{self._agent_color(viewed)}]@{escape(viewed)}[/]"
                         f"[dim])[/]")
-            return self._idle_row(self._state(viewed)['started_at'])
+            return self._idle_row(self._state(viewed))
         elif self._processing is None and self._teammates_running():
             return self._idle_row()
         parts = []
@@ -3323,16 +3242,16 @@ class PyClawApp(App[None]):
         return (f"{head} [dim]([/]"
                 + "[dim] \u00b7 [/]".join(parts) + "[dim])[/]")
 
-    def _idle_row(self, since: float | None = None) -> str:
-        """The static row shown in place of an animated spinner."""
-        if since is not None:
-            teammates = self._teammates()
-            if teammates and all(not self._agent_running(a) for a in teammates):
-                seconds = max(0, int(time.monotonic() - since))
-                return f"[dim]{ASTERISK} Worked for {self._duration(seconds)}[/]"
-            return f"[dim]{ASTERISK} {IDLE_TEXT}[/]"
-        return (f"[dim]{ASTERISK} {IDLE_TEXT} \u00b7 "
-                f"{AGENT_TEAMMATES_HINT}[/]")
+    def _idle_row(self, state: dict | None = None) -> str:
+        if state is None:
+            return (f"[dim]{ASTERISK} {IDLE_TEXT} \u00b7 "
+                    f"{AGENT_TEAMMATES_HINT}[/]")
+        teammates = self._teammates()
+        if teammates and all(not self._agent_running(a) for a in teammates):
+            seconds = max(0, int(time.monotonic() - state['started_at']))
+            return (f"[dim]{ASTERISK} {state['past']} for "
+                    f"{self._duration(seconds)}[/]")
+        return f"[dim]{ASTERISK} {IDLE_TEXT}[/]"
 
     def _elapsed_seconds(self) -> int:
         if not self._turn_started_at:
@@ -3340,26 +3259,12 @@ class PyClawApp(App[None]):
         return max(0, int(time.monotonic() - self._turn_started_at))
 
     def _turn_tokens(self, *, running: bool) -> int:
-        tokens = (self._displayed_chars() + 2) // 4
+        tokens = round(self._response_chars / 4)
         if running and self._expanded_view != 'teammates':
             for agent in self._teammates():
                 if self._agent_running(agent):
                     tokens += _agent_tokens(agent)
         return tokens
-
-    def _displayed_chars(self) -> int:
-        """The streamed length, ramped one step per frame so the count never jumps."""
-        gap = self._response_chars - self._shown_chars
-        if gap > 0:
-            if gap < 70:
-                step = 3
-            elif gap < 200:
-                step = max(8, -(-gap * 15 // 100))
-            else:
-                step = 50
-            self._shown_chars = min(self._response_chars,
-                                    self._shown_chars + step)
-        return self._shown_chars
 
     def _leader_thinking(self) -> bool:
         return bool(self._state(str(self._team.lead.name)).get('think'))
@@ -3373,7 +3278,7 @@ class PyClawApp(App[None]):
     async def _finish_work(self):
         self._discard_think()
         elapsed = self._elapsed_seconds()
-        text = (f"[#9A9A9A]{ASTERISK} Worked for "
+        text = (f"[#9A9A9A]{ASTERISK} {self._turn_past} for "
                 f"{self._duration(elapsed)}[/]")
         if self._work_block is None or self._work_block.parent is None:
             self._work_block = await self._append_block(text)
@@ -3676,7 +3581,7 @@ class PyClawApp(App[None]):
     async def _render_queued(self):
         inp = self.query_one("#input", Input)
         queued = [] if self._viewing is not None else self._peek_queue()
-        inp.placeholder = ("Press up to edit queued messages" if queued
+        inp.placeholder = ("up edits what you queued" if queued
                            else "Message PyClaw\u2026")
         if not queued:
             if self._queued is not None:
@@ -3732,10 +3637,23 @@ class PyClawApp(App[None]):
         self._approvals.append(approval)
         if self._approvals[0] is approval:
             await self._mount_approval(approval)
-        return await approval.future
+        try:
+            return await approval.future
+        except asyncio.CancelledError:
+            self._withdraw_approval(approval)
+            raise
+
+    def _withdraw_approval(self, approval: _Approval):
+        if approval in self._approvals:
+            self._approvals.remove(approval)
+        approval.prompt.remove()
+        block = approval.block
+        if isinstance(block, _ToolBlock):
+            block.set_waiting_permission(False)
+        if not approval.future.done():
+            approval.future.cancel()
 
     def _badge(self, agent: str | None) -> str:
-        """Who is asking, unless it is the agent the user is talking to."""
         if not agent:
             return ''
         return '' if agent == self._team.lead.name else agent
@@ -3764,12 +3682,6 @@ class PyClawApp(App[None]):
         self.query_one("#input", Input).focus()
 
     async def _deny_pending_permission(self) -> bool:
-        """Settle the approvals the user was answering when they interrupted.
-
-        Left alone, a prompt outlives the turn it belongs to: its card sits on
-        "Initializing…" for good, and answering an orphaned prompt would still
-        run the tool the user just killed.
-        """
         if not self._approvals:
             return False
         for approval in list(self._approvals):
@@ -3833,11 +3745,11 @@ class PyClawApp(App[None]):
         self._live = None
         self._live_text = ""
         self._response_chars = 0
-        self._shown_chars = 0
         self._wrote_body = False
         self._interrupted_call = False
         self._turn_start = len(self._team.transcript())
         self._turn_verb = random.choice(SPINNER_VERBS)
+        self._turn_past = self._completion_verb()
         self._turn_started_at = time.monotonic()
 
     async def _settle_paint(self):
@@ -3870,9 +3782,6 @@ class PyClawApp(App[None]):
             return
         await self._wait_session_idle()
         await self._queue.join()
-        # A killed call already narrates itself on its card; chatchat hands
-        # back the tool error as the turn's "answer", and echoing it here
-        # prints the block reason a second time.
         if out.strip() and not self._wrote_body and not self._interrupted_call \
                 and len(self._team.transcript()) > self._turn_start:
             await self._append_block(escape(out))
@@ -3888,7 +3797,6 @@ class PyClawApp(App[None]):
             st["busy"] = busy
 
     def _context_note(self) -> str:
-        """How much room is left before the context has to be compacted."""
         s = self._session
         if s is None:
             return ""
@@ -3900,11 +3808,11 @@ class PyClawApp(App[None]):
             return ""
         percent_left = max(0, round((limit - used) / limit * 100))
         if s.auto_compact:
-            return f"[dim]{percent_left}% until auto-compact[/]"
+            return f"[dim]{percent_left}% left before auto-compact[/]"
         severity = ("error" if used >= limit - CONTEXT_ERROR_BUFFER_TOKENS
                     else "warning")
-        return (f"[{severity}]Context low ({percent_left}% remaining) \u00b7 "
-                f"Run /compact to compact & continue[/]")
+        return (f"[{severity}]Nearly out of context ({percent_left}% left) "
+                f"\u00b7 run /compact to carry on[/]")
 
     def _render_status(self):
         s = self._session
@@ -3921,12 +3829,12 @@ class PyClawApp(App[None]):
                 parts.append(TEAMMATE_VIEW_HINT)
             else:
                 if self._processing is not None or viewing_busy:
-                    parts.append("esc to interrupt")
+                    parts.append("esc stops the turn")
                 hint = self._tasks_hint()
                 if hint:
                     parts.append(hint)
         if show_hint and not parts:
-            parts.append("? for shortcuts")
+            parts.append("? lists the keys")
         self.query_one("#status", Static).update(" \u00b7 ".join(parts))
         self._paint_prompt()
         self._render_readouts()
@@ -3935,7 +3843,6 @@ class PyClawApp(App[None]):
         return f"[dim]thinking {'on' if self._session.thinking else 'off'}[/]"
 
     def _mode_pill(self) -> str:
-        """The permission mode, spelled out when it is not the plain default."""
         perm = self._session.permission_mode
         if perm not in MODE_SYMBOLS:
             return ''
@@ -3948,9 +3855,6 @@ class PyClawApp(App[None]):
         return pill
 
     def _render_readouts(self):
-        """The note and the two readout rows, refreshed on their own tick so a
-        resized terminal gets bars of the right length without a keypress.
-        Row one is what the model costs, row two where it is running."""
         if self._session is None or not self.is_running:
             return
         s = self._session
@@ -3992,8 +3896,8 @@ class PyClawApp(App[None]):
 
     def _statusline_state(self) -> tuple:
         s = self._session
-        return (len(s.transcript()), s.permission_mode, s.model,
-                statusline.user_command())
+        return (_last_assistant_key(s.transcript()), s.permission_mode,
+                s.model, statusline.user_command())
 
     def _schedule_statusline(self):
         state = self._statusline_state()
@@ -4037,7 +3941,6 @@ class PyClawApp(App[None]):
             return
         widget = self.query_one("#statusline", Static)
         widget.display = bool(self._statusline_text)
-        self.query_one("#hud", Static).display = not self._statusline_text
         widget.update(Text.from_ansi(self._statusline_text, style="dim",
                                      no_wrap=True))
 
@@ -4045,7 +3948,6 @@ class PyClawApp(App[None]):
         return any(not st['done'] for st in self._subagents.values())
 
     def _paint_prompt(self):
-        """The frame and pointer name who the prompt is talking to."""
         viewed = self._viewing
         accent = (self._agent_color(viewed) if viewed is not None
                   else banner.dimmed(self._triple, banner.RULE_LIGHTNESS))
@@ -4060,12 +3962,12 @@ class PyClawApp(App[None]):
         if not self._teammates():
             return ''
         if self._expanded_view == 'none':
-            action = 'show tasks'
+            action = 'shows the task list'
         elif self._expanded_view == 'tasks':
-            action = 'show teammates'
+            action = 'shows the teammate tree'
         else:
-            action = 'hide'
-        return f"[dim]ctrl+t to {action}[/]"
+            action = 'hides them'
+        return f"[dim]ctrl+t {action}[/]"
 
     def _render_tasks(self):
         if self._team is None:

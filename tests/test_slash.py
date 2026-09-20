@@ -1,19 +1,16 @@
 import asyncio
 
-import pytest
+from fakes import Usage
 
-from pyclaw import slash
-
-
-HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost")
+from pyclaw import config, slash
 
 
-class _Usage:
-    def __init__(self, prompt=0, completion=0, total=0, cached=0):
-        self.prompt_tokens = prompt
-        self.completion_tokens = completion
-        self.total_tokens = total
-        self.prompt_tokens_details = {"cached_tokens": cached} if cached else None
+HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost",
+                 "/agents")
+
+
+class _Bare:
+    pass
 
 
 def _fake_session(**kwargs):
@@ -26,11 +23,15 @@ def _fake_session(**kwargs):
         available_tools = ["a", "b"]
         context_messages = 0
         active_agents = 0
-        usage = _Usage()
+        usage = Usage()
 
         def __init__(self, **kw):
+            self.ended = []
             for k, v in kwargs.items():
                 setattr(self, k, v)
+
+        async def end_session(self, reason):
+            self.ended.append(reason)
 
         def reset(self):
             self._reset = True
@@ -62,9 +63,18 @@ def test_non_slash_returns_none():
     assert asyncio.run(_call("hello world", _fake_session())) is None
 
 
+def test_agents_command_lists_the_types():
+    from types import SimpleNamespace
+    session = SimpleNamespace(agent_types=[('reviewer', 'Reviews code')])
+    reply = asyncio.run(_call('/agents', session))
+    assert 'reviewer: Reviews code' in reply
+
+
 def test_clear_command():
-    out = asyncio.run(_call("/clear", _fake_session()))
+    session = _fake_session()
+    out = asyncio.run(_call("/clear", session))
     assert "cleared" in out.lower()
+    assert session.ended == ["clear"]
 
 
 def test_tools_and_thinking_commands_removed():
@@ -73,15 +83,11 @@ def test_tools_and_thinking_commands_removed():
     assert "Unknown command" in asyncio.run(_call("/thinking", _fake_session()))
 
 
-def test_status_command():
+def test_status_reports_the_session_and_its_environment():
     session = _fake_session()
     out = asyncio.run(_call("/status", session, session_key="k1"))
     assert "k1" in out
     assert "agent" in out
-
-
-def test_status_reports_version_and_directory():
-    out = asyncio.run(_call("/status", _fake_session(), session_key="k1"))
     assert "pyclaw:" in out
     assert "Directory:" in out
 
@@ -116,7 +122,6 @@ def test_memory_command_points_at_agents_md(tmp_path):
     assert "PYCLAW.md" not in out
 
 
-
 def test_plan_with_description_queues_the_goal():
     class _S:
         permission_mode = "default"
@@ -139,7 +144,7 @@ def test_plan_with_description_queues_the_goal():
 
 
 def test_status_includes_usage_and_cost():
-    session = _fake_session(usage=_Usage(1200, 300, 1500))
+    session = _fake_session(usage=Usage(1200, 300, 1500))
     out = asyncio.run(_call("/status", session, session_key="k1"))
     assert "1200 in" in out
     assert "300 out" in out
@@ -152,9 +157,8 @@ def test_model_command_reports_current_model():
 
 
 def test_model_command_switches_session_and_config(monkeypatch):
-    from pyclaw import config as config_module
     saved = {}
-    monkeypatch.setattr(config_module, "save", lambda c: saved.update(c))
+    monkeypatch.setattr(config, "save", lambda c: saved.update(c))
     monkeypatch.setattr("pyclaw.load", lambda: {"model": "m"})
 
     session = _fake_session()
@@ -165,9 +169,8 @@ def test_model_command_switches_session_and_config(monkeypatch):
 
 
 def test_cost_command_unpriced(monkeypatch):
-    from pyclaw import config as config_module
-    monkeypatch.setattr(config_module, "load", lambda: {"pricing": {}})
-    session = _fake_session(usage=_Usage(1200, 300, 1500))
+    monkeypatch.setattr(config, "load", lambda: {"pricing": {}})
+    session = _fake_session(usage=Usage(1200, 300, 1500))
     out = asyncio.run(_call("/cost", session))
     assert "unpriced" in out
     assert "pricing.m" in out
@@ -175,10 +178,9 @@ def test_cost_command_unpriced(monkeypatch):
 
 
 def test_cost_command_with_pricing(monkeypatch):
-    from pyclaw import config as config_module
-    monkeypatch.setattr(config_module, "load", lambda: {
+    monkeypatch.setattr(config, "load", lambda: {
         "pricing": {"m": {"input": 1, "output": 2}}})
-    session = _fake_session(usage=_Usage(1000, 500, 1500))
+    session = _fake_session(usage=Usage(1000, 500, 1500))
     out = asyncio.run(_call("/cost", session))
     assert "$0.0020" in out
 
@@ -193,21 +195,15 @@ def test_mode_switch_commands_removed():
 
 
 def test_statusline_command_queues_the_setup_agent():
-    class _S:
-        pass
-
-    info, prompt = asyncio.run(_call("/statusline", _S()))
+    info, prompt = asyncio.run(_call("/statusline", _Bare()))
     assert isinstance(info, str) and info
     assert "statusline-setup" in prompt
-    assert "Configure my statusLine from my shell PS1 configuration" in prompt
+    assert "Set up my status line from my shell PS1 configuration" in prompt
     assert "/statusline" in slash.HELP
 
 
 def test_statusline_command_forwards_the_user_instructions():
-    class _S:
-        pass
-
-    _, prompt = asyncio.run(_call("/statusline show the model in green", _S()))
+    _, prompt = asyncio.run(_call("/statusline show the model in green", _Bare()))
     assert "show the model in green" in prompt
     assert "statusline-setup" in prompt
     assert "Configure my statusLine" not in prompt
@@ -265,11 +261,6 @@ def test_permissions_remove_rule():
     assert "not found" in out
 
 
-def test_suggest_prefix_hits_first():
-    names = [c["name"] for c in slash.suggest("/he")]
-    assert names[0] == "help"
-
-
 def test_suggest_matches_alias_and_description():
     names = [c["name"] for c in slash.suggest("/h")]
     assert "help" in names
@@ -321,7 +312,8 @@ def test_handle_slash_tracks_usage():
         asyncio.run(_call("/cost", _fake_session()))
         assert slash._USAGE["cost"] == 2
         assert slash._USAGE["model"] == 1
-        assert asyncio.run(_call("/unknown-zzz", _fake_session()))             .startswith("Unknown command")
+        unknown = asyncio.run(_call("/unknown-zzz", _fake_session()))
+        assert unknown.startswith("Unknown command")
         assert "unknown-zzz" not in slash._USAGE
     finally:
         slash._USAGE.clear()

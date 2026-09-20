@@ -7,19 +7,22 @@ from chatchat.team import Team
 from pyclaw.agents import Session
 
 
-def test_session_persists_subagent_sidechains_under_session_log(tmp_path, monkeypatch):
-    monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
-
+def _spawn_subagent(team_name, session_id=None):
     async def sub_respond(messages, tools=None, *, stream_cb=None):
         return 'sub done'
 
     async def main():
-        team = Team('sc', client_factory=lambda inst, model=None: MockClient(handler=sub_respond))
-        Session(team, session_id='sid-1')
+        team = Team(team_name, client_factory=lambda inst, model=None:
+                    MockClient(handler=sub_respond))
+        Session(team, session_id=session_id)
         return await team.spawn_subagent('do it', subagent_type='general-purpose')
 
-    out = asyncio.run(main())
-    assert out == 'sub done'
+    return asyncio.run(main())
+
+
+def test_session_persists_subagent_sidechains_under_session_log(tmp_path, monkeypatch):
+    monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
+    assert _spawn_subagent('sc', 'sid-1') == 'sub done'
 
     side_dir = tmp_path / 'logs' / 'sid-1' / 'subagents'
     files = list(side_dir.glob('agent-*.jsonl'))
@@ -34,15 +37,6 @@ def test_session_persists_subagent_sidechains_under_session_log(tmp_path, monkey
 
 def test_sessions_without_persistence_do_not_write_sidechains(tmp_path, monkeypatch):
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
-
-    async def sub_respond(messages, tools=None, *, stream_cb=None):
-        return 'sub done'
-
-    async def main():
-        team = Team('np', client_factory=lambda inst, model=None: MockClient(handler=sub_respond))
-        Session(team)
-        await team.spawn_subagent('do it', subagent_type='general-purpose')
-
-    asyncio.run(main())
+    _spawn_subagent('np')
     assert not (tmp_path / 'logs').exists() or \
         list((tmp_path / 'logs').iterdir()) == []

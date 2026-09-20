@@ -1,9 +1,3 @@
-"""The welcome wordmark and the gradient painted across it.
-
-A logo is three numbers: the colour at the start of the ramp, the colour at
-the end, and the angle the ramp runs at. Vertical and horizontal sweeps are
-just 90 and 0 degrees, so there is one renderer.
-"""
 from __future__ import annotations
 
 import colorsys
@@ -57,7 +51,6 @@ def _direction(angle: float) -> tuple:
 
 
 def directional(top: tuple, bottom: tuple, angle: float) -> str:
-    """The wordmark as markup, coloured by how far each cell lies along angle."""
     dx, dy = _direction(angle)
     seen = [c * dx + r * dy for c in (0, LAST_COL) for r in (0, LAST_ROW)]
     lo, hi = min(seen), max(seen)
@@ -75,11 +68,6 @@ def directional(top: tuple, bottom: tuple, angle: float) -> str:
 
 
 def random_triple(rng: random.Random) -> tuple:
-    """Two endpoints and an angle, bright enough to read on a dark background.
-
-    Saturation and value interpolate linearly in HSV, so holding the two
-    endpoints above the floors holds the whole sweep above them.
-    """
     hue = rng.random()
     top = _from_hsv(hue, rng.uniform(MIN_SATURATION, 1.0),
                     rng.uniform(MIN_VALUE, 1.0))
@@ -106,7 +94,6 @@ def brand(triple: tuple) -> str:
 
 
 def dimmed(triple: tuple, lightness: int) -> str:
-    """The brand's midpoint scaled until its brightest channel hits lightness."""
     top, bottom, _ = triple
     mid = ramp(top, bottom, 0.5)
     return rgb_to_hex(tuple(round(c * lightness / max(mid)) for c in mid))

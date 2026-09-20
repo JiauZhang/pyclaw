@@ -136,8 +136,6 @@ def render_output(output_fmt: str, out: dict):
 
 
 async def run_headless(args):
-    # No `level` here: the console handler would corrupt the machine-readable
-    # stdout of `-p`, and the file log is always DEBUG anyway.
     setup_logging(console=False)
     config = load_config()
     provider = args.provider or config.get("provider")

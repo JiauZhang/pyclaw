@@ -1,6 +1,5 @@
 import asyncio
 
-import pytest
 
 from pyclaw.channels.web import WebChannelAdapter
 
@@ -16,21 +15,16 @@ class _CollectingAdapter(WebChannelAdapter):
 
 def _make_session(name="agent1"):
     class Session:
-        deliver = None
-
         def stream(self, message, on_event=None):
             async def gen():
                 yield "Hello "
                 yield "world"
             return gen()
 
-        def reset(self):
+        async def end_session(self, reason):
             pass
 
-        def switch(self, mode):
-            return None
-
-        def set_thinking(self, on):
+        def reset(self):
             pass
 
     Session.name = name
@@ -56,12 +50,18 @@ def _make_runtime():
     return Runtime(), calls
 
 
+def _run_message(text):
+    adapter = _CollectingAdapter()
+    runtime, calls = _make_runtime()
+    asyncio.run(adapter._process_message("c1", {"type": "message", "text": text},
+                                         _make_session(), runtime))
+    return adapter, calls
+
+
 def test_finish_stream_payload():
     adapter = _CollectingAdapter()
-    runtime, _ = _make_runtime()
-    session = _make_session()
 
-    asyncio.run(adapter._finish_stream("c1", "s1", session, "full text"))
+    asyncio.run(adapter._finish_stream("c1", "s1", _make_session(), "full text"))
 
     assert adapter.sent == [(
         "stream_complete",
@@ -71,32 +71,20 @@ def test_finish_stream_payload():
 
 
 def test_process_message_normal_streams_chunks_and_completes():
-    adapter = _CollectingAdapter()
-    runtime, calls = _make_runtime()
-    session = _make_session()
+    adapter, calls = _run_message("hi")
 
-    data = {"type": "message", "text": "hi"}
-    asyncio.run(adapter._process_message("c1", data, session, runtime))
-
-    types = [t for t, _, _ in adapter.sent]
-    assert types[0] == "stream_chunk"
+    assert adapter.sent[0][0] == "stream_chunk"
     assert adapter.sent[0][1] == "Hello "
-    assert types[-1] == "stream_complete"
+    assert adapter.sent[-1][0] == "stream_complete"
     assert adapter.sent[-1][2]["full_response"] == "Hello world"
     assert calls["requests"] == 1
     assert calls["errors"] == 0
 
 
 def test_process_message_slash_command_streams_reply():
-    adapter = _CollectingAdapter()
-    runtime, calls = _make_runtime()
-    session = _make_session()
+    adapter, calls = _run_message("/clear")
 
-    data = {"type": "message", "text": "/clear"}
-    asyncio.run(adapter._process_message("c1", data, session, runtime))
-
-    chunks = [t for t, _, _ in adapter.sent]
-    assert chunks[0] == "stream_chunk"
-    assert chunks[-1] == "stream_complete"
+    assert adapter.sent[0][0] == "stream_chunk"
+    assert adapter.sent[-1][0] == "stream_complete"
     assert adapter.sent[-1][2]["full_response"] == adapter.sent[0][1]
     assert calls["requests"] == 1

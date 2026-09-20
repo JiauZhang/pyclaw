@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import shlex
-import sys
 
 STATUS_LINE_TIMEOUT_SECONDS = 5.0
 STATUS_LINE_DEBOUNCE_SECONDS = 0.3
@@ -14,55 +12,25 @@ _CONFIG_MTIME: float | None = None
 
 
 def _sync_config() -> None:
-    """Re-read the config file after an edit outside the app."""
     global _CONFIG_MTIME
     from pyclaw import config
     try:
         mtime = config.__config_file__.stat().st_mtime
     except OSError:
         mtime = None
-    if mtime == _CONFIG_MTIME:
+    if mtime is not None and mtime == _CONFIG_MTIME:
         return
     _CONFIG_MTIME = mtime
     config.reload()
 
 
-def _default_command() -> str:
-    return (shlex.quote(sys.executable) + ' -c '
-            + shlex.quote(
-                'import json, sys\n'
-                '\n'
-                'data = json.load(sys.stdin)\n'
-                'model = data["model"]["display_name"]\n'
-                'cwd = data["cwd"]\n'
-                'print(f"{model} \\u00b7 {cwd}")\n'))
-
-
-DEFAULT_COMMAND = _default_command()
-
-
-def _entry_command():
-    """The configured command: None with no statusLine block at all, '' when
-    the block exists but is not a command line."""
+def user_command() -> str:
     from pyclaw.config import load
     _sync_config()
     entry = load().get('statusLine')
-    if entry is None:
-        return None
-    if entry.get('type') != 'command':
+    if not entry or entry.get('type') != 'command':
         return ''
     return str(entry.get('command') or '')
-
-
-def user_command() -> str:
-    """The command the user wrote themselves, '' when the line is ours."""
-    return _entry_command() or ''
-
-
-def configured_command() -> str:
-    """The configured status line command, or the built-in default one."""
-    entry = _entry_command()
-    return DEFAULT_COMMAND if entry is None else entry
 
 
 def context_percentages(used: int, size: int) -> tuple[int, int]:
@@ -114,8 +82,7 @@ def clean_output(stdout: str) -> str:
     return '\n'.join(line for line in lines if line)
 
 
-async def run(session, command: str = None) -> str:
-    command = configured_command() if command is None else command
+async def run(session, command: str) -> str:
     if not command:
         return ''
     payload = json.dumps(build_payload(session))

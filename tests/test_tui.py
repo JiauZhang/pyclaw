@@ -1,11 +1,10 @@
 import asyncio
-import os
-import re
+import logging
+import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-
-import pytest
+from unittest import mock
 
 from textual.widgets import Input, Static
 
@@ -14,31 +13,18 @@ from chatchat.hooks.events import (
     AGENT_REASON_START,
     AGENT_TEXT,
     AGENT_TOOL_CALL,
+    AGENT_TOOL_RESULT,
     AGENT_TURN_FINISHED,
     RuntimeEvent,
+    emit,
 )
 from chatchat.tool import ToolContext
-from pyclaw.tui import PyClawApp, _TextBlock, _display_cwd, _token_rate
-
-
-@pytest.fixture(autouse=True)
-def _isolated_runtime_sinks():
-    from chatchat.hooks import events
-    saved = list(events._runtime_sinks)
-    yield
-    events._runtime_sinks[:] = saved
-
-
-@pytest.fixture(autouse=True)
-def _no_welcome_state_writes(monkeypatch):
-    from pyclaw import welcome
-    monkeypatch.setattr(welcome, 'remember', lambda **kwargs: None)
-
-
-@pytest.fixture(autouse=True)
-def _no_status_line(monkeypatch):
-    from pyclaw import statusline
-    monkeypatch.setattr(statusline, 'user_command', lambda: '')
+from pyclaw import agents, banner, config, statusline, tui, welcome
+from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
+from pyclaw.tui import (HistorySearchScreen, PyClawApp, _PermissionPrompt,
+                        _TextBlock, _ToolBlock, _diff_block,
+                        _token_rate)
+from markup import plain
 
 
 class _FakeTeam:
@@ -105,7 +91,6 @@ class _FakeTeam:
         self._messages = list(messages)
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TOOL_CALL, agent="lead", tool="k",
              input={"x": 1}, tool_use_id="t1")
@@ -121,7 +106,6 @@ class _FakeTeam:
 class _ManyReadsTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         for index in range(5):
             emit(AGENT_TOOL_CALL, agent="lead", tool="Read",
@@ -134,7 +118,6 @@ class _ManyReadsTeam(_FakeTeam):
 
 class _ThinkTeam(_FakeTeam):
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_REASON_START, agent="lead")
         emit(AGENT_TEXT, agent="lead", delta="answer")
@@ -146,7 +129,6 @@ class _ThinkTeam(_FakeTeam):
 class _SubTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_PROGRESS, agent="sub-1", prompt="调研", subagent_type="coder")
         emit(AGENT_PROGRESS, agent="sub-1",
@@ -170,7 +152,6 @@ class _SubTeam(_FakeTeam):
 class _LongToolTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TOOL_CALL, agent="lead", tool="k",
              input={"path": "x" * 80}, tool_use_id="t1")
@@ -196,7 +177,6 @@ class _BusyTeam(_FakeTeam):
         self.calls = []
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.calls.append(prompt)
         self.record("user", prompt)
         await asyncio.sleep(0.05)
@@ -215,12 +195,13 @@ class _GateTeam(_FakeTeam):
     def __init__(self):
         super().__init__()
         from pyclaw.tools.coding import PermissionController
-        import tempfile as _t
-        self._tmp = _t.TemporaryDirectory()
+        self._tmp = tempfile.TemporaryDirectory()
         from pyclaw.tools.coding import CODING_TOOLS
         self._pyclaw_gate = PermissionController(mode="default",
                                                  cwd=self._tmp.name,
                                                  tools=CODING_TOOLS)
+        from chatchat.hooks.manager import HookManager
+        self.hooks = HookManager(self)
 
 
 def test_shift_tab_cycles_permission_mode():
@@ -255,7 +236,7 @@ def _flatten(app) -> str:
 def _plain(text) -> str:
     if not isinstance(text, str):
         text = _flatten(text)
-    return re.sub(r"\[?/?[^\]\[\n]*\]", "", text).replace("\\[", "[")
+    return plain(text)
 
 
 def test_ui_launches_and_renders_panels():
@@ -265,7 +246,7 @@ def test_ui_launches_and_renders_panels():
             await pilot.pause()
             assert app.query_one("#conv") is not None
             assert app.query_one("#input", Input) is not None
-            assert "? for shortcuts" in str(app.query_one("#status").content)
+            assert "? lists the keys" in str(app.query_one("#status").content)
             tasks = app.query_one("#tasks")
             assert tasks.display is False
             await pilot.press("ctrl+t")
@@ -321,14 +302,13 @@ def test_consecutive_reads_collapse_into_one_line():
             return _flatten(app)
 
     flat = asyncio.run(scenario())
-    assert "Read [bold]5[/] files" in flat
-    assert "(ctrl+o to expand)" in flat
+    assert "Opened [bold]5[/] files" in flat
+    assert "(ctrl+o for the list)" in flat
 
 
 class _ReadBodyTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TOOL_CALL, agent="lead", tool="Read",
              input={"file_path": "a.txt"}, tool_use_id="t1")
@@ -356,7 +336,7 @@ def test_transcript_expands_every_tool_call():
             assert "Read(a.txt)" in _plain(expanded)
             assert "alpha" in expanded
             assert "\\[#9A9A9A]" not in expanded
-            assert "Worked for" in expanded
+            assert "Handled for" in expanded
     asyncio.run(scenario())
 
 
@@ -409,7 +389,7 @@ def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
                 await pilot.pause()
             conv = app.query_one("#conv")
             blocks = [_block_text(w) for w in conv.children]
-            assert "\u273b Worked for" in blocks[-1]
+            assert "\u273b Handled for" in blocks[-1]
             assert "inner monologue" not in "".join(blocks)
             assert "answer" in "".join(blocks)
     asyncio.run(scenario())
@@ -420,7 +400,6 @@ def _working_spinner(app, *, seconds: int = 0, chars: int = 0):
     app._turn_verb = "Thinking"
     app._turn_started_at = time.monotonic() - seconds
     app._response_chars = chars
-    app._shown_chars = chars
 
 
 def _rendered_spinner(builder, prepare) -> str:
@@ -435,14 +414,11 @@ def _rendered_spinner(builder, prepare) -> str:
 
 
 def test_the_turn_timer_and_rate_show_from_the_first_second():
-    """PyClaw keeps the reference's 30s gate off: the clock and the rate are
-    the reason a turn is worth watching, so they read from the start."""
-    from pyclaw.spinner_verbs import SPINNER_VERBS
-
+    """The clock and the rate are why a turn is worth watching, so PyClaw
+    reads them from the first second rather than after a warm-up gate."""
     text = _rendered_spinner(_builder, lambda app: _working_spinner(
         app, seconds=4, chars=4000))
     assert _plain(text) == "\u273b Thinking\u2026 (4s \u00b7 \u2193 1k tokens \u00b7 250 tok/s)"
-    assert len(SPINNER_VERBS) > 100
 
 
 def test_a_slow_turn_reads_its_timer_tokens_and_rate():
@@ -457,19 +433,11 @@ def test_a_fractional_rate_keeps_one_decimal():
     assert _token_rate(1200, 31) == "39 tok/s"
 
 
-def test_the_token_counter_climbs_in_steps_toward_the_response():
-    async def scenario():
-        async with PyClawApp(builder=_builder).run_test() as pilot:
-            app = pilot.app
-            await pilot.pause()
-            _working_spinner(app, seconds=31, chars=1000)
-            app._shown_chars = 0
-            return [_plain(app._spinner_text("\u273b")) for _ in range(60)]
-
-    frames = asyncio.run(scenario())
-    assert frames[0] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 13 tokens \u00b7 0.4 tok/s)"
-    assert frames[1] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 25 tokens \u00b7 0.8 tok/s)"
-    assert frames[-1] == "\u273b Thinking\u2026 (31s \u00b7 \u2193 250 tokens \u00b7 8.1 tok/s)"
+def test_the_token_counter_reads_what_has_streamed():
+    text = _rendered_spinner(_builder, lambda app: _working_spinner(
+        app, seconds=31, chars=1000))
+    assert _plain(text) == \
+        "\u273b Thinking\u2026 (31s \u00b7 \u2193 250 tokens \u00b7 8.1 tok/s)"
 
 
 def test_spinner_row_drops_the_arrow_while_teammates_run():
@@ -502,12 +470,12 @@ def test_spinner_row_names_the_teammate_being_viewed():
         _working_spinner(app, seconds=3, chars=1600)
         app._team.worker_busy = True
         app._viewing = "worker"
-        app._state("worker")["verb"] = "Cogitated"
+        app._state("worker")["verb"] = "Reviewing"
         seen["color"] = app._agent_color("worker")
 
     team = _SwarmTeam()
     text = _rendered_spinner(lambda: team, prepare)
-    assert _plain(text) == "\u273b Cogitated\u2026 (esc to interrupt @worker)"
+    assert _plain(text) == "\u273b Reviewing\u2026 (esc stops the turn @worker)"
     assert f"[{seen['color']}]@worker[/]" in text
 
 
@@ -518,7 +486,7 @@ def test_spinner_row_goes_static_while_teammates_carry_on():
 
     team = _SwarmTeam()
     text = _rendered_spinner(lambda: team, prepare)
-    assert _plain(text) == "\u273b Idle \u00b7 teammates running"
+    assert _plain(text) == "\u273b Idle \u00b7 subagents are active"
 
 
 def test_a_stopped_teammate_view_reads_how_long_it_worked():
@@ -529,7 +497,7 @@ def test_a_stopped_teammate_view_reads_how_long_it_worked():
 
     team = _SwarmTeam()
     text = _rendered_spinner(lambda: team, prepare)
-    assert _plain(text) == "\u273b Worked for 42s"
+    assert _plain(text) == "\u273b Handled for 42s"
 
 
 def test_a_stopped_teammate_view_only_says_idle_while_others_run():
@@ -544,6 +512,29 @@ def test_a_stopped_teammate_view_only_says_idle_while_others_run():
     assert _plain(text) == "\u273b Idle"
 
 
+def test_a_busy_teammate_row_reads_present_and_an_idle_one_past():
+
+    team = _SwarmTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            state = app._state("worker")
+            state["last_tool"] = ""
+            team.worker_busy = True
+            busy = app._status_text(team.worker, False, False)
+            team.worker_busy = False
+            idle = app._status_text(team.worker, True, False)
+            return state, busy, idle
+
+    state, busy, idle = asyncio.run(scenario())
+    assert busy == f"{state['verb']}\u2026"
+    assert state["verb"] in SPINNER_VERBS
+    assert idle.startswith(f"{state['past']} for ")
+    assert state["past"] in PAST_TENSE_VERBS
+
+
 def test_spinner_row_says_thinking_while_the_leader_is_reasoning():
     def prepare(app):
         _working_spinner(app, seconds=31, chars=4 * 1200)
@@ -556,8 +547,6 @@ def test_spinner_row_says_thinking_while_the_leader_is_reasoning():
 
 def _status_right(builder, window: int = 0, size=(120, 40)) -> str:
     """The footer's right edge with the model window pinned to `window`."""
-    from unittest import mock
-    from pyclaw import config
     base = dict(config.load())
 
     async def scenario():
@@ -583,7 +572,7 @@ def _status_left(builder, prepare=None) -> str:
 
 
 def test_default_mode_shows_only_the_shortcut_hint():
-    assert _plain(_status_left(_builder)) == "? for shortcuts"
+    assert _plain(_status_left(_builder)) == "? lists the keys"
 
 
 def test_the_mode_pill_is_on_the_second_row_with_the_directory():
@@ -607,7 +596,7 @@ def test_the_running_hint_sits_alone_in_the_footer():
         app._session.set_permission_mode("plan")
         app._processing = "hello"
 
-    assert _plain(_status_left(lambda: team, prepare)) == "esc to interrupt"
+    assert _plain(_status_left(lambda: team, prepare)) == "esc stops the turn"
     assert "plan mode on" in _status_row2(lambda: team, prepare)
 
 
@@ -633,7 +622,7 @@ def test_a_teammate_view_counts_as_a_second_item_and_shows_its_hint():
         app._expanded_view = "teammates"
 
     assert _plain(_status_left(lambda: team, prepare)) == \
-        "esc to return to team lead"
+        "esc goes back to the lead"
 
 
 def test_a_running_teammate_keeps_the_interrupt_and_toggle_hints():
@@ -646,7 +635,7 @@ def test_a_running_teammate_keeps_the_interrupt_and_toggle_hints():
         app._expanded_view = "teammates"
 
     assert _plain(_status_left(lambda: team, prepare)) == \
-        "esc to interrupt \u00b7 ctrl+t to hide"
+        "esc stops the turn \u00b7 ctrl+t hides them"
 
 
 def test_the_shortcut_hint_steps_back_while_typing():
@@ -660,15 +649,13 @@ def test_the_shortcut_hint_steps_back_while_typing():
             return idle, typing
 
     idle, typing = asyncio.run(scenario())
-    assert idle == "? for shortcuts"
+    assert idle == "? lists the keys"
     assert typing == ""
 
 
 def _row1(builder=_builder, prepare=None, size=(120, 40),
           window: int = 0) -> str:
     """The first readout row with the model's context window pinned."""
-    from unittest import mock
-    from pyclaw import config
     base = dict(config.load())
 
     async def scenario():
@@ -686,11 +673,9 @@ def _row1(builder=_builder, prepare=None, size=(120, 40),
 
 def _row2(builder=_builder, prepare=None, git: str = '') -> str:
     """The second readout row with git's answer pinned."""
-    from unittest import mock
-    from pyclaw import tui as tui_module
 
     async def scenario():
-        with mock.patch.object(tui_module, 'git_status', lambda cwd: git):
+        with mock.patch.object(tui, 'git_status', lambda cwd: git):
             async with PyClawApp(builder=builder).run_test(
                     size=(120, 40)) as pilot:
                 await pilot.pause()
@@ -718,14 +703,11 @@ def _statusline_rows(builder=_builder, command: str = ''):
     return asyncio.run(scenario())
 
 
-def test_an_unconfigured_status_line_takes_no_row(monkeypatch):
-    from pyclaw import statusline
-    monkeypatch.setattr(statusline, 'user_command', lambda: '')
-    assert _statusline_rows() == (False, "", "? for shortcuts")
+def test_an_unconfigured_status_line_takes_no_row():
+    assert _statusline_rows() == (False, "", "? lists the keys")
 
 
 def test_a_configured_status_line_paints_every_output_line(monkeypatch):
-    from pyclaw import statusline
     monkeypatch.setattr(statusline, 'user_command',
                         lambda: "printf 'first\\n\\nsecond\\n'")
     display, text, hints = _statusline_rows()
@@ -734,8 +716,7 @@ def test_a_configured_status_line_paints_every_output_line(monkeypatch):
     assert hints == ""
 
 
-def test_a_configured_status_line_replaces_the_first_row(monkeypatch):
-    from pyclaw import statusline
+def test_a_configured_status_line_gets_its_own_row(monkeypatch):
     monkeypatch.setattr(statusline, 'user_command',
                         lambda: "printf 'ready'")
     team = _GateTeam()
@@ -756,13 +737,33 @@ def test_a_configured_status_line_replaces_the_first_row(monkeypatch):
 
     display, first_row, second_row = asyncio.run(scenario())
     assert display is True
-    assert first_row is False
+    assert first_row is True
     assert "\u23f8 plan mode on" in second_row
+
+
+def test_the_status_line_reruns_on_a_reply_not_on_an_append(monkeypatch):
+    monkeypatch.setattr(statusline, 'user_command', lambda: "echo ready")
+    team = _GateTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            before = app._statusline_state()
+            team.record("user", [{"type": "tool_result", "tool_use_id": "t1",
+                                  "content": "output"}])
+            after_append = app._statusline_state()
+            team.record("assistant", "a reply")
+            return before, after_append, app._statusline_state()
+
+    before, after_append, after_reply = asyncio.run(scenario())
+    assert after_append == before
+    assert after_reply != before
 
 
 def test_the_status_line_reruns_when_the_session_state_changes(monkeypatch):
     import sys
-    from pyclaw import statusline
     command = ('"{py}" -c \'import json,sys; '
                'print(json.load(sys.stdin)["permission_mode"])\'').format(
         py=sys.executable)
@@ -788,7 +789,6 @@ def test_the_status_line_reruns_when_the_session_state_changes(monkeypatch):
 
 
 def test_configuring_the_status_line_mid_session_adds_the_row(monkeypatch):
-    from pyclaw import statusline
     commands = ['']
     monkeypatch.setattr(statusline, 'user_command', lambda: commands[0])
     team = _GateTeam()
@@ -829,7 +829,7 @@ def test_context_note_counts_the_room_left_down_to_auto_compact():
         auto_compact = True
 
     assert _status_right(lambda: _NearlyFullTeam()) == \
-        "[dim]10% until auto-compact[/]"
+        "[dim]10% left before auto-compact[/]"
 
 
 def test_context_note_asks_for_a_manual_compact_without_auto_compact():
@@ -838,8 +838,8 @@ def test_context_note_asks_for_a_manual_compact_without_auto_compact():
         context_tokens = 190_000
 
     assert _status_right(lambda: _NoStrategyTeam()) == (
-        "[error]Context low (5% remaining) \u00b7 "
-        "Run /compact to compact & continue[/]")
+        "[error]Nearly out of context (5% left) "
+        "\u00b7 run /compact to carry on[/]")
 
 
 def _meter_team(used: int):
@@ -867,7 +867,7 @@ def test_the_note_stays_on_the_footer_while_its_own_row():
 
     assert _plain(_status_right(lambda: _TightTeam(),
                                 window=200_000)) == (
-        "Context low (5% remaining) \u00b7 Run /compact to compact & continue")
+        "Nearly out of context (5% left) \u00b7 run /compact to carry on")
     assert "│█████░░░░░│ 50%" in _row1(lambda: _TightTeam(), window=200_000)
 
 
@@ -881,8 +881,6 @@ def test_a_resized_terminal_gets_meters_of_the_right_length():
         async with PyClawApp(
                 builder=lambda: _meter_team(68_000)()
                 ).run_test(size=(120, 40)) as pilot:
-            from unittest import mock
-            from pyclaw import config
             base = dict(config.load())
             with mock.patch.object(config, 'load',
                                    lambda: {**base, 'contextWindow': 200_000}):
@@ -901,11 +899,9 @@ def test_a_resized_terminal_gets_meters_of_the_right_length():
 
 def _hud_row(git: str = '', prepare=None, size: tuple = (80, 40)) -> str:
     """The HUD line with git's answer pinned to `git`."""
-    from unittest import mock
-    from pyclaw import tui as tui_module
 
     async def scenario():
-        with mock.patch.object(tui_module, 'git_status', lambda cwd: git):
+        with mock.patch.object(tui, 'git_status', lambda cwd: git):
             async with PyClawApp(builder=_builder).run_test() as pilot:
                 await pilot.pause()
                 await pilot.resize_terminal(*size)
@@ -944,13 +940,11 @@ def test_status_shows_esc_to_interrupt_while_running():
             return idle, busy
 
     idle, busy = asyncio.run(scenario())
-    assert "? for shortcuts" in idle
-    assert "esc to interrupt" in busy
+    assert "? lists the keys" in idle
+    assert "esc stops the turn" in busy
 
 
 def test_model_switch_updates_status_bar(monkeypatch):
-    from pyclaw import config as config_module
-    monkeypatch.setattr(config_module, "save", lambda c: None)
     monkeypatch.setattr("pyclaw.load", lambda: {"model": "m"})
 
     async def scenario():
@@ -983,7 +977,7 @@ def test_status_has_no_model_or_thinking_segments():
 
 
 def test_fmt_compacts():
-    """Trailing zeros go, the way the reference's compact numbers do."""
+    """A compact count keeps at most one decimal and drops trailing zeros."""
     from pyclaw.tui import _format_count as fmt
     assert fmt(900) == "900"
     assert fmt(1000) == "1k"
@@ -993,6 +987,8 @@ def test_fmt_compacts():
 
 
 def test_long_block_wraps_not_stretches():
+    """A reply longer than the pane folds onto several lines instead of
+    widening the conversation."""
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
@@ -1001,10 +997,10 @@ def test_long_block_wraps_not_stretches():
             block = app._append_block(long_text)
             await block
             await pilot.pause()
-            conv = app.query_one("#conv")
-            for w in conv.query(Static):
-                assert w.styles.width.value in (None, "100%", "1fr") or True
-            assert True
+            rendered = list(app.query_one("#conv").query(Static))[-1]
+            assert len(str(rendered.content)) == 500
+            assert rendered.region.width < app.screen.size.width
+            assert rendered.region.height > 1
     asyncio.run(scenario())
 
 
@@ -1057,8 +1053,8 @@ def test_interrupt_cancels_running_work():
             await pilot.press("ctrl+c")
             await pilot.pause()
             flat = _flatten(app)
-            assert "Interrupted" in flat
-            assert "What should PyClaw do instead?" in flat
+            assert "Stopped" in flat
+            assert "tell PyClaw what to do instead" in flat
     asyncio.run(scenario())
 
 
@@ -1074,7 +1070,7 @@ def test_subagent_progress_renders_tree_line():
             tasks = str(app._tasks_pane.content)
             assert "Sub-agents" in tasks
             assert "[bold]coder[/]" in tasks
-            assert "1 tool use" in tasks
+            assert "1 tool call" in tasks
             assert "2k tokens" in tasks
             assert "Done" in tasks
     asyncio.run(scenario())
@@ -1086,7 +1082,6 @@ def _transcript_text(app) -> str:
 
 
 def test_dynamic_text_with_brackets_renders_without_crash():
-    from chatchat.hooks.events import RuntimeEvent
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -1096,7 +1091,6 @@ def test_dynamic_text_with_brackets_renders_without_crash():
                                            data={"delta": "[/bold] [x] data"}))
             await pilot.pause()
             assert "[/bold] [x] data" in _flatten(app)
-            from pyclaw.tui import _ToolBlock
             block = _ToolBlock("Bash", '{"cmd": "[x]"}')
             await app._conv().mount(block)
             block.set_result("[/bold] output [y]")
@@ -1106,8 +1100,7 @@ def test_dynamic_text_with_brackets_renders_without_crash():
 
 
 def test_diff_block_renders_summary_and_colored_lines():
-    from pyclaw.tui import _diff_block
-    out = ("The file a.txt has been updated successfully.\n\n"
+    out = ("Saved a.txt.\n\n"
            "--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n a\n-b\n+B\n c")
     text = _diff_block("Edit", {}, out, ".", 60)
     assert text is not None
@@ -1117,16 +1110,14 @@ def test_diff_block_renders_summary_and_colored_lines():
 
 
 def test_diff_block_skips_non_diff_output():
-    from pyclaw.tui import _diff_block
     assert _diff_block("Bash", {}, "ls\n", ".", 60) is None
     err = "Error: old_string not found in a.txt."
     assert _diff_block("Edit", {}, err, ".", 60) is None
-    plain = "The file a.txt has been updated successfully."
+    plain = "Saved a.txt."
     assert _diff_block("Edit", {}, plain, ".", 60) is None
 
 
 def test_diff_block_word_highlights_similar_lines():
-    from pyclaw.tui import _diff_block
     out = ("--- a/x\n+++ b/x\n@@ -1 +1 @@\n"
            "-def foo(bar):\n+def foo(baz):")
     text = _diff_block("Edit", {}, out, ".", 60)
@@ -1135,7 +1126,6 @@ def test_diff_block_word_highlights_similar_lines():
 
 
 def test_diff_block_pairs_only_adjacent_remove_add():
-    from pyclaw.tui import _diff_block
     out = ("--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n"
            "-old line\n ctx\n+new line")
     text = _diff_block("Edit", {}, out, ".", 60)
@@ -1145,7 +1135,6 @@ def test_diff_block_pairs_only_adjacent_remove_add():
 
 
 def test_read_card_uses_structured_meta_not_text_parsing():
-    from chatchat.hooks.events import (RuntimeEvent, AGENT_TOOL_RESULT)
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -1172,10 +1161,9 @@ def test_tool_block_renders_edit_diff():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            from pyclaw.tui import _ToolBlock
             block = _ToolBlock("Edit", {"file_path": "a.txt"}, cwd=".")
             await app._conv().mount(block)
-            block.set_result("The file a.txt has been updated successfully.\n"
+            block.set_result("Saved a.txt.\n"
                              "\n--- a/a.txt\n+++ b/a.txt\n@@ -1,3 +1,3 @@\n"
                              " a\n-b\n+B\n c")
             await pilot.pause()
@@ -1215,7 +1203,6 @@ def test_file_suggest_lists_workspace_entries(tmp_path):
 
 
 def test_at_typeahead_shows_files_and_tab_applies():
-    from pathlib import Path
 
     async def scenario(d):
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -1236,7 +1223,6 @@ def test_at_typeahead_shows_files_and_tab_applies():
             assert inp.value == "@a.txt "
             assert not suggest.display
 
-    import tempfile
     with tempfile.TemporaryDirectory() as d:
         Path(d, "a.txt").write_text("x")
         Path(d, "src").mkdir()
@@ -1252,7 +1238,6 @@ def test_ctrl_r_history_picker_filters_and_executes():
             await pilot.press("ctrl+r")
             await pilot.pause()
             await pilot.pause()
-            from pyclaw.tui import HistorySearchScreen
             assert isinstance(app.screen, HistorySearchScreen)
             hs = app.screen.query_one("#hs-input", Input)
             hs.value = "git"
@@ -1283,7 +1268,6 @@ def test_ctrl_r_history_picker_tab_accepts_without_submit():
             await pilot.pause()
             await pilot.press("tab")
             await pilot.pause()
-            from pyclaw.tui import HistorySearchScreen
             assert not isinstance(app.screen, HistorySearchScreen)
             assert app.query_one("#input", Input).value == "run tests"
             assert "run tests" not in _flatten(app)
@@ -1325,7 +1309,6 @@ def test_ctrl_r_history_picker_escape_cancels():
             await pilot.pause()
             await pilot.press("escape")
             await pilot.pause()
-            from pyclaw.tui import HistorySearchScreen
             assert not isinstance(app.screen, HistorySearchScreen)
             assert inp.value == "my draft"
 
@@ -1333,7 +1316,6 @@ def test_ctrl_r_history_picker_escape_cancels():
 
 
 def test_at_typeahead_dir_keeps_navigating():
-    from pathlib import Path
 
     async def scenario(d):
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -1351,7 +1333,6 @@ def test_at_typeahead_dir_keeps_navigating():
             await pilot.pause()
             assert inp.value == "@src/b.py "
 
-    import tempfile
     with tempfile.TemporaryDirectory() as d:
         Path(d, "src").mkdir()
         Path(d, "src", "b.py").write_text("y")
@@ -1359,9 +1340,6 @@ def test_at_typeahead_dir_keeps_navigating():
 
 
 def test_subagent_agent_square_brackets_do_not_crash():
-    from chatchat.hooks.events import (RuntimeEvent, AGENT_TOOL_CALL,
-                                       AGENT_TOOL_RESULT, AGENT_TEXT,
-                                       AGENT_PROGRESS)
 
     def builder():
         t = _FakeTeam()
@@ -1530,11 +1508,11 @@ def test_tool_card_expands_full_input_output_on_click():
             assert not block._expanded
             collapsed = str(block.content)
             assert "\u23bf" in collapsed
-            assert "(ctrl+o to expand)" in collapsed
+            assert "(ctrl+o shows the rest)" in collapsed
             block.on_click()
             await pilot.pause()
             expanded = str(block.content)
-            assert "(ctrl+o to expand)" not in expanded
+            assert "(ctrl+o shows the rest)" not in expanded
             assert "y" * 400 in expanded
     asyncio.run(scenario())
 
@@ -1542,7 +1520,6 @@ def test_tool_card_expands_full_input_output_on_click():
 class _SplitTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TEXT, agent="lead", delta="part1 ")
         emit(AGENT_TOOL_CALL, agent="lead", tool="k", input={}, tool_use_id="t1")
@@ -1581,7 +1558,6 @@ class _TimeoutTeam(_FakeTeam):
         return "partial"
 
     async def _finish_later(self):
-        from chatchat.hooks.events import emit
         await asyncio.sleep(1.0)
         emit(AGENT_TEXT, agent="lead", delta="full answer")
         self.record("assistant", "full answer")
@@ -1601,7 +1577,7 @@ def test_input_stays_busy_until_lead_actually_idle():
             for _ in range(3):
                 await pilot.pause()
             assert app._processing == "hi"
-            assert "esc to interrupt" in str(
+            assert "esc stops the turn" in str(
                 app.query_one("#status").content)
             for _ in range(30):
                 await pilot.pause()
@@ -1631,7 +1607,6 @@ class _TeammateTeam(_FakeTeam):
         self.agents["worker@t"] = _W()
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.worker_busy = True
         self.record("user", prompt)
         emit(AGENT_TEXT, agent="lead", delta="answer")
@@ -1672,12 +1647,12 @@ def test_turn_duration_deferred_until_teammates_settle():
             for _ in range(20):
                 await pilot.pause()
                 await asyncio.sleep(0.05)
-            assert "Worked for" not in _flatten(app)
+            assert "Handled for" not in _flatten(app)
             team.worker_busy = False
             for _ in range(10):
                 await pilot.pause()
                 await asyncio.sleep(0.05)
-            assert "Worked for" in _flatten(app)
+            assert "Handled for" in _flatten(app)
     asyncio.run(scenario())
 
 
@@ -1742,7 +1717,6 @@ class _SwarmTeam(_FakeTeam):
         self.agents.pop(agent.agent_id, None)
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.worker_busy = True
         self.record("user", prompt)
         emit(AGENT_TEXT, agent="lead", delta="lead answer")
@@ -1773,7 +1747,6 @@ def _tree(app) -> str:
 class _BlankTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TEXT, agent="lead", delta="\n\n")
         emit(AGENT_TOOL_CALL, agent="lead", tool="k", input={}, tool_use_id="t1")
@@ -1794,7 +1767,7 @@ def test_blank_deltas_do_not_create_empty_blocks():
                 await pilot.pause()
             blocks = [_block_text(w) for w in app.query_one("#conv").children]
             assert "answer" in blocks[-2]
-            assert "Worked for" in blocks[-1]
+            assert "Handled for" in blocks[-1]
             assert all(b.strip() for b in blocks)
     asyncio.run(scenario())
 
@@ -1802,7 +1775,6 @@ def test_blank_deltas_do_not_create_empty_blocks():
 class _DeltaTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         for ch in "abc":
             emit(AGENT_TEXT, agent="lead", delta=ch)
         emit(AGENT_TURN_FINISHED, agent="lead")
@@ -1992,7 +1964,7 @@ def test_the_status_row_hands_over_to_the_tool_row():
             rows = [_block_text(w) for w in app._conv().children if w.display]
             assert alive == [True]
             assert all(row.strip() for row in rows)
-            assert "Search" in rows[-1]
+            assert "Looking for" in rows[-1]
     asyncio.run(scenario())
 
 
@@ -2013,7 +1985,7 @@ def test_the_status_row_outlives_the_leader_while_teammates_run():
                 await pilot.pause()
                 await asyncio.sleep(0.05)
             assert app._think is None
-            assert "Worked for" in _flatten(app)
+            assert "Handled for" in _flatten(app)
     asyncio.run(scenario())
 
 
@@ -2024,7 +1996,6 @@ class _TwoTurnTeam(_FakeTeam):
         self._turn = 0
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self._turn += 1
         text = f"answer{self._turn}"
         self.record("user", prompt)
@@ -2038,7 +2009,7 @@ class _TwoTurnTeam(_FakeTeam):
 def test_second_turn_reuses_the_single_work_line():
     def work_lines(app):
         return [t for w in app.query_one("#conv").children
-                if "Worked for" in (t := _block_text(w))]
+                if "Handled for" in (t := _block_text(w))]
 
     async def scenario():
         async with PyClawApp(builder=lambda: _TwoTurnTeam()).run_test() as pilot:
@@ -2056,7 +2027,6 @@ def test_second_turn_reuses_the_single_work_line():
 class _LogTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_TEXT, agent="lead", delta="logged answer")
         self.record("assistant", "logged answer", thinking="why")
@@ -2067,7 +2037,6 @@ class _LogTeam(_FakeTeam):
 def test_turn_appends_conversation_log(tmp_path, monkeypatch):
     from conippets import jsonl
 
-    from pyclaw import agents
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
 
     async def scenario():
@@ -2088,7 +2057,6 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
 
 
 def test_resume_renders_saved_history(tmp_path, monkeypatch):
-    from pyclaw import agents
 
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     agents.save_transcript("s1", [
@@ -2110,14 +2078,13 @@ def test_resume_renders_saved_history(tmp_path, monkeypatch):
             flat = _flatten(app)
             assert "old question" in flat
             assert "old answer" in flat
-            assert "Read 1 file" in _plain(flat)
+            assert "Opened 1 file" in _plain(flat)
             assert "old thought" not in flat
             assert app._tools["t1"]._done is True
     asyncio.run(scenario())
 
 
 def test_fresh_start_ignores_saved_history(tmp_path, monkeypatch):
-    from pyclaw import agents
 
     monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
     agents.save_transcript("s2", [{"role": "assistant", "content": "stale"}])
@@ -2132,7 +2099,6 @@ def test_fresh_start_ignores_saved_history(tmp_path, monkeypatch):
 
 
 def test_permission_card_shows_why_the_model_wants_to_run_it():
-    from pyclaw.tui import _PermissionPrompt
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -2159,7 +2125,6 @@ def test_permission_card_shows_why_the_model_wants_to_run_it():
 
 
 def test_permission_card_drops_remember_option_for_dangerous_command():
-    from pyclaw.tui import _PermissionPrompt
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -2179,7 +2144,7 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
             await app._conv().mount(normal)
             await pilot.pause()
             text = str(normal.query_one("#perm-body", Static).content)
-            assert "don't ask again" in text
+            assert "always allow" in text
             assert "Edit" in text
     asyncio.run(scenario())
 
@@ -2198,7 +2163,6 @@ def test_runtime_sink_released_on_unmount():
 
 
 def test_follow_pauses_and_jump_to_bottom_resumes():
-    from chatchat.hooks.events import AGENT_TOOL_CALL, RuntimeEvent
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -2254,7 +2218,6 @@ def test_spin_tick_is_safe_after_conv_removed():
 class _BracketSubTeam(_FakeTeam):
 
     async def query(self, prompt, timeout=60):
-        from chatchat.hooks.events import emit
         self.record("user", prompt)
         emit(AGENT_PROGRESS, agent="sub-1", prompt="x", subagent_type="coder")
         emit(AGENT_PROGRESS, agent="sub-1",
@@ -2290,7 +2253,6 @@ def test_subagent_output_with_brackets_does_not_break_the_tasks_pane():
 
 
 def _prompts(app) -> list:
-    from pyclaw.tui import _PermissionPrompt
     return [w for w in app._conv().children if isinstance(w, _PermissionPrompt)]
 
 
@@ -2327,7 +2289,7 @@ def test_bash_rule_row_is_editable_where_it_is_focused():
             assert rule_field.has_focus
             assert rule_field.value == "Bash(git commit:*)"
             assert ([o.label for o in prompt._options()][1]
-                    == "Yes, and don\u2019t ask again for: Bash(git commit:*)")
+                    == "Yes, and stop asking about: Bash(git commit:*)")
             rule_field.value = "Bash(git commit --amend:*)"
             await pilot.press("enter")
             await pilot.pause()
@@ -2559,17 +2521,17 @@ def test_the_tab_hint_follows_the_focused_row():
             await pilot.pause()
             task, prompt = await _asked_prompt(app, pilot)
             painted = lambda: _plain(_flatten(app))
-            assert "Tab to amend" in painted()
+            assert "tab adds a note" in painted()
             assert "enter to confirm" not in painted()
             await pilot.press("down")
             await pilot.pause()
-            assert "Tab to amend" not in painted()
+            assert "tab adds a note" not in painted()
             await pilot.press("down")
             await pilot.pause()
-            assert "Tab to amend" in painted()
+            assert "tab adds a note" in painted()
             await pilot.press("tab")
             await pilot.pause()
-            assert "Tab to amend" not in painted()
+            assert "tab adds a note" not in painted()
             await pilot.press("escape")
             await pilot.pause()
             return await task
@@ -2910,18 +2872,19 @@ def test_question_mark_opens_the_shortcut_panel():
 
 
 def test_spinner_verbs_are_clean_words():
-    from pyclaw.spinner_verbs import SPINNER_VERBS
+    """A busy row reads as work in progress, an idle row as work finished."""
 
     assert len(SPINNER_VERBS) == len(set(SPINNER_VERBS))
-    assert len(SPINNER_VERBS) >= 180
-    assert SPINNER_VERBS[0] == "Accomplishing"
-    bad = [v for v in SPINNER_VERBS if not v[:1].isalpha()
-           or any(ch.isspace() for ch in v)]
-    assert bad == []
+    assert len(SPINNER_VERBS) >= 100
+    assert len(PAST_TENSE_VERBS) >= 8
+    malformed = [v for v in (*SPINNER_VERBS, *PAST_TENSE_VERBS)
+                 if not v[:1].isalpha() or any(ch.isspace() for ch in v)]
+    assert malformed == []
+    assert [v for v in SPINNER_VERBS if not v.endswith("ing")] == []
+    assert [v for v in PAST_TENSE_VERBS if v.endswith("ing")] == []
 
 
 def test_every_spinner_verb_renders_on_one_line():
-    from pyclaw.spinner_verbs import SPINNER_VERBS
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3034,19 +2997,17 @@ def test_escape_interrupts_a_running_turn():
 
     processing, flat = asyncio.run(scenario())
     assert processing is None
-    assert "Interrupted" in flat
+    assert "Stopped" in flat
 
 
 def _gradient_cfg(monkeypatch):
-    from pyclaw import config as config_module
     monkeypatch.setattr(
-        config_module, "load",
+        config, "load",
         lambda: {"banner": {"style": "gradient", "from": "#0084E4",
                             "to": "#F0CC00", "angle": 60.0}})
 
 
 def test_the_welcome_logo_is_the_painted_wordmark(monkeypatch):
-    from pyclaw import banner
     _gradient_cfg(monkeypatch)
 
     async def scenario():
@@ -3075,7 +3036,6 @@ def test_the_welcome_logo_stays_until_scrolled_out():
 
 
 def test_the_accent_colour_follows_the_launch_palette(monkeypatch):
-    from pyclaw import banner
     _gradient_cfg(monkeypatch)
 
     async def scenario():
@@ -3092,7 +3052,6 @@ def test_the_accent_colour_follows_the_launch_palette(monkeypatch):
 
 
 def test_the_user_message_band_follows_the_launch_palette(monkeypatch):
-    from pyclaw import banner
     _gradient_cfg(monkeypatch)
 
     async def scenario():
@@ -3108,7 +3067,6 @@ def test_the_user_message_band_follows_the_launch_palette(monkeypatch):
 
 
 def test_the_prompt_frame_is_the_palette_dimmed_to_a_rule(monkeypatch):
-    from pyclaw import banner
     _gradient_cfg(monkeypatch)
 
     async def scenario():
@@ -3125,7 +3083,6 @@ def test_the_prompt_frame_is_the_palette_dimmed_to_a_rule(monkeypatch):
 
 
 def test_the_prompt_pointer_is_the_accent_and_dims_while_working(monkeypatch):
-    from pyclaw import banner
     _gradient_cfg(monkeypatch)
 
     async def scenario():
@@ -3228,8 +3185,8 @@ def test_agent_tree_shows_the_leader_and_teammate_stats():
             assert "team-lead" in tree
             assert "2.4k tokens" in tree
             assert "@worker" in tree
-            assert "1 tool use" in tree
-            assert "shift + \u2191/\u2193 to select" in tree
+            assert "1 tool call" in tree
+            assert "shift+\u2191/\u2193 picks a row" in tree
     asyncio.run(scenario())
 
 
@@ -3249,7 +3206,7 @@ def test_shift_down_selects_the_row_and_reveals_the_view_hint():
             tree = _tree(app)
             assert "\u276f" in tree
             assert "\u2558\u2550" in tree
-            assert "enter to view" in tree
+            assert "enter opens it" in tree
     asyncio.run(scenario())
 
 
@@ -3273,9 +3230,9 @@ def test_enter_opens_the_teammate_view_and_esc_returns():
             assert view.display is True
             body = _plain(str(app._view_pane.content))
             assert "Viewing @worker" in body
-            assert "esc to return to team lead" in body
+            assert "esc goes back to the lead" in body
             assert "do the thing" in body
-            assert "esc to return to team lead" in _plain(
+            assert "esc goes back to the lead" in _plain(
                 str(app.query_one("#status").content))
             await pilot.press("escape")
             await pilot.pause()
@@ -3337,7 +3294,7 @@ def test_idle_leader_shows_teammates_running_line():
             await pilot.pause()
             await _run_turn(pilot)
             tree = _tree(app)
-            assert "Idle \u00b7 teammates running" in tree
+            assert "Idle \u00b7 subagents are active" in tree
     asyncio.run(scenario())
 
 
@@ -3386,7 +3343,6 @@ def test_at_name_sends_a_direct_message_to_the_teammate():
 
 
 def test_subagent_task_card_reports_done_with_stats():
-    from chatchat.hooks.events import RuntimeEvent
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3408,13 +3364,12 @@ def test_subagent_task_card_reports_done_with_stats():
                              meta=app._tool_meta.get("a1"))
             content = str(block.content)
             assert "[bold]Explore[/]" in content
-            assert "Done (1 tool use \u00b7 0 tokens \u00b7" in content
+            assert "Done (1 tool call \u00b7 0 tokens \u00b7" in content
             assert "the subagent answer" not in content
     asyncio.run(scenario())
 
 
 def test_teammate_spawn_card_has_no_result_line():
-    from chatchat.hooks.events import RuntimeEvent
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3502,7 +3457,6 @@ def test_queued_messages_are_hidden_while_viewing_a_teammate():
 
 
 def test_direct_send_message_cards_stay_off_the_transcript():
-    from chatchat.hooks.events import RuntimeEvent
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3515,7 +3469,7 @@ def test_direct_send_message_cards_stay_off_the_transcript():
             await pilot.pause()
             block = app._tools["s1"]
             assert block.display is False
-            block.set_result("Message delivered to worker's inbox")
+            block.set_result("Sent to worker's inbox")
             painted = "".join(str(w.content)
                               for w in app.query_one("#conv").children
                               if w.display)
@@ -3524,7 +3478,6 @@ def test_direct_send_message_cards_stay_off_the_transcript():
 
 
 def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
-    import logging
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3552,7 +3505,6 @@ def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
 
 
 def test_every_runtime_event_is_logged_for_postmortem(caplog):
-    import logging
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3567,7 +3519,6 @@ def test_every_runtime_event_is_logged_for_postmortem(caplog):
 
 
 def test_subagent_spawn_and_finish_are_logged(caplog):
-    import logging
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -3591,7 +3542,6 @@ def _logo_text(app) -> str:
 
 
 def test_the_logo_greets_you_under_the_wordmark(monkeypatch):
-    from pyclaw import welcome
     monkeypatch.setattr(welcome, "settings",
                         lambda: {"seen": 4, "lastVersion": "0.0.5"})
 
@@ -3601,14 +3551,13 @@ def test_the_logo_greets_you_under_the_wordmark(monkeypatch):
             return _logo_text(pilot.app)
 
     text = asyncio.run(scenario())
-    assert "Welcome back!" in text
+    assert "Good to see you." in text
     assert "PyClaw v" in text
     assert "m \u00b7 p" in text
     assert str(Path.cwd()) in text or "~/" in text
 
 
 def test_the_logo_feeds_follow_the_welcome_state(monkeypatch):
-    from pyclaw import welcome
     monkeypatch.setattr(welcome, "recent_activity", lambda **kwargs: [
         {"text": "fix the PDF outline jump", "timestamp": "2 hours ago"}])
     monkeypatch.setattr(welcome, "settings",
@@ -3623,16 +3572,15 @@ def test_the_logo_feeds_follow_the_welcome_state(monkeypatch):
             return _logo_text(pilot.app)
 
     text = asyncio.run(scenario())
-    assert "Tips for getting started" in text
+    assert "Getting oriented" in text
     assert "Ask PyClaw to create a new app" in text
-    assert "Recent activity" in text
+    assert "Last sessions" in text
     assert "2 hours ago" in text
     assert "fix the PDF outline jump" in text
     assert "/resume for more" in text
 
 
 def test_the_logo_drops_the_feeds_once_onboarding_is_settled(monkeypatch):
-    from pyclaw import welcome
     monkeypatch.setattr(welcome, "settings",
                         lambda: {"seen": 4, "lastVersion": "0.0.5"})
     monkeypatch.setattr(welcome, "recent_activity", lambda **kwargs: [
@@ -3644,15 +3592,14 @@ def test_the_logo_drops_the_feeds_once_onboarding_is_settled(monkeypatch):
             return _logo_text(pilot.app)
 
     text = asyncio.run(scenario())
-    assert "Welcome back!" in text
-    assert "Tips for getting started" not in text
-    assert "Recent activity" not in text
+    assert "Good to see you." in text
+    assert "Getting oriented" not in text
+    assert "Last sessions" not in text
     assert "should not show" not in text
 
 
 def test_the_greeting_records_the_version_and_the_onboarding_seen_count(
         monkeypatch):
-    from pyclaw import welcome
     seen = []
     monkeypatch.setattr(welcome, "feeds_for", lambda **kwargs: ([], True))
     monkeypatch.setattr(welcome, "remember",
@@ -3695,7 +3642,7 @@ def test_a_running_sub_agent_shows_what_it_is_doing_under_its_card():
             app = pilot.app
             await pilot.pause()
             await _mount_agent_card(app)
-            assert "\u23bf  Initializing\u2026" in _card(app._tools["a1"])
+            assert "\u23bf  Starting up\u2026" in _card(app._tools["a1"])
             await _sub_agent_says(app, [
                 {"type": "text", "text": "Reading the config first"},
                 {"type": "tool_use", "id": "t1", "name": "Read",
@@ -3704,7 +3651,7 @@ def test_a_running_sub_agent_shows_what_it_is_doing_under_its_card():
             text = _card(app._tools["a1"])
             assert "Reading the config first" in text
             assert "Read(pyclaw/tui.py)" in text
-            assert "Initializing" not in text
+            assert "Starting up" not in text
     asyncio.run(scenario())
 
 
@@ -3724,7 +3671,7 @@ def test_the_sub_agent_trail_keeps_the_last_three_messages():
             assert "step-2.py" in text
             assert "step-1.py" not in text
             assert "step-0.py" not in text
-            assert "+2 tool uses (ctrl+o to expand)" in text
+            assert "+2 tool calls (ctrl+o shows more)" in text
     asyncio.run(scenario())
 
 
@@ -3787,10 +3734,10 @@ def test_the_done_line_replaces_the_trail_when_the_sub_agent_finishes():
             block = app._tools["a1"]
             text = _card(block)
             assert "Read(pyclaw/tui.py)" not in text
-            assert "Initializing" not in text
+            assert "Starting up" not in text
             block.set_result("the subagent answer",
                              meta=app._tool_meta.get("a1"))
-            assert "Done (1 tool use \u00b7 0 tokens \u00b7" in _card(block)
+            assert "Done (1 tool call \u00b7 0 tokens \u00b7" in _card(block)
     asyncio.run(scenario())
 
 
@@ -3810,7 +3757,7 @@ def test_the_transcript_shows_every_trail_row_not_just_the_last_three():
             entry = _plain(TranscriptScreen._tool_entry(app._tools["a1"]))
             for index in range(5):
                 assert f"step-{index}.py" in entry
-            assert "more tool uses" not in entry
+            assert "more tool calls" not in entry
     asyncio.run(scenario())
 
 
@@ -3827,7 +3774,7 @@ def test_the_teammate_spawn_card_never_trails_after_it_resolves():
             block.set_result('Teammate "watcher" spawned and idle.')
             text = _card(block)
             assert "spawned and idle" not in text
-            assert "Initializing" not in text
+            assert "Starting up" not in text
     asyncio.run(scenario())
 
 
@@ -3852,16 +3799,16 @@ def test_a_tool_call_waiting_on_approval_says_so():
                 "tool": "create_agent",
                 "input": {"prompt": "go", "subagent_type": "general-purpose"},
                 "tool_use_id": "a1"}))
-            assert "Initializing" in _card(app._tools["a1"])
+            assert "Starting up" in _card(app._tools["a1"])
             task, prompt = await _pending_approval(app, pilot)
             # While an approval is being answered the card says so instead of
             # sitting on the start-up line.
-            assert "\u23bf  Waiting for permission\u2026" in _card(app._tools["a1"])
-            assert "Initializing" not in _card(app._tools["a1"])
+            assert "\u23bf  Needs your approval\u2026" in _card(app._tools["a1"])
+            assert "Starting up" not in _card(app._tools["a1"])
             await pilot.press("enter")
             await pilot.pause()
             await task
-            assert "Waiting for permission" not in _card(app._tools["a1"])
+            assert "Needs your approval" not in _card(app._tools["a1"])
     asyncio.run(scenario())
 
 
@@ -3885,10 +3832,10 @@ def test_interrupting_while_an_approval_is_pending_settles_the_call():
             assert _prompts(app) == []
             text = _card(app._tools["a1"])
             assert "Agent(go)" in text
-            assert "\u23bf  Interrupted \u00b7 What should PyClaw do instead?" in text
+            assert "\u23bf  Stopped \u00b7 tell PyClaw what to do instead" in text
             painted = _plain("".join(str(w.content)
                                      for w in app.query_one("#conv").children))
-            assert painted.count("What should PyClaw do instead") == 1
+            assert painted.count("tell PyClaw what to do instead") == 1
     asyncio.run(scenario())
 
 
@@ -3966,13 +3913,18 @@ def test_a_killed_call_is_not_narrated_twice():
 
 
 def test_a_late_timer_refresh_does_not_paint_into_a_torn_down_dom():
+    """The readout interval and the status line debounce can both fire once
+    the widgets are already gone, so neither may go looking for them."""
     async def start():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             return pilot.app
 
     app = asyncio.run(start())
+    looked_up = []
+    app.query_one = lambda *args, **kwargs: looked_up.append(args)
     app._render_readouts()
     asyncio.run(app._refresh_statusline())
+    assert looked_up == []
 
 
 def test_a_row_drops_its_tail_instead_of_being_cut_through_a_number():

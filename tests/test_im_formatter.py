@@ -1,33 +1,18 @@
-import pytest
-
 from pyclaw.channels.im_formatter import split_long_message, IMStatusTracker
 
 
-def test_split_short_message_unchanged():
-    text = "hello world"
-    assert split_long_message(text, 1500) == [text]
-
-
-def test_split_respects_limit():
-    text = "a" * 5000
-    parts = split_long_message(text, 1500)
-    assert all(len(p) <= 1500 for p in parts)
-    assert "".join(parts) == text
-
-
-def test_split_on_paragraph_boundary():
-    parts = ["para one " * 50, "para two " * 50]
-    text = "\n\n".join(parts)
-    result = split_long_message(text, 200)
-    assert all(len(p) <= 200 for p in result)
-    assert "".join(result) == text
-
-
-def test_split_on_sentence_when_paragraph_too_long():
-    long_para = ("句子内容。" * 100)
-    result = split_long_message(long_para, 200)
-    assert all(len(p) <= 200 for p in result)
-    assert "".join(result) == long_para
+def test_split_keeps_every_part_under_the_limit_and_lossless():
+    paragraphs = "\n\n".join(["para one " * 50, "para two " * 50])
+    for text, limit, stays_whole in (
+            ("hello world", 1500, True),
+            ("a" * 5000, 1500, False),
+            (paragraphs, 200, False),
+            ("句子内容。" * 100, 200, False)):
+        parts = split_long_message(text, limit)
+        assert all(len(p) <= limit for p in parts)
+        assert "".join(parts) == text
+        if stays_whole:
+            assert parts == [text]
 
 
 def test_tracker_no_duplicate_same_status():

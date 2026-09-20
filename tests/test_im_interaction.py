@@ -1,15 +1,17 @@
 import asyncio
 
-from chatchat.hooks.events import (
-    AGENT_REASON_START,
-    AGENT_TEXT,
-    AGENT_TOOL_CALL,
-    AGENT_WARN,
-    RuntimeEvent,
-)
+import pytest
+
+from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TEXT,
+                                   AGENT_TOOL_CALL, AGENT_WARN, RuntimeEvent)
 
 from pyclaw import agents
 from pyclaw.gateway.server import _im_progress_text, run_im_interaction
+
+
+@pytest.fixture(autouse=True)
+def _logs(tmp_path, monkeypatch):
+    monkeypatch.setattr(agents, '_logs_dir', lambda: tmp_path)
 
 
 class _Adapter:
@@ -33,66 +35,51 @@ class _Session:
         return self._response
 
 
+def _run(session, adapter, clock=lambda: 0.0, **kw):
+    return asyncio.run(run_im_interaction(
+        session, adapter, 'sid1', 'u1', 'hi', 'm1',
+        im_extra='', progress_fn=_im_progress_text, status_interval=4.0,
+        max_msg_len=1500, clock=clock, **kw))
+
+
 def test_im_progress_text_maps_real_event_kinds():
-    assert _im_progress_text(RuntimeEvent(
-        AGENT_REASON_START, agent="lead")) == "🔄 PyClaw 思考中…"
-    assert _im_progress_text(RuntimeEvent(
-        AGENT_TOOL_CALL, agent="lead",
-        data={"tool": "Read", "input": {}})) == "🔧 调用工具 Read"
-    assert _im_progress_text(RuntimeEvent(
-        AGENT_WARN, agent="lead", data={"text": "careful"})) == "⚠️ careful"
-    assert _im_progress_text(RuntimeEvent(
-        AGENT_TEXT, agent="lead", data={"delta": "hi"})) == ""
+    cases = (
+        (RuntimeEvent(AGENT_REASON_START, agent='lead'), '🔄 PyClaw 思考中…'),
+        (RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
+                      data={'tool': 'Read', 'input': {}}), '🔧 调用工具 Read'),
+        (RuntimeEvent(AGENT_WARN, agent='lead',
+                      data={'text': 'careful'}), '⚠️ careful'),
+        (RuntimeEvent(AGENT_TEXT, agent='lead', data={'delta': 'hi'}), ''))
+    for event, expected in cases:
+        assert _im_progress_text(event) == expected
 
 
-def test_interaction_splits_long_response(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+def test_interaction_splits_long_response():
     adapter = _Adapter()
-    session = _Session("x" * 5000)
-    response = asyncio.run(run_im_interaction(
-        session, adapter, "sid1", "u1", "hi", "m1",
-        im_extra="", progress_fn=_im_progress_text, status_interval=4.0,
-        max_msg_len=1500, clock=lambda: 0.0,
-    ))
-    assert response == "x" * 5000
-    assert all(len(p) <= 1500 for p in adapter.sent)
-    assert "".join(adapter.sent) == "x" * 5000
+    assert _run(_Session('x' * 5000), adapter) == 'x' * 5000
+    assert all(len(part) <= 1500 for part in adapter.sent)
+    assert ''.join(adapter.sent) == 'x' * 5000
 
 
-def test_interaction_collapses_status_bursts_to_latest(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    events = [
-        RuntimeEvent(AGENT_REASON_START, agent="lead"),
-        RuntimeEvent(AGENT_TOOL_CALL, agent="lead",
-                     data={"tool": "search", "input": {}}),
-    ]
-    session = _Session("done", events)
+def test_interaction_collapses_status_bursts_to_latest():
     adapter = _Adapter()
-
     clock_vals = [0.0, 1.0, 1.0, 1.0, 5.0, 5.0]
-    idx = {"i": 0}
+    count = {'n': 0}
 
     def clock():
-        v = clock_vals[min(idx["i"], len(clock_vals) - 1)]
-        idx["i"] += 1
-        return v
+        value = clock_vals[min(count['n'], len(clock_vals) - 1)]
+        count['n'] += 1
+        return value
 
-    asyncio.run(run_im_interaction(
-        session, adapter, "sid1", "u1", "hi", "m1",
-        im_extra="", progress_fn=_im_progress_text, status_interval=4.0,
-        max_msg_len=1500, clock=clock,
-    ))
+    session = _Session('done', [
+        RuntimeEvent(AGENT_REASON_START, agent='lead'),
+        RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
+                     data={'tool': 'search', 'input': {}})])
+    _run(session, adapter, clock=clock)
+    assert adapter.sent == ['🔧 调用工具 search', 'done']
 
-    assert adapter.sent == ["🔧 调用工具 search", "done"]
 
-
-def test_interaction_no_status_when_progress_empty(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    session = _Session("short answer")
+def test_interaction_sends_only_the_answer_without_progress():
     adapter = _Adapter()
-    asyncio.run(run_im_interaction(
-        session, adapter, "sid1", "u1", "hi", "m1",
-        im_extra="", progress_fn=_im_progress_text, status_interval=4.0,
-        max_msg_len=1500, clock=lambda: 0.0,
-    ))
-    assert adapter.sent == ["short answer"]
+    _run(_Session('short answer'), adapter)
+    assert adapter.sent == ['short answer']

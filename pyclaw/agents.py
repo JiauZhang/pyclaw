@@ -29,10 +29,9 @@ _name_counter = itertools.count()
 _sessions_by_root: dict[str, 'Session'] = {}
 
 
-def session_of(actor) -> Optional['Session']:
-    team = getattr(actor, 'team', None)
-    name = getattr(team, 'name', None) or getattr(actor, 'id', None)
-    return _sessions_by_root.get(name)
+def configured_context_window() -> int:
+    from .config import load
+    return int(load().get('contextWindow') or 0)
 
 
 def session_for(team_name) -> Optional['Session']:
@@ -322,6 +321,7 @@ def build_team(
         http_options=http_options or {},
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
         multi_agent=use_team,
+        context_window=configured_context_window(),
     )
     team._pyclaw_gate = gate
     team._pyclaw_mode = 'team' if use_team else 'agent'
@@ -344,12 +344,12 @@ def build_team(
         status = ('killed' if killed
                   else ('completed' if code == 0 else 'failed'))
         team.lead.enqueue_attachment(
-            f'<task-notification>\n<task-id>{task_id}</task-id>\n'
+            f'<background_done>\n<task_ref>{task_id}</task_ref>\n'
             f'<command>{command}</command>\n'
-            f'<output-file>{_background._output_path(task_id)}</output-file>\n'
-            f'<status>{status}</status>\n'
-            f'<summary>Background command exited with code {code}</summary>\n'
-            f'</task-notification>')
+            f'<log_file>{_background._output_path(task_id)}</log_file>\n'
+            f'<result>{status}</result>\n'
+            f'<note>The background command returned {code}.</note>\n'
+            f'</background_done>')
 
     _background.set_notifier(_notify_task_finished)
 
@@ -370,7 +370,23 @@ def build_team(
                                     agent='' if asker == team.lead.name
                                     else asker)
 
+    team.hooks.permission_mode = gate.mode.value
     team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
+
+    async def _permission_request(tool_name, tool_input, tool_use_id, agent):
+        asker = (team.get_by_name(agent) if agent else None) or team.lead
+        agg = await team.hooks.execute_permission_request_hooks(
+            asker, tool_name, tool_input or {}, tool_use_id=tool_use_id)
+        if agg.decision == 'allow':
+            return {'behavior': 'allow', 'updated_input': agg.updated_input,
+                    'message': ''}
+        if agg.decision == 'deny' or agg.blocking_error is not None:
+            return {'behavior': 'deny', 'updated_input': None,
+                    'message': (agg.blocking_error.blocking_error
+                                if agg.blocking_error else '')}
+        return None
+
+    gate.permission_hooks = _permission_request
     return team
 
 
@@ -434,8 +450,6 @@ class Session:
 
     @property
     def agent_types(self) -> list:
-        """(agent type, description) for every definition this session can
-        delegate to."""
         return self._team.agent_defs.describe()
 
     @property
@@ -473,14 +487,10 @@ class Session:
 
     @property
     def context_window(self) -> int:
-        """The model's input budget; 0 when unset, which hides the meter."""
-        from .config import load
-        return int(load().get('contextWindow') or 0)
+        return configured_context_window()
 
     @property
     def used_context(self) -> int:
-        """Tokens the last response measured against the window, input plus
-        output. Cached reads are already inside ``prompt_tokens``."""
         last = self._team.last_usage()
         return int(last.prompt_tokens + last.completion_tokens)
 
@@ -493,6 +503,7 @@ class Session:
             raise ValueError('Permission gate not available for this session.')
         parsed = parse_mode(mode)
         self._gate.mode = parsed
+        self._team.hooks.permission_mode = parsed.value
         return parsed.value
 
     def attach_approval(self, coro):
@@ -507,17 +518,22 @@ class Session:
     def submit(self, text: str, *, cancelable_tools: tuple = ()):
         self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)
 
+    async def end_session(self, reason: str):
+        await self._team.end_session(reason)
+
     def reset(self):
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None
         self._team.lead.messages = []
         self._team.reset_usage()
+        self._team.begin_new_session('clear')
 
     def resume_session(self, session_id: str) -> int:
         messages = load_transcript(session_id)
         if not messages:
             return 0
         self._team.restore(messages)
+        self._team.begin_new_session('resume')
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None
         return len(messages)
@@ -532,7 +548,7 @@ class Session:
         from .task import schedule_delivery
         job = schedule_delivery(text, when, self.deliver)
         at = job['next'].strftime('%Y-%m-%d %H:%M:%S') if job.get('next') else 'later'
-        return f"Scheduled delivery {job['id']} at {at}: {text}"
+        return f"Delivery {job['id']} queued for {at}: {text}"
 
     def _member_names(self) -> set:
         return {agent.name for agent in self._team.agents.values()}

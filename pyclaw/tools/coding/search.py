@@ -60,7 +60,7 @@ def Read(context, file_path: str, offset: int | None = None,
     except UnicodeDecodeError:
         return f'Error: {_TEXT_ERROR} (not a text file): {file_path}'
     except OSError as e:
-        return f'Error reading {file_path}: {e}'
+        return f'Read of {file_path} failed: {e}'
     total = len(lines)
     start = max((offset or 1) - 1, 0)
     end = min(start + (limit or _READ_LIMIT), total)
