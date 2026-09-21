@@ -16,8 +16,8 @@ class _StatusSession:
     conv_session_id = 'session-1'
     permission_mode = 'plan'
     model = 'test-model'
-    compact_threshold = 200_000
-    context_tokens = 40_000
+    context_window = 200_000
+    last_usage = Usage(40_000, 500, 40_500, 8_000)
     usage = Usage(1200, 300, 1500, 200)
 
     def __init__(self, cwd=None):
@@ -79,11 +79,25 @@ def test_the_payload_names_the_session_model_and_workspace():
 
 
 def test_the_payload_carries_pre_calculated_context_percentages():
+    """`current_usage` is what the last response reported and the percentage is
+    its input side over the model's window; output does not occupy the window."""
     window = build_payload(_StatusSession())['context_window']
     assert window['context_window_size'] == 200_000
-    assert window['current_usage'] == {'input_tokens': 40_000}
+    assert window['current_usage'] == {'input_tokens': 40_000,
+                                       'output_tokens': 500,
+                                       'cached_tokens': 8_000}
     assert window['used_percentage'] == 20
     assert window['remaining_percentage'] == 80
+
+
+def test_the_payload_reports_no_context_before_the_first_response():
+    class _Fresh(_StatusSession):
+        last_usage = None
+
+    window = build_payload(_Fresh())['context_window']
+    assert window['current_usage'] is None
+    assert window['used_percentage'] is None
+    assert window['remaining_percentage'] is None
 
 
 def test_context_percentages_stay_within_a_hundred():

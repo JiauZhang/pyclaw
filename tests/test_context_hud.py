@@ -1,5 +1,5 @@
-"""Data behind the visual context meter: the model's budget and what the last
-response actually consumed."""
+"""Data behind the visual context meter: the model's budget and how full the
+transcript the next request sends actually is."""
 import asyncio
 import re
 import tempfile
@@ -63,25 +63,21 @@ def test_context_window_defaults_to_two_hundred_thousand(isolated_config):
     assert isolated_config.load()['contextWindow'] == 200_000
 
 
-def test_used_context_is_the_last_responses_input_plus_output():
-    """`prompt_tokens` already contains the cached read, so adding it again
-    would overstate how full the window is."""
+def test_the_context_reading_counts_the_last_response_plus_what_came_after():
+    """The footer measures the transcript, not a client mid-request: the last
+    response's size, plus what has been appended since it."""
     usage = {'prompt_tokens': 100, 'completion_tokens': 20, 'total_tokens': 120,
              'prompt_tokens_details': {'cached_tokens': 80}}
 
     async def main():
-        session = _session(usage)
+        team = _team(usage)
+        session = agents.Session(team, session_id='hud')
         await session.chat('hi')
-        return session.used_context
+        after_reply = session.context_tokens
+        team.lead.messages.append({'role': 'user', 'content': 'x' * 400})
+        return after_reply, session.context_tokens
 
-    assert asyncio.run(main()) == 120
-
-
-def test_used_context_is_zero_before_the_first_response():
-    async def main():
-        return _session().used_context
-
-    assert asyncio.run(main()) == 0
+    assert asyncio.run(main()) == (120, 220)
 
 
 def test_meter_is_blank_without_a_window():

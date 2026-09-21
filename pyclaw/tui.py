@@ -3870,7 +3870,7 @@ class PyClawApp(App[None]):
 
     def _context_meter(self) -> str:
         s = self._session
-        return context_meter(self._triple, s.used_context, s.context_window,
+        return context_meter(self._triple, s.context_tokens, s.context_window,
                              self._meter_cells())
 
     def _messages(self) -> str:

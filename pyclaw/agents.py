@@ -490,9 +490,8 @@ class Session:
         return configured_context_window()
 
     @property
-    def used_context(self) -> int:
-        last = self._team.last_usage()
-        return int(last.prompt_tokens + last.completion_tokens)
+    def last_usage(self):
+        return self._team.last_usage()
 
     @property
     def auto_compact(self) -> bool:

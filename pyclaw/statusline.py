@@ -44,10 +44,21 @@ def build_payload(session) -> dict:
     from pyclaw.agents import transcript_path
     from pyclaw.version import __version__
     usage = session.usage
-    size = session.compact_threshold
-    used = session.context_tokens
-    used_percentage, remaining_percentage = context_percentages(used, size)
+    window = session.context_window
+    last = session.last_usage
     details = usage.prompt_tokens_details or {}
+    if last is None:
+        current_usage = None
+        used_percentage = remaining_percentage = None
+    else:
+        last_details = last.prompt_tokens_details or {}
+        current_usage = {
+            'input_tokens': last.prompt_tokens,
+            'output_tokens': last.completion_tokens,
+            'cached_tokens': int(last_details.get('cached_tokens', 0) or 0),
+        }
+        used_percentage, remaining_percentage = context_percentages(
+            last.prompt_tokens, window)
     return {
         'session_id': session.conv_session_id,
         'transcript_path': str(transcript_path(session.conv_session_id)),
@@ -69,8 +80,8 @@ def build_payload(session) -> dict:
         'context_window': {
             'total_input_tokens': usage.prompt_tokens,
             'total_output_tokens': usage.completion_tokens,
-            'context_window_size': size,
-            'current_usage': {'input_tokens': used},
+            'context_window_size': window,
+            'current_usage': current_usage,
             'used_percentage': used_percentage,
             'remaining_percentage': remaining_percentage,
         },

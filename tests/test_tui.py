@@ -40,6 +40,7 @@ class _FakeTeam:
         class _U:
             prompt_tokens = 0
             completion_tokens = 0
+            prompt_tokens_details = None
         return _U()
 
     def __init__(self):
@@ -843,13 +844,9 @@ def test_context_note_asks_for_a_manual_compact_without_auto_compact():
 
 
 def _meter_team(used: int):
-    """A team whose last response measured `used` tokens."""
+    """A team whose transcript measures `used` tokens."""
     class _Metered(_FakeTeam):
-        def last_usage(self):
-            class _U:
-                prompt_tokens = used
-                completion_tokens = 0
-            return _U()
+        context_tokens = used
     return _Metered
 
 
@@ -860,15 +857,15 @@ def test_the_first_row_leads_with_the_model_and_its_context_meter():
 
 def test_the_note_stays_on_the_footer_while_its_own_row():
     """The compact warning keeps the footer's right edge; the meter moved up to
-    the readout row, so the two no longer compete for one slot."""
-    class _TightTeam(_meter_team(100_000)):
+    the readout row, so the two no longer compete for one slot. Both measure the
+    same transcript, so the percentages they print add up to the whole window."""
+    class _TightTeam(_meter_team(190_000)):
         compact_threshold = 200_000
-        context_tokens = 190_000
 
     assert _plain(_status_right(lambda: _TightTeam(),
                                 window=200_000)) == (
         "Nearly out of context (5% left) \u00b7 run /compact to carry on")
-    assert "│█████░░░░░│ 50%" in _row1(lambda: _TightTeam(), window=200_000)
+    assert "│██████████│ 95%" in _row1(lambda: _TightTeam(), window=200_000)
 
 
 def test_the_first_row_shortens_its_meters_on_a_narrow_terminal():
