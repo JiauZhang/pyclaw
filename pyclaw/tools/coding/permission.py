@@ -172,8 +172,8 @@ def _path_rule(tool_name: str, target, cwd) -> str | None:
 
 
 def _user_settings_file() -> Path:
-    from pyclaw import __pyclaw_home__
-    return Path(__pyclaw_home__) / 'settings.json'
+    from pyclaw import pyclaw_home
+    return pyclaw_home() / 'settings.json'
 
 
 def _local_settings_file(cwd) -> Path:

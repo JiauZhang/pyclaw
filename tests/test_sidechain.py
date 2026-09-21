@@ -4,7 +4,17 @@ import json
 from chatchat.client import MockClient
 from chatchat.team import Team
 
-from pyclaw.agents import Session
+from pyclaw import pyclaw_home
+from pyclaw.agents import Session, _logs_dir
+
+
+def test_pyclaw_home_expands_a_leading_tilde(tmp_path, monkeypatch):
+    """PYCLAW_HOME is a user-typed setting, so `~` has to mean the real home
+    before it is handed to chatchat or used to build the logs path."""
+    monkeypatch.setenv('HOME', str(tmp_path))
+    monkeypatch.setenv('PYCLAW_HOME', '~/.pyclaw')
+    assert pyclaw_home() == tmp_path / '.pyclaw'
+    assert _logs_dir() == tmp_path / '.pyclaw' / 'logs'
 
 
 def _spawn_subagent(team_name, session_id=None):

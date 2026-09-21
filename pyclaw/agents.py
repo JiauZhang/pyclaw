@@ -19,6 +19,7 @@ from chatchat.hooks.events import (
 
 from chatchat.tool import ToolContext
 
+from . import pyclaw_home
 from .plugins import discover_skills, discover_tools
 from .skills import skill_roots
 from .tools import tools as base_tools
@@ -87,8 +88,7 @@ Rules:
 
 
 def _logs_dir() -> Path:
-    home = os.environ.get("PYCLAW_HOME", str(Path.home() / ".pyclaw"))
-    logs = Path(home) / "logs"
+    logs = pyclaw_home() / "logs"
     logs.mkdir(parents=True, exist_ok=True)
     return logs
 
