@@ -13,7 +13,8 @@ COMMANDS = [
     {'name': 'agents', 'desc': 'List and manage the agent definitions PyClaw can delegate to', 'hint': ''},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
     {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
-    {'name': 'cost', 'desc': 'Show token usage and estimated cost', 'hint': ''},
+    {'name': 'cost', 'desc': 'Show token usage and cost at your configured rates',
+     'hint': ''},
     {'name': 'statusline', 'desc': "Set up PyClaw's status line",
      'hint': '[instructions]'},
 ]

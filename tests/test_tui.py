@@ -19,11 +19,17 @@ from chatchat.hooks.events import (
     emit,
 )
 from chatchat.tool import ToolContext
-from pyclaw import agents, banner, config, statusline, tui, welcome
+from pyclaw import agents, banner, config, statusline, welcome
+from pyclaw.tui import app as tui
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
-from pyclaw.tui import (HistorySearchScreen, PyClawApp, _PermissionPrompt,
-                        _TextBlock, _ToolBlock, _diff_block,
-                        _token_rate)
+from pyclaw.tui import PyClawApp
+from pyclaw.tui.approval import _PermissionPrompt
+from pyclaw.tui.diff import _diff_block
+from pyclaw.tui.formatting import _token_rate
+from pyclaw.tui.roster import status_text
+from pyclaw.tui.screens import HistorySearchScreen
+from pyclaw.tui.widgets import _TextBlock, _ToolBlock
+from fakes import Usage
 from markup import plain
 
 
@@ -33,7 +39,6 @@ class _FakeTeam:
     thinking = False
     name = "t"
     compact_threshold = 0
-    context_tokens = 0
     auto_compact = False
 
     def last_usage(self):
@@ -396,11 +401,11 @@ def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
     asyncio.run(scenario())
 
 
-def _working_spinner(app, *, seconds: int = 0, chars: int = 0):
+def _working_spinner(app, *, seconds: int = 0, tokens: int = 0):
     app._processing = "hi"
     app._turn_verb = "Thinking"
     app._turn_started_at = time.monotonic() - seconds
-    app._response_chars = chars
+    app._team.lead.total_usage = SimpleNamespace(total_tokens=tokens)
 
 
 def _rendered_spinner(builder, prepare) -> str:
@@ -418,13 +423,13 @@ def test_the_turn_timer_and_rate_show_from_the_first_second():
     """The clock and the rate are why a turn is worth watching, so PyClaw
     reads them from the first second rather than after a warm-up gate."""
     text = _rendered_spinner(_builder, lambda app: _working_spinner(
-        app, seconds=4, chars=4000))
+        app, seconds=4, tokens=1000))
     assert _plain(text) == "\u273b Thinking\u2026 (4s \u00b7 \u2193 1k tokens \u00b7 250 tok/s)"
 
 
 def test_a_slow_turn_reads_its_timer_tokens_and_rate():
     text = _rendered_spinner(_builder, lambda app: _working_spinner(
-        app, seconds=31, chars=4 * 1200))
+        app, seconds=31, tokens=1200))
     assert _plain(text) == \
         "\u273b Thinking\u2026 (31s \u00b7 \u2193 1.2k tokens \u00b7 39 tok/s)"
 
@@ -434,16 +439,16 @@ def test_a_fractional_rate_keeps_one_decimal():
     assert _token_rate(1200, 31) == "39 tok/s"
 
 
-def test_the_token_counter_reads_what_has_streamed():
+def test_the_token_counter_reads_what_the_api_reported():
     text = _rendered_spinner(_builder, lambda app: _working_spinner(
-        app, seconds=31, chars=1000))
+        app, seconds=31, tokens=1000))
     assert _plain(text) == \
-        "\u273b Thinking\u2026 (31s \u00b7 \u2193 250 tokens \u00b7 8.1 tok/s)"
+        "\u273b Thinking\u2026 (31s \u00b7 \u2193 1k tokens \u00b7 32 tok/s)"
 
 
 def test_spinner_row_drops_the_arrow_while_teammates_run():
     def prepare(app):
-        _working_spinner(app, seconds=3, chars=1600)
+        _working_spinner(app, seconds=3, tokens=400)
         app._team.worker_busy = True
         app._team.worker.total_usage = SimpleNamespace(total_tokens=2000)
 
@@ -454,7 +459,7 @@ def test_spinner_row_drops_the_arrow_while_teammates_run():
 
 def test_spinner_row_leaves_the_teammate_counts_to_the_tree():
     def prepare(app):
-        _working_spinner(app, seconds=3, chars=1600)
+        _working_spinner(app, seconds=3, tokens=400)
         app._team.worker_busy = True
         app._team.worker.total_usage = SimpleNamespace(total_tokens=2000)
         app._expanded_view = 'teammates'
@@ -468,7 +473,7 @@ def test_spinner_row_names_the_teammate_being_viewed():
     seen = {}
 
     def prepare(app):
-        _working_spinner(app, seconds=3, chars=1600)
+        _working_spinner(app, seconds=3, tokens=400)
         app._team.worker_busy = True
         app._viewing = "worker"
         app._state("worker")["verb"] = "Reviewing"
@@ -523,10 +528,11 @@ def test_a_busy_teammate_row_reads_present_and_an_idle_one_past():
             await pilot.pause()
             state = app._state("worker")
             state["last_tool"] = ""
-            team.worker_busy = True
-            busy = app._status_text(team.worker, False, False)
-            team.worker_busy = False
-            idle = app._status_text(team.worker, True, False)
+            now = time.monotonic()
+            busy = status_text(state, running=True, all_idle=False,
+                               highlighted=False, now=now)
+            idle = status_text(state, running=False, all_idle=True,
+                               highlighted=False, now=now)
             return state, busy, idle
 
     state, busy, idle = asyncio.run(scenario())
@@ -538,7 +544,7 @@ def test_a_busy_teammate_row_reads_present_and_an_idle_one_past():
 
 def test_spinner_row_says_thinking_while_the_leader_is_reasoning():
     def prepare(app):
-        _working_spinner(app, seconds=31, chars=4 * 1200)
+        _working_spinner(app, seconds=31, tokens=1200)
         app._note("lead", think=True)
 
     text = _rendered_spinner(_builder, prepare)
@@ -815,18 +821,16 @@ def test_context_note_is_blank_without_a_context_budget():
 
 
 def test_context_note_stays_hidden_while_there_is_room():
-    class _RoomyTeam(_FakeTeam):
+    class _RoomyTeam(_meter_team(150_000)):
         compact_threshold = 200_000
-        context_tokens = 150_000
         auto_compact = True
 
     assert _status_right(lambda: _RoomyTeam()) == ""
 
 
 def test_context_note_counts_the_room_left_down_to_auto_compact():
-    class _NearlyFullTeam(_FakeTeam):
+    class _NearlyFullTeam(_meter_team(180_000)):
         compact_threshold = 200_000
-        context_tokens = 180_000
         auto_compact = True
 
     assert _status_right(lambda: _NearlyFullTeam()) == \
@@ -834,19 +838,20 @@ def test_context_note_counts_the_room_left_down_to_auto_compact():
 
 
 def test_context_note_asks_for_a_manual_compact_without_auto_compact():
-    class _NoStrategyTeam(_FakeTeam):
+    class _NoStrategyTeam(_meter_team(190_000)):
         compact_threshold = 200_000
-        context_tokens = 190_000
 
     assert _status_right(lambda: _NoStrategyTeam()) == (
         "[error]Nearly out of context (5% left) "
         "\u00b7 run /compact to carry on[/]")
 
 
-def _meter_team(used: int):
-    """A team whose transcript measures `used` tokens."""
+def _meter_team(used: int, completion: int = 0):
+    """A team whose last response reported `used` tokens of window."""
     class _Metered(_FakeTeam):
-        context_tokens = used
+        def last_usage(self):
+            return Usage(prompt=used, completion=completion,
+                         total=used + completion)
     return _Metered
 
 
@@ -857,8 +862,8 @@ def test_the_first_row_leads_with_the_model_and_its_context_meter():
 
 def test_the_note_stays_on_the_footer_while_its_own_row():
     """The compact warning keeps the footer's right edge; the meter moved up to
-    the readout row, so the two no longer compete for one slot. Both measure the
-    same transcript, so the percentages they print add up to the whole window."""
+    the readout row, so the two no longer compete for one slot. Both read the same
+    API number, so the percentages they print add up to the whole window."""
     class _TightTeam(_meter_team(190_000)):
         compact_threshold = 200_000
 
@@ -975,7 +980,7 @@ def test_status_has_no_model_or_thinking_segments():
 
 def test_fmt_compacts():
     """A compact count keeps at most one decimal and drops trailing zeros."""
-    from pyclaw.tui import _format_count as fmt
+    from pyclaw.tui.formatting import _format_count as fmt
     assert fmt(900) == "900"
     assert fmt(1000) == "1k"
     assert fmt(1901) == "1.9k"
@@ -1172,7 +1177,7 @@ def test_tool_block_renders_edit_diff():
 
 
 def test_at_token_detects_and_applies():
-    from pyclaw.tui import _at_token, _apply_at
+    from pyclaw.tui.suggest import _apply_at, _at_token
     assert _at_token("hi @src") == "src"
     assert _at_token("@") == ""
     assert _at_token("hi @a/b") == "a/b"
@@ -1184,7 +1189,7 @@ def test_at_token_detects_and_applies():
 
 
 def test_file_suggest_lists_workspace_entries(tmp_path):
-    from pyclaw.tui import _file_suggest
+    from pyclaw.tui.suggest import _file_suggest
     (tmp_path / "a.txt").write_text("x")
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "b.py").write_text("y")
@@ -2198,7 +2203,7 @@ def test_follow_pauses_and_jump_to_bottom_resumes():
 
 
 def test_spin_tick_is_safe_after_conv_removed():
-    from pyclaw.tui import _Conv
+    from pyclaw.tui.widgets import _Conv
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -2776,7 +2781,7 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
 
 
 def test_bash_collapsible_classification():
-    from pyclaw.tui import _bash_kinds
+    from pyclaw.tui.toolcard import _bash_kinds
 
     assert _bash_kinds("grep -rn foo .") == {"search"}
     assert _bash_kinds("rg --files") == {"search"}
@@ -2791,7 +2796,7 @@ def test_bash_collapsible_classification():
 
 
 def test_tool_collapsible_classification():
-    from pyclaw.tui import _collapsible_kinds
+    from pyclaw.tui.toolcard import _collapsible_kinds
 
     assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
     assert _collapsible_kinds("Read", {"file_path": "AGENTS.md"}) == {
@@ -3385,7 +3390,7 @@ def test_teammate_spawn_card_has_no_result_line():
 
 
 def test_teammate_message_renders_as_a_byline():
-    from pyclaw.tui import _user_markup
+    from pyclaw.tui.formatting import _user_markup
     raw = ('<teammate_message teammate_id="worker">'
            'found the bug</teammate_message>')
     assert _user_markup(raw) == "[bold]worker[/]\u276f found the bug"
@@ -3485,7 +3490,7 @@ def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
                 raise ValueError("kaboom")
 
             app._render_tasks = boom
-            with caplog.at_level(logging.ERROR, logger="pyclaw.tui"):
+            with caplog.at_level(logging.ERROR, logger="pyclaw.tui.app"):
                 app._queue.put_nowait(RuntimeEvent(
                     AGENT_TEXT, agent="lead", data={"delta": "hi"}))
                 for _ in range(10):
@@ -3493,7 +3498,7 @@ def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
                     await asyncio.sleep(0.02)
             assert app._render_tasks is boom
     asyncio.run(scenario())
-    records = [r for r in caplog.records if r.name == "pyclaw.tui"]
+    records = [r for r in caplog.records if r.name == "pyclaw.tui.app"]
     assert any("render failed" in r.getMessage() for r in records)
     failed = [r for r in records if "render failed" in r.getMessage()]
     assert "agent.text" in failed[0].getMessage()
@@ -3507,12 +3512,12 @@ def test_every_runtime_event_is_logged_for_postmortem(caplog):
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            with caplog.at_level(logging.DEBUG, logger="pyclaw.tui"):
+            with caplog.at_level(logging.DEBUG, logger="pyclaw.tui.app"):
                 await app._handle(RuntimeEvent(
                     AGENT_TEXT, agent="worker", data={"delta": "hidden"}))
     asyncio.run(scenario())
     assert any("agent.text" in r.getMessage() and "worker" in r.getMessage()
-               for r in caplog.records if r.name == "pyclaw.tui")
+               for r in caplog.records if r.name == "pyclaw.tui.app")
 
 
 def test_subagent_spawn_and_finish_are_logged(caplog):
@@ -3521,7 +3526,7 @@ def test_subagent_spawn_and_finish_are_logged(caplog):
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            with caplog.at_level(logging.INFO, logger="pyclaw.tui"):
+            with caplog.at_level(logging.INFO, logger="pyclaw.tui.app"):
                 await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
                     "prompt": "go", "subagent_type": "Explore",
                     "tool_use_id": "a9", "started_at": 0.0}))
@@ -3529,7 +3534,7 @@ def test_subagent_spawn_and_finish_are_logged(caplog):
                 await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1",
                                                data={"done": True}))
     asyncio.run(scenario())
-    messages = [r.getMessage() for r in caplog.records if r.name == "pyclaw.tui"]
+    messages = [r.getMessage() for r in caplog.records if r.name == "pyclaw.tui.app"]
     assert any("sub-agent sub-1 started" in m for m in messages)
     assert any("sub-agent sub-1 finished" in m for m in messages)
 
@@ -3739,7 +3744,7 @@ def test_the_done_line_replaces_the_trail_when_the_sub_agent_finishes():
 
 
 def test_the_transcript_shows_every_trail_row_not_just_the_last_three():
-    from pyclaw.tui import TranscriptScreen
+    from pyclaw.tui.screens import TranscriptScreen
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

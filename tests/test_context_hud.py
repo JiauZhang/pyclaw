@@ -8,8 +8,9 @@ from chatchat.client import MockClient
 from chatchat.team import Team
 
 from pyclaw import agents, banner, config
-from pyclaw.tui import (CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS,
-                        context_meter, git_label, usage_hud, usage_meter)
+from pyclaw.tui.readout import (CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS,
+                                context_meter, git_label, usage_hud,
+                                usage_meter)
 
 from fakes import Usage
 from markup import plain as _plain
@@ -63,9 +64,9 @@ def test_context_window_defaults_to_two_hundred_thousand(isolated_config):
     assert isolated_config.load()['contextWindow'] == 200_000
 
 
-def test_the_context_reading_counts_the_last_response_plus_what_came_after():
-    """The footer measures the transcript, not a client mid-request: the last
-    response's size, plus what has been appended since it."""
+def test_the_context_reading_is_the_number_the_api_reported():
+    """The footer shows the server's own count of the last request. Nothing is
+    guessed at it: a message appended afterwards cannot move it."""
     usage = {'prompt_tokens': 100, 'completion_tokens': 20, 'total_tokens': 120,
              'prompt_tokens_details': {'cached_tokens': 80}}
 
@@ -73,11 +74,19 @@ def test_the_context_reading_counts_the_last_response_plus_what_came_after():
         team = _team(usage)
         session = agents.Session(team, session_id='hud')
         await session.chat('hi')
-        after_reply = session.context_tokens
+        reported = session.used_context
         team.lead.messages.append({'role': 'user', 'content': 'x' * 400})
-        return after_reply, session.context_tokens
+        await session.chat('again')
+        return reported, session.used_context
 
-    assert asyncio.run(main()) == (120, 220)
+    assert asyncio.run(main()) == (120, 120)
+
+
+def test_the_context_reading_is_zero_until_the_api_reports_one():
+    async def main():
+        return agents.Session(_team(), session_id='hud').used_context
+
+    assert asyncio.run(main()) == 0
 
 
 def test_meter_is_blank_without_a_window():

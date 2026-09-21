@@ -482,12 +482,14 @@ class Session:
         return int(self._team.compact_threshold)
 
     @property
-    def context_tokens(self) -> int:
-        return int(self._team.context_tokens)
-
-    @property
     def context_window(self) -> int:
         return configured_context_window()
+
+    @property
+    def used_context(self) -> int:
+        last = self._team.last_usage()
+        return 0 if last is None else int(last.prompt_tokens
+                                          + last.completion_tokens)
 
     @property
     def last_usage(self):
