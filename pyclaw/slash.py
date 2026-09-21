@@ -30,24 +30,27 @@ def _help_text() -> str:
 
 HELP = _help_text()
 
-INIT_PROMPT = '''Analyze this codebase and create an AGENTS.md file, which will be given to future instances of PyClaw (and any AGENTS.md-aware agent) to operate in this repository.
+INIT_PROMPT = '''Analyze this codebase and write an AGENTS.md file: the instructions AI agents read before working in this repository.
 
 What to add:
-1. Commands that will be commonly used, such as how to build, lint, and run tests. Include the necessary commands to develop in this codebase, such as how to run a single test.
-2. High-level code architecture and structure so that future instances can be productive more quickly. Focus on the "big picture" architecture that requires reading multiple files to understand.
+1. The commands that matter here, such as how to build, lint, and run tests, including how to run a single test.
+2. The architecture that only emerges from reading several files at once: where work enters, which layer owns what, what a change in one place forces in another.
+
+Every line has to pass one test: would removing it make an agent get this wrong? If not, cut it.
 
 Usage notes:
-- If there's already an AGENTS.md, improve it (edit it) rather than overwriting blindly.
-- When you create the initial AGENTS.md, do not repeat yourself and do not include obvious instructions like "Provide helpful error messages to users", "Write unit tests for all new utilities", "Never include sensitive information (API keys, tokens) in code or commits".
-- Avoid listing every component or file structure that can be easily discovered.
-- Don't include generic development practices.
+- If an AGENTS.md already exists, read it and improve it in place.
 - If there is a README.md, make sure to include the important parts.
-- Do not make up information such as "Common Development Tasks", "Tips for Development", "Support and Documentation" unless this is expressly included in other files that you read.
-- Be sure to prefix the file with:
+- Do not pad it with advice that is true of every repository, such as "write unit tests for new utilities", "return helpful error messages", or "never include secrets in commits".
+- Do not list the file tree or restate conventions the language already defines.
+- Do not make up sections such as "Common Development Tasks", "Tips for Development", or "Support and Documentation" unless a file you read already had them.
+- Be specific: "use 2-space indentation in JSON configs" rather than "format code properly".
+
+Start the file with:
 
 # AGENTS.md
 
-This file provides guidance to PyClaw (and any AGENTS.md-aware agent) when working with code in this repository.
+This file provides guidance to AI agents when working with code in this repository.
 '''
 
 _USAGE: dict[str, int] = {}

@@ -99,7 +99,7 @@ def test_init_returns_prompt_tuple_for_model():
     info, prompt = asyncio.run(_call("/init", _S()))
     assert isinstance(info, str) and prompt
     assert "AGENTS.md" in prompt
-    assert "CLAUDE.md" not in prompt
+    assert "PyClaw" not in prompt
 
 
 def test_init_reports_existing_file(tmp_path):
