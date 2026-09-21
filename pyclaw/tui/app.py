@@ -34,7 +34,7 @@ from pyclaw.tui.readout import (HUD_TICK_SECONDS, _agent_tokens, context_meter,
                                 git_status, message_count, meter_cells,
                                 mode_pill, thinking_label, usage_hud,
                                 usage_meter)
-from pyclaw.tui.roster import hide_row, leader_row, teammate_row
+from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
 from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
                                 PermissionsScreen, TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
@@ -42,11 +42,13 @@ from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
 from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK,
                               BULLET, IDLE_TEXT, INTERRUPTED_TEXT,
                               NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS,
-                              POINTER, RESULT_GLYPH, SPINNER_FRAMES,
-                              SPINNER_INTERVAL, TEAMMATE_VIEW_HINT)
+                              POINTER, RECENT_ACTIVITIES, RESULT_GLYPH,
+                              SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT,
+                              TEAMMATE_VIEW_HINT)
 from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds,
                                  _hidden_card, _last_assistant_key, _read_key,
-                                 _tool_label, _tool_use_args, _tool_uses)
+                                 _tool_label, _tool_use_args, _tool_uses,
+                                 recent_rollup)
 from pyclaw.tui.widgets import (_AgentPane, _Conv, _GroupBlock, _JumpToBottom,
                                 _LogoBlock, _PagerScroll, _PromptInput,
                                 _TextBlock, _ToolBlock, _UserBlock, _half_page)
@@ -150,6 +152,8 @@ class PyClawApp(App[None]):
                 ("ctrl+t", "toggle_tasks", "Show/hide tasks"),
                 ("ctrl+l", "redraw", "Redraw"),
                 ("ctrl+o", "toggle_transcript", "Transcript"),
+                Binding("ctrl+shift+o", "agent_preview",
+                        "Preview teammate activity", priority=True),
                 ("ctrl+r", "history_search", "Search history"),
                 ("ctrl+s", "stash", "Stash prompt"),
                 ("pageup", "conv_page_up", "Scroll up"),
@@ -250,6 +254,7 @@ class PyClawApp(App[None]):
         self._agent_state: dict[str, dict] = {}
         self._expanded_view = 'none'
         self._view_selection = 'none'
+        self._preview = False
         self._selected_index = -1
         self._viewing: str | None = None
         self._agents_pane: _AgentPane | None = None
@@ -378,7 +383,7 @@ class PyClawApp(App[None]):
         state = self._agent_state.get(name)
         if state is None:
             state = {'tools': 0, 'think': False, 'busy': False,
-                     'last_tool': '', 'error': '',
+                     'last_tool': '', 'error': '', 'recent': [],
                      'verb': random.choice(SPINNER_VERBS),
                      'past': self._completion_verb(),
                      'started_at': time.monotonic(), 'idle_since': None}
@@ -406,9 +411,9 @@ class PyClawApp(App[None]):
         selected = self._selected_index if selecting else None
         all_idle = all(not self._agent_running(a) for a in teammates)
         now = time.monotonic()
-        tokens = 0
-        if self._session is not None:
-            tokens = int(getattr(self._session.usage, 'total_tokens', 0) or 0)
+        columns = self.screen.size.width or self.size.width
+        awaiting = {approval.prompt._agent for approval in self._approvals
+                    if approval.prompt._agent}
         lines = []
         if idle_line:
             suffix = '' if all_idle else f" \u00b7 {AGENT_TEAMMATES_HINT}"
@@ -417,15 +422,21 @@ class PyClawApp(App[None]):
             lines.append(leader_row(
                 selected=selected, foreground=self._viewing is None,
                 busy=self._turn_verb if self._processing is not None else None,
-                tokens=tokens))
+                tokens=_agent_tokens(self._team.lead), columns=columns))
             for index, agent in enumerate(teammates):
                 name = str(getattr(agent, 'name', ''))
                 chosen = selected == index
+                last = index == len(teammates) - 1 and not selecting
                 lines.append(teammate_row(
                     agent, self._state(name), running=self._agent_running(agent),
                     color='#B1B9F9' if chosen else self._agent_color(name),
-                    chosen=chosen, last=index == len(teammates) - 1,
-                    all_idle=all_idle, now=now))
+                    chosen=chosen, last=last, all_idle=all_idle, now=now,
+                    columns=columns, foregrounded=self._viewing == name,
+                    stopping=bool(self._state(name).get('stopping')),
+                    awaiting=name in awaiting,
+                    queued=len(agent.inbox.unread())))
+                if self._preview:
+                    lines += preview_rows(agent, last=last, cwd=self._cwd())
             if selecting:
                 lines.append(hide_row(selected == len(teammates)))
         return '\n'.join(lines)
@@ -439,6 +450,10 @@ class PyClawApp(App[None]):
         for name in list(self._spawns):
             if name not in known:
                 self._spawns.pop(name, None)
+        if self._viewing is not None:
+            viewed = self._agent_by_name(self._viewing)
+            if viewed is None or not _agent_alive(viewed):
+                await self._exit_agent_view()
         teammates = self._teammates()
         rows = bool(teammates) and self._expanded_view == 'teammates'
         idle_line = bool(teammates) and self._processing is None
@@ -476,6 +491,10 @@ class PyClawApp(App[None]):
 
     async def action_agent_prev(self):
         self._step_selection(-1)
+
+    async def action_agent_preview(self):
+        self._preview = not self._preview
+        await self._refresh_agents()
 
     async def _confirm_selection(self):
         teammates = self._teammates()
@@ -534,13 +553,16 @@ class PyClawApp(App[None]):
         if index < 0 or index >= len(teammates):
             return
         agent = teammates[index]
-        logger.info("stopping teammate %s by user request",
-                    getattr(agent, 'name', ''))
-        if self._viewing == str(getattr(agent, 'name', '')):
+        name = str(getattr(agent, 'name', ''))
+        logger.info("stopping teammate %s by user request", name)
+        if self._viewing == name:
             await self._exit_agent_view()
+        self._state(name)['stopping'] = True
+        await self._refresh_agents()
         stop = getattr(self._team, 'stop_agent', None)
         if stop is not None:
             await stop(agent)
+        self._finish_agent(name, stopped=True)
         self._selected_index = -1
         await self._refresh_agents()
 
@@ -733,6 +755,8 @@ class PyClawApp(App[None]):
         tool = str(data.get('tool', 'tool'))
         args = _tool_use_args(tool, data.get('input', ''), self._cwd())
         state['last_tool'] = f"{_tool_label(tool, data.get('input'))}: {args}"
+        recent = state['recent'] + [_collapsible_kinds(tool, data.get('input'))]
+        state['recent'] = recent[-RECENT_ACTIVITIES:]
 
     def _spawn_block(self, name: str):
         uid = self._spawns.get(name)
@@ -741,7 +765,7 @@ class PyClawApp(App[None]):
         block = self._tools.get(uid)
         return block if isinstance(block, _ToolBlock) else None
 
-    def _finish_agent(self, name: str):
+    def _finish_agent(self, name: str, *, stopped: bool = False):
         state = self._state(name)
         state['busy'] = False
         state['think'] = False
@@ -758,8 +782,9 @@ class PyClawApp(App[None]):
             elapsed = max(0, int(time.monotonic() - started))
             agent = self._agent_by_name(name)
             tokens = _agent_tokens(agent) if agent is not None else 0
+            label = STOPPED_TEXT if stopped else 'Done'
             meta['agent_summary'] = (
-                f"Done ({_tool_uses(state['tools'])} \u00b7 "
+                f"{label} ({_tool_uses(state['tools'])} \u00b7 "
                 f"{_format_count(tokens)} tokens \u00b7 "
                 f"{duration(elapsed)})")
             logger.info("sub-agent %s finished: %s", name,
@@ -955,7 +980,7 @@ class PyClawApp(App[None]):
         if st is None:
             st = {'type': data.get('subagent_type') or 'Agent', 'tools': 0,
                   'tokens': None, 'last_tool': None, 'done': False,
-                  'tool_names': {}}
+                  'recent': [], 'tool_names': {}}
             self._subagents[name] = st
         if data.get('done'):
             st['done'] = True
@@ -972,7 +997,11 @@ class PyClawApp(App[None]):
             if isinstance(content, list):
                 for b in content:
                     if isinstance(b, dict) and b.get('type') == 'tool_use':
-                        st['tool_names'][b.get('id', '')] = b.get('name', 'tool')
+                        tool = str(b.get('name', 'tool'))
+                        st['tool_names'][b.get('id', '')] = tool
+                        recent = st['recent'] + [_collapsible_kinds(
+                            tool, b.get('input'))]
+                        st['recent'] = recent[-RECENT_ACTIVITIES:]
             block = self._spawn_block(name)
             if block is not None:
                 rows, uses = _agent_progress_rows(msg, self._cwd(),
@@ -1595,7 +1624,8 @@ class PyClawApp(App[None]):
                 tokens = (f" \u00b7 {_format_count(st['tokens'])} tokens"
                           if st['tokens'] is not None else "")
                 status = ("Done" if st['done']
-                          else (st['last_tool'] or "Initializing\u2026"))
+                          else (recent_rollup(st['recent'])
+                                or st['last_tool'] or "Initializing\u2026"))
                 stat_pre = "   " if is_last else "\u2502  "
                 label = escape(str(st['type'])) or "Agent"
                 lines.append(f"{tc} [bold]{label}[/] \u00b7 "

@@ -13,7 +13,7 @@ from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
                               RESULT_HANG, RESULT_PREFIX,
                               WAITING_PERMISSION_TEXT)
 from pyclaw.tui.toolcard import (_more_tool_uses, _result_summary, _tool_label,
-                                 _tool_use_args)
+                                 _tool_use_args, group_text)
 
 
 class _Conv(VerticalScroll):
@@ -156,17 +156,7 @@ class _GroupBlock(Static):
         self._draw()
 
     def _parts(self) -> str:
-        chunks = []
-        for kind, active_verb, done_verb, noun, plural in GROUP_PARTS:
-            count = self.counts.get(kind, 0)
-            if not count:
-                continue
-            verb = active_verb if self.active else done_verb
-            verb = verb[0].upper() + verb[1:] if not chunks else \
-                verb[0].lower() + verb[1:]
-            word = noun if count == 1 else plural
-            chunks.append(f"{verb} [bold]{count}[/] {word}")
-        return ", ".join(chunks)
+        return group_text(self.counts, active=self.active)
 
     def _draw(self):
         body = self._parts()

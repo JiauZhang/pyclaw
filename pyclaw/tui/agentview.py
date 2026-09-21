@@ -3,7 +3,8 @@ from __future__ import annotations
 from rich.markup import escape
 
 from pyclaw.tui.formatting import _summarize, _teammate_blocks, _user_markup
-from pyclaw.tui.theme import (BULLET, BULLET_PREFIX, POINTER, RESULT_PREFIX,
+from pyclaw.tui.theme import (BULLET, BULLET_PREFIX, POINTER, PREVIEW_CHARS,
+                              PREVIEW_LINES, RESULT_PREFIX,
                               TEAMMATE_VIEW_HINT)
 from pyclaw.tui.toolcard import _tool_label, _tool_use_args
 
@@ -67,6 +68,37 @@ def _user_entries(content, *, cwd: str, color_for) -> list:
         head = body.splitlines()[0] if body else ''
         entries.append(f"[dim]{RESULT_PREFIX}{escape(_summarize(head, 100))}[/]")
     return entries
+
+
+def agent_preview(agent, *, cwd: str) -> list[str]:
+    if agent is None:
+        return []
+    lines: list[str] = []
+    for message in reversed(getattr(agent, 'messages', []) or []):
+        if len(lines) >= PREVIEW_LINES or not isinstance(message, dict):
+            break
+        content = message.get('content')
+        parts = [content] if isinstance(content, str) else (
+            content if isinstance(content, list) else [])
+        for block in reversed(parts):
+            if len(lines) >= PREVIEW_LINES:
+                break
+            if not isinstance(block, dict):
+                continue
+            if block.get('type') == 'tool_use':
+                name = str(block.get('name', 'tool'))
+                args = _tool_use_args(name, block.get('input'), cwd)
+                lines.append(_summarize(args or f"Using {name}",
+                                        PREVIEW_CHARS))
+            elif block.get('type') == 'text':
+                text = [line for line in str(block.get('text', '')).split('\n')
+                        if line.strip()]
+                for line in reversed(text):
+                    if len(lines) >= PREVIEW_LINES:
+                        break
+                    lines.append(_summarize(line.strip(), PREVIEW_CHARS))
+    lines.reverse()
+    return [_summarize(line, PREVIEW_CHARS) for line in lines]
 
 
 def agent_view_markup(agent, *, cwd: str, color_for) -> str:

@@ -26,7 +26,8 @@ from pyclaw.tui import PyClawApp
 from pyclaw.tui.approval import _PermissionPrompt
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _token_rate
-from pyclaw.tui.roster import status_text
+from pyclaw.tui.roster import (hide_row, leader_row, status_text,
+                               teammate_row)
 from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.widgets import _TextBlock, _ToolBlock
 from fakes import Usage
@@ -540,6 +541,118 @@ def test_a_busy_teammate_row_reads_present_and_an_idle_one_past():
     assert state["verb"] in SPINNER_VERBS
     assert idle.startswith(f"{state['past']} for ")
     assert state["past"] in PAST_TENSE_VERBS
+
+
+def _idle_state(**kw):
+    state = {"tools": 0, "think": False, "busy": False, "last_tool": "",
+             "error": "", "verb": "Thinking", "past": "Handled",
+             "started_at": time.monotonic(), "idle_since": None,
+             "recent": []}
+    state.update(kw)
+    return state
+
+
+def test_a_run_of_searches_and_reads_rolls_up_into_one_activity():
+    text = status_text(_idle_state(recent=[{"search"}, {"search"}, {"read"}]),
+                       running=True, all_idle=False, highlighted=False,
+                       now=time.monotonic())
+    assert text == "Looking for 2 patterns, opening 1 file…"
+
+
+def test_a_single_read_is_not_yet_a_rollup():
+    text = status_text(_idle_state(last_tool="Opening a.py",
+                                   recent=[{"read"}]),
+                       running=True, all_idle=False, highlighted=False,
+                       now=time.monotonic())
+    assert text == "Opening a.py…"
+
+
+def test_a_tool_that_is_not_a_read_breaks_the_run():
+    text = status_text(_idle_state(last_tool="git status",
+                                   recent=[{"search"}, {"bash"}]),
+                       running=True, all_idle=False, highlighted=False,
+                       now=time.monotonic())
+    assert text == "git status…"
+
+
+def test_a_teammate_being_stopped_reads_stopping():
+    text = status_text(_idle_state(recent=[{"search"}, {"search"}]),
+                       running=True, all_idle=False, highlighted=False,
+                       now=time.monotonic(), stopping=True)
+    assert text == "Stopping…"
+
+
+def test_a_teammate_waiting_on_your_approval_reads_that():
+    text = status_text(_idle_state(recent=[{"search"}, {"search"}]),
+                       running=True, all_idle=False, highlighted=False,
+                       now=time.monotonic(), awaiting=True)
+    assert text == "Needs your approval…"
+
+
+def _row(columns, **kw):
+    agent = SimpleNamespace(name="worker",
+                            total_usage=SimpleNamespace(total_tokens=2000),
+                            messages=[])
+    kwargs = dict(running=True, color="#FF6B80", chosen=False,
+                  foregrounded=False, last=False, all_idle=False,
+                  now=time.monotonic(), columns=columns)
+    kwargs.update(kw)
+    return _plain(teammate_row(agent, _idle_state(tools=3), **kwargs))
+
+
+def test_a_wide_teammate_row_carries_the_name_and_the_stats():
+    assert _row(120) == ("     \u251c\u2500 @worker: Thinking\u2026"
+                         " \u00b7 3 tool calls \u00b7 2k tokens")
+
+
+def test_a_teammate_row_drops_the_stats_before_the_name():
+    row = _row(62)
+    assert "@worker" in row
+    assert "2k tokens" not in row
+
+
+def test_a_narrow_teammate_row_keeps_only_the_activity():
+    row = _row(50)
+    assert "@worker" not in row
+    assert "Thinking" in row
+
+
+def test_a_selected_row_hides_its_activity_and_shows_the_hints():
+    row = _row(120, chosen=True)
+    assert row.startswith("   \u276f \u255e\u2550 @worker")
+    assert "Thinking" not in row
+    assert "3 tool calls" in row
+    assert "shift+\u2191/\u2193 picks a row" in row and "enter opens it" in row
+
+
+def test_a_viewed_row_is_highlighted_but_offers_no_view_hint():
+    row = _row(120, foregrounded=True)
+    assert row.startswith("     \u255e\u2550 @worker")
+    assert "enter opens it" not in row
+    assert "picks a row" in row
+
+
+def test_only_the_hide_row_ends_the_tree_with_a_corner():
+    assert "\u2558\u2550" not in _row(120, chosen=True)
+    assert _plain(hide_row(True)).startswith("   \u276f \u2558\u2550 hide")
+    assert _plain(hide_row(False)).startswith("     \u2514\u2500 hide")
+
+
+def test_a_selected_leader_is_highlighted_while_only_viewed_is_not():
+    assert _plain(leader_row(selected=-1, foreground=False, busy="Thinking",
+                             tokens=400,
+                             columns=120)).startswith("   \u276f \u2552\u2550")
+    assert _plain(leader_row(selected=None, foreground=False,
+                             busy="Thinking", tokens=400,
+                             columns=120)).startswith("     \u250c\u2500")
+
+
+def test_the_leader_row_counts_the_lead_and_not_the_whole_team():
+    row = _plain(leader_row(selected=None, foreground=True, busy="Thinking",
+                            tokens=400, columns=120))
+    assert row == ("     \u2552\u2550 team-lead \u00b7 400 tokens"
+                   " \u00b7 shift+\u2191/\u2193 picks a row")
+    assert "Thinking" not in row
 
 
 def test_spinner_row_says_thinking_while_the_leader_is_reasoning():
@@ -1356,7 +1469,8 @@ def test_subagent_agent_square_brackets_do_not_crash():
             await pilot.pause()
             app._subagents["teammate"] = {"type": "Task", "tools": 0,
                                           "tokens": None, "last_tool": None,
-                                          "done": False, "tool_names": {}}
+                                          "done": False, "recent": [],
+                                          "tool_names": {}}
             errors = []
 
             async def h(ev):
@@ -1670,9 +1784,16 @@ class _Inbox:
 
     def __init__(self):
         self.written = []
+        self.read = []
 
     def write(self, from_, text, **kw):
         self.written.append((from_, text))
+
+    def unread(self):
+        return [m for m in self.written if m not in self.read]
+
+    def mark_all_read(self):
+        self.read = list(self.written)
 
 
 class _SwarmTeam(_FakeTeam):
@@ -3174,8 +3295,13 @@ def test_ctrl_t_cycles_none_tasks_teammates():
 
 
 def test_agent_tree_shows_the_leader_and_teammate_stats():
+    team = _SwarmTeam()
+    team.lead.total_usage = SimpleNamespace(total_tokens=400)
+    team.worker.total_usage = SimpleNamespace(total_tokens=2000)
+
     async def scenario():
-        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
             await _run_turn(pilot)
@@ -3183,18 +3309,21 @@ def test_agent_tree_shows_the_leader_and_teammate_stats():
             await pilot.pause()
             await pilot.press("ctrl+t")
             await pilot.pause()
-            tree = _tree(app)
-            assert "team-lead" in tree
-            assert "2.4k tokens" in tree
-            assert "@worker" in tree
-            assert "1 tool call" in tree
-            assert "shift+\u2191/\u2193 picks a row" in tree
-    asyncio.run(scenario())
+            return _tree(app)
+
+    tree = asyncio.run(scenario())
+    assert "team-lead" in tree
+    assert "400 tokens" in tree
+    assert "@worker" in tree
+    assert "1 tool call" in tree
+    assert "2k tokens" in tree
+    assert "Read: a.py" in tree
 
 
 def test_shift_down_selects_the_row_and_reveals_the_view_hint():
     async def scenario():
-        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test(
+                size=(120, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
             await _run_turn(pilot)
@@ -3207,7 +3336,7 @@ def test_shift_down_selects_the_row_and_reveals_the_view_hint():
             assert app._selected_index == 0
             tree = _tree(app)
             assert "\u276f" in tree
-            assert "\u2558\u2550" in tree
+            assert "\u255e\u2550" in tree
             assert "enter opens it" in tree
     asyncio.run(scenario())
 
@@ -3318,6 +3447,140 @@ def test_k_stops_the_selected_teammate():
     asyncio.run(scenario())
 
 
+def test_a_teammate_row_counts_the_messages_waiting_on_it():
+    team = _SwarmTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            quiet = _plain(app._tree_markup(True, False))
+            team.worker.inbox.write("team-lead", "do more")
+            team.worker.inbox.write("team-lead", "and more")
+            busy = _plain(app._tree_markup(True, False))
+            team.worker.inbox.mark_all_read()
+            return quiet, busy, _plain(app._tree_markup(True, False))
+
+    quiet, busy, drained = asyncio.run(scenario())
+    assert "queued" not in quiet
+    assert "2 queued" in busy
+    assert "queued" not in drained
+
+
+def test_the_tree_keeps_track_of_what_a_teammate_has_been_doing():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            return app._state("worker")["recent"]
+
+    assert asyncio.run(scenario()) == [{"read"}]
+
+
+def test_a_stopped_teammate_reads_stopping_on_its_way_out():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            seen = {}
+
+            async def slow_stop(agent):
+                seen["row"] = _plain(app._tree_markup(True, False))
+                app._team.stopped.append(agent.name)
+
+            app._team.stop_agent = slow_stop
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("shift+down")
+            await pilot.pause()
+            await pilot.press("k")
+            await pilot.pause()
+            return seen
+
+    seen = asyncio.run(scenario())
+    assert "Stopping" in seen["row"]
+
+
+def test_a_teammate_with_a_pending_approval_is_marked_in_the_tree():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            asked = asyncio.create_task(app._ask_permission("Bash", {"command": "ls"},
+                                                            agent="worker"))
+            await pilot.pause()
+            row = _plain(app._tree_markup(True, False))
+            asked.cancel()
+            return row
+
+    assert "Needs your approval" in asyncio.run(scenario())
+
+
+def test_the_leader_row_counts_the_lead_not_the_session():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            app._team.lead.total_usage = SimpleNamespace(total_tokens=400)
+            await pilot.pause()
+            await _run_turn(pilot)
+            for line in _plain(app._tree_markup(True, False)).splitlines():
+                if "team-lead" in line:
+                    return line
+            return ""
+
+    line = asyncio.run(scenario())
+    assert "400 tokens" in line
+    assert "2.4k" not in line
+
+
+def test_the_tree_stops_viewing_an_agent_that_is_gone():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            await app._enter_agent_view(team.worker)
+            assert app._viewing == "worker"
+            team.agents.pop("worker@t")
+            await app._refresh_agents()
+            return app._viewing, app.query_one("#view").display, team.stopped
+
+    viewing, shown, stopped = asyncio.run(scenario())
+    assert viewing is None
+    assert shown is False
+    assert stopped == []
+
+
+def test_ctrl_shift_o_previews_each_teammate_s_recent_lines():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _SwarmTeam()).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            team = app._team
+            await pilot.pause()
+            await _run_turn(pilot)
+            team.worker.messages.append(
+                {"role": "assistant",
+                 "content": [{"type": "text", "text": "reading the tests\nnow the src"}]})
+            assert "now the src" not in _tree(app)
+            app._expanded_view = 'teammates'
+            await app._refresh_agents()
+            assert "now the src" not in _tree(app)
+            await pilot.press("ctrl+shift+o")
+            await pilot.pause()
+            return _tree(app)
+
+    tree = asyncio.run(scenario())
+    assert "now the src" in tree
+    assert "reading the tests" in tree
+
+
 def test_typing_k_still_reaches_the_input():
     async def scenario():
         async with PyClawApp(builder=lambda: _SwarmTeam()).run_test() as pilot:
@@ -3342,6 +3605,34 @@ def test_at_name_sends_a_direct_message_to_the_teammate():
             assert app._pending_inputs.empty()
             assert "Sent to @worker" in _plain(_flatten(app))
     asyncio.run(scenario())
+
+
+def test_a_teammate_you_stopped_is_reported_as_stopped_not_done():
+    team = _SwarmTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
+                "tool": "create_agent",
+                "input": {"prompt": "do the thing", "subagent_type": "worker"},
+                "tool_use_id": "c1"}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent="worker",
+                data={"tool_use_id": "c1", "subagent_type": "worker"}))
+            app._selected_index = 0
+            await app.action_stop_agent()
+            await app._handle(RuntimeEvent(AGENT_TURN_FINISHED,
+                                           agent="worker"))
+            block = app._tools["c1"]
+            block.set_result("stopped by user", meta=app._tool_meta.get("c1"))
+            return str(block.content)
+
+    content = asyncio.run(scenario())
+    assert "Stopped (0 tool calls" in content
+    assert "Done (" not in content
 
 
 def test_subagent_task_card_reports_done_with_stats():

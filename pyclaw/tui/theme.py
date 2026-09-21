@@ -23,6 +23,18 @@ COLLAPSE_HINT = "enter closes it"
 IDLE_TEXT = "Idle"
 AGENT_TEAMMATES_HINT = "subagents are active"
 TEAMMATE_VIEW_HINT = "esc goes back to the lead"
+STOPPING_TEXT = "Stopping\u2026"
+STOPPED_TEXT = "Stopped"
+
+
+ROW_PREFIX = 8
+ROW_ACTIVITY = 25
+ROW_NARROW = 60
+ROW_STATS_GAP = 5
+ROW_CONTINUATION = ("\u2502  ", "   ")
+PREVIEW_LINES = 3
+PREVIEW_CHARS = 80
+RECENT_ACTIVITIES = 5
 
 
 AGENT_TRAIL_LIMIT = 3
@@ -95,3 +107,6 @@ GROUP_PARTS = (
     ('memory_read', 'Remembering', 'Remembered', 'memory', 'memories'),
     ('memory_write', 'Saving', 'Saved', 'memory', 'memories'),
 )
+
+
+ROLLUP_KINDS = frozenset(kind for kind, *_ in GROUP_PARTS) - {'bash'}

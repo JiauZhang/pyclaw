@@ -7,9 +7,10 @@ from pyclaw.tui.formatting import (_clip_lines, _display_path, _plural,
                                    _preview, _single_line, _summarize)
 from pyclaw.tui.theme import (BASH_LIST_COMMANDS, BASH_NEUTRAL_COMMANDS,
                               BASH_READ_COMMANDS, BASH_SEARCH_COMMANDS,
-                              DISPLAY_NAMES, EXPAND_HINT, MAX_COMMAND_CHARS,
-                              MAX_COMMAND_LINES, MAX_USE_ARG_CHARS,
-                              MEMORY_FILE_NAME, PATH_TOOLS, SEARCH_TOOLS)
+                              DISPLAY_NAMES, EXPAND_HINT, GROUP_PARTS,
+                              MAX_COMMAND_CHARS, MAX_COMMAND_LINES,
+                              MAX_USE_ARG_CHARS, MEMORY_FILE_NAME, PATH_TOOLS,
+                              ROLLUP_KINDS, SEARCH_TOOLS)
 
 
 def _is_memory_path(value) -> bool:
@@ -62,6 +63,32 @@ def _read_key(name, tool_input) -> str:
 
 def _display_name(name: str) -> str:
     return DISPLAY_NAMES.get(name, name)
+
+
+def group_text(counts: dict, *, active: bool, markup: bool = True) -> str:
+    chunks = []
+    for kind, active_verb, done_verb, noun, plural in GROUP_PARTS:
+        count = counts.get(kind, 0)
+        if not count:
+            continue
+        verb = active_verb if active else done_verb
+        verb = verb[0].upper() + verb[1:] if not chunks else \
+            verb[0].lower() + verb[1:]
+        shown = f"[bold]{count}[/]" if markup else str(count)
+        chunks.append(f"{verb} {shown} {noun if count == 1 else plural}")
+    return ", ".join(chunks)
+
+
+def recent_rollup(recent: list) -> str:
+    counts = {}
+    for kinds in reversed(recent):
+        if not kinds or not kinds <= ROLLUP_KINDS:
+            break
+        for kind in kinds:
+            counts[kind] = counts.get(kind, 0) + 1
+    if sum(counts.values()) < 2:
+        return ''
+    return group_text(counts, active=True, markup=False)
 
 
 def _agent_tool_name(tool_input) -> str:
