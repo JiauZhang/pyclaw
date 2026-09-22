@@ -9,7 +9,8 @@ from pyclaw import banner
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _edit_summary, _plural, _user_markup
 from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
-                              DONE_COLOR, GROUP_PARTS, INITIALIZING_TEXT,
+                              DONE_COLOR, EXPAND_HINT, GROUP_PARTS,
+                              INITIALIZING_TEXT,
                               INTERRUPTED_TEXT,
                               RESULT_HANG, RESULT_PREFIX, TREE_INDENT,
                               WAITING_PERMISSION_TEXT)
@@ -246,7 +247,7 @@ class _AgentGroupBlock(Static):
         header = agent_group_header(len(stats), kind=kind, done=done)
         color = (self.app.brand if self.active and not done else DONE_COLOR)
         marker = self._frame if self.active and not done else BULLET
-        lines = [f'[{color}]{marker}[/] {header}']
+        lines = [f'[{color}]{marker}[/] {header} [dim]({EXPAND_HINT})[/]']
         for index, (member, stat) in enumerate(zip(self.members, stats)):
             lines.append(agent_group_row(
                 label=member['label'], detail=member['detail'],

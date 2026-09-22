@@ -3727,7 +3727,7 @@ def test_two_agents_launched_together_share_one_card():
             return _plain(app._agent_group.content)
 
     lines = asyncio.run(scenario()).splitlines()
-    assert lines[0].endswith('Running 2 Explore agents\u2026')
+    assert lines[0].endswith('Running 2 Explore agents… (ctrl+o shows more)')
     assert lines[1:] == ['   \u251c\u2500 Explore(job a1) \u00b7 0 tool calls '
                         '\u00b7 Starting up\u2026',
                         '   \u2514\u2500 Explore(job a2) \u00b7 0 tool calls '
@@ -4465,3 +4465,16 @@ def test_the_tasks_pane_lists_a_background_shell():
     assert task_id in text
     assert 'sleep 2' in text
     assert 'running' in text
+
+
+def test_a_group_card_points_at_the_transcript_for_the_detail():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            await pilot.pause()
+            return _plain(app._agent_group.content)
+
+    assert '(ctrl+o shows more)' in asyncio.run(scenario()).splitlines()[0]
