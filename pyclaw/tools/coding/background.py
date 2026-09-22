@@ -98,7 +98,6 @@ def _tail(path: Path, limit: int = TASK_OUTPUT_TAIL_CHARS) -> str:
 
 
 def snapshot() -> list[dict]:
-    """Every shell the session moved into the background, oldest first."""
     now = time.monotonic()
     rows = []
     for task_id, task in _tasks.items():
@@ -110,7 +109,6 @@ def snapshot() -> list[dict]:
 
 
 def stop(task_id: str) -> dict | None:
-    """Kill one background shell by id and return its row, or None if unknown."""
     task = _tasks.get(task_id)
     if task is None:
         return None

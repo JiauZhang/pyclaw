@@ -140,21 +140,23 @@ def _status(session, session_key: str) -> str:
     from pyclaw.cost import format_cost
     from pyclaw.version import __version__
     usage = session.usage
-    return (
-        f"pyclaw: {__version__}\n"
-        f"Session: {session_key or session.name}\n"
-        f"Directory: {getattr(session, 'cwd', '')}\n"
-        f"Mode: {session.mode}\n"
-        f"Provider: {session.provider}\n"
-        f"Model: {session.model}\n"
-        f"Thinking: {'on' if session.thinking else 'off'}\n"
-        f"Context messages: {session.context_messages}\n"
-        f"Active sub-agents: {session.active_agents}\n"
-        f"Loaded tools: {len(session.available_tools)}\n"
-        f"Usage: {usage.prompt_tokens} in / {usage.completion_tokens} out / "
-        f"{usage.total_tokens} total\n"
-        f"Cost: {format_cost(_cost_of(session))}"
-    )
+    lines = [f'pyclaw: {__version__}',
+             f'Session: {session_key or session.name}',
+             f'Directory: {getattr(session, "cwd", "")}',
+             f'Mode: {session.mode}']
+    team = getattr(session, 'team_context', None)
+    if team:
+        lines.append(f'Team: {team["name"]}')
+    lines += [f'Provider: {session.provider}',
+              f'Model: {session.model}',
+              f'Thinking: {"on" if session.thinking else "off"}',
+              f'Context messages: {session.context_messages}',
+              f'Active sub-agents: {session.active_agents}',
+              f'Loaded tools: {len(session.available_tools)}',
+              f'Usage: {usage.prompt_tokens} in / {usage.completion_tokens} '
+              f'out / {usage.total_tokens} total',
+              f'Cost: {format_cost(_cost_of(session))}']
+    return '\n'.join(lines)
 
 
 async def _handle_permissions(session, arg: str) -> str:

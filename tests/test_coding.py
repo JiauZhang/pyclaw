@@ -1517,3 +1517,31 @@ def test_a_denied_rule_only_change_is_reported_once():
 
         asyncio.run(main())
         assert seen == []
+
+
+def test_the_team_has_a_store_the_lead_can_name(tmp_path):
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            return build_team("agnes", "agnes-2.5-flash", cwd=d)
+
+    team = asyncio.run(main())
+    assert team.team_store is not None
+    assert team.team_store.directory.name == 'teams'
+    assert team.team_context is None
+
+
+def test_the_session_reports_the_team_it_joined(tmp_path):
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                              use_team=True)
+            session = agents_mod.Session(team, session_id='teamctx')
+            before = session.team_context
+            await session._team.execute_tool(
+                'team_create', {'team_name': 'parser',
+                                'description': 'rework'}, team.lead)
+            return before, session.team_context
+
+    before, after = asyncio.run(main())
+    assert before is None
+    assert after['name'] == 'parser'

@@ -335,6 +335,7 @@ def build_team(
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
         tasks_dir=str(pyclaw_home() / 'tasks'),
         skills=registry,
+        team_store=str(pyclaw_home() / 'teams'),
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
@@ -504,11 +505,15 @@ class Session:
     def skill_problems(self) -> list:
         return list(self._team.skills.problems)
 
+    @property
+    def team_context(self) -> dict | None:
+        context = self._team.team_context
+        return None if context is None else dict(context)
+
     def hook_rows(self) -> list:
         return self._team.hooks.configured()
 
     def task_rows(self) -> list:
-        """What the shell can stop: live teammates and background shells."""
         from pyclaw.tools.coding import background
         rows = []
         lead = self._team.lead

@@ -34,3 +34,13 @@ def isolated_config(tmp_path, monkeypatch):
     config.reload()
     yield config
     config.reload()
+
+
+@pytest.fixture(autouse=True)
+def _home_dir_is_a_temp_folder(tmp_path, monkeypatch):
+    """Nothing in a test may write into the real ~/.pyclaw."""
+    home = tmp_path / 'pyclaw-home'
+    home.mkdir()
+    monkeypatch.setenv('PYCLAW_HOME', str(home))
+    monkeypatch.setenv('CHATCHAT_SECRET_FILE', str(home / 'secrets.json'))
+    return home

@@ -17,7 +17,7 @@ from .shell_rules import (bash_rule_matches, is_dangerous_removal,
 BASH_TOOL = 'Bash'
 
 AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop',
-                        'use_skill'})
+                        'use_skill', 'team_create', 'team_delete'})
 
 REJECT_MESSAGE = (
     "The user refused this tool call, so nothing ran; a refused edit left the "

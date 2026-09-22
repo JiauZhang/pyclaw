@@ -518,3 +518,15 @@ def test_hooks_lists_what_will_run_and_where_it_came_from():
 def test_hooks_says_so_when_none_are_configured():
     session = _fake_session(hook_rows=lambda: [])
     assert 'No hooks' in _strip(asyncio.run(_call('/hooks', session)))
+
+
+def test_status_names_the_active_team():
+    session = _fake_session(team_context={'name': 'parser',
+                                          'description': 'rework'})
+    out = _strip(asyncio.run(_call('/status', session)))
+    assert 'Team: parser' in out
+
+
+def test_status_omits_the_team_line_without_one():
+    out = _strip(asyncio.run(_call('/status', _fake_session())))
+    assert 'Team:' not in out
