@@ -159,12 +159,17 @@ def _direct_message(text: str):
     return match.group(1), match.group(2).strip()
 
 
-def _user_markup(text: str) -> str:
+def _user_markup(text: str, color_for=None) -> str:
     blocks = _teammate_blocks(text)
     if blocks is None:
         return escape(str(text))
-    return "\n".join(f"[bold]{escape(str(sender))}[/]{POINTER} "
-                     f"{escape(body)}" for sender, body in blocks)
+    lines = []
+    for sender, body in blocks:
+        label = f"@{escape(str(sender))}"
+        color = color_for(str(sender)) if color_for is not None else ''
+        head = f"[{color}][bold]{label}[/][/]" if color else f"[bold]{label}[/]"
+        lines.append(f"{head}{POINTER} {escape(body)}")
+    return "\n".join(lines)
 
 
 def _hang(prefix: str, body: str) -> str:

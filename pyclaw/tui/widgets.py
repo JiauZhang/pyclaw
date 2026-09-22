@@ -298,8 +298,9 @@ class _AgentPane(Static):
 
 class _UserBlock(Static):
 
-    def __init__(self, text: str, **kw):
-        super().__init__(_user_markup(text), markup=True, classes="user", **kw)
+    def __init__(self, text: str, color_for=None, **kw):
+        super().__init__(_user_markup(text, color_for), markup=True,
+                         classes="user", **kw)
 
 
 class _ToolBlock(Static):

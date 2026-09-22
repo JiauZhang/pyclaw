@@ -609,7 +609,8 @@ class PyClawApp(App[None]):
         return widget
 
     async def _append_user(self, text: str):
-        return await self._append_widget(_UserBlock(text))
+        return await self._append_widget(
+            _UserBlock(text, color_for=self._agent_color))
 
     async def _append_error(self, text: str):
         return await self._append_block(

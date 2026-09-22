@@ -55,7 +55,7 @@ def _user_entries(content, *, cwd: str, color_for) -> list:
     if isinstance(content, str):
         blocks = _teammate_blocks(content)
         if blocks is None:
-            return [_user_markup(content)] if content.strip() else []
+            return [_user_markup(content, color_for)] if content.strip() else []
         return [f"[{color_for(str(sender))}]@{escape(str(sender))}[/]"
                 f"{POINTER} {escape(body)}" for sender, body in blocks]
     if not isinstance(content, list):

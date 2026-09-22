@@ -3864,7 +3864,9 @@ def test_teammate_message_renders_as_a_byline():
     from pyclaw.tui.formatting import _user_markup
     raw = ('<teammate_message teammate_id="worker">'
            'found the bug</teammate_message>')
-    assert _user_markup(raw) == "[bold]worker[/]\u276f found the bug"
+    assert _user_markup(raw) == "[bold]@worker[/]\u276f found the bug"
+    assert _user_markup(raw, color_for=lambda name: '#FF6B80') == (
+        "[#FF6B80][bold]@worker[/][/]\u276f found the bug")
     idle = ('<teammate_message teammate_id="worker">'
             '{"type": "idle_notification", "from": "worker"}'
             '</teammate_message>')
