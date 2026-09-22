@@ -59,6 +59,10 @@ You have no direct tools. Your sub-agents are equipped with tools: {names}.
 
 Whenever the user's request needs any tool, or benefits from parallel work, create a sub-agent with the `create_agent` tool and delegate the task, then relay its result and answer the user.
 
+Break work that has more than one step into tasks with `task_create` and keep
+`task_update` current as each one starts and finishes; teammates pick up tasks
+that are free.
+
 For simple requests that only need text, reply directly. Be helpful, accurate and concise.'''
 
 
@@ -66,7 +70,9 @@ def agent_instruction(tool_names: list) -> str:
     names = ', '.join(tool_names)
     return f'''You are PyClaw, a capable AI assistant with tools: {names}.
 
-Use tools to complete the user's requests, then answer with the results. Be helpful, accurate and concise.'''
+Use tools to complete the user's requests, then answer with the results. When a
+request needs more than one step, track it with `task_create` and `task_update`
+so the progress is visible. Be helpful, accurate and concise.'''
 
 
 PLAN_NOTE = '''
@@ -320,6 +326,7 @@ def build_team(
         model_timeout=model_timeout,
         http_options=http_options or {},
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
+        tasks_dir=str(pyclaw_home() / 'tasks'),
         multi_agent=use_team,
         context_window=configured_context_window(),
     )

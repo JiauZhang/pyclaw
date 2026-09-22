@@ -17,7 +17,7 @@ from pyclaw.tui.toolcard import _tool_uses, recent_rollup
 
 def status_text(state: dict, *, running: bool, all_idle: bool,
                 highlighted: bool, now: float, stopping: bool = False,
-                awaiting: bool = False) -> str:
+                awaiting: bool = False, work: str = '') -> str:
     if stopping:
         return STOPPING_TEXT
     if awaiting:
@@ -28,7 +28,7 @@ def status_text(state: dict, *, running: bool, all_idle: bool,
         if highlighted:
             return ''
         activity = (recent_rollup(state['recent']) or state['last_tool']
-                    or state['verb'])
+                    or work or state['verb'])
         return activity if activity.endswith('…') else f"{activity}…"
     if all_idle:
         return f"{state['past']} for {duration(int(now - state['started_at']))}"
@@ -82,7 +82,7 @@ def teammate_row(agent, state: dict, *, running: bool, color: str,
                  chosen: bool, last: bool, all_idle: bool, now: float,
                  columns: int, foregrounded: bool = False,
                  stopping: bool = False, awaiting: bool = False,
-                 queued: int = 0) -> str:
+                 queued: int = 0, work: str = '') -> str:
     name = str(getattr(agent, 'name', ''))
     highlighted = chosen or foregrounded
     glyph = (TREE_LAST if last else TREE_BRANCH)[1 if highlighted else 0]
@@ -92,7 +92,7 @@ def teammate_row(agent, state: dict, *, running: bool, color: str,
         pointer=pointer,
         status=status_text(state, running=running, all_idle=all_idle,
                            highlighted=highlighted, now=now,
-                           stopping=stopping, awaiting=awaiting),
+                           stopping=stopping, awaiting=awaiting, work=work),
         stats=(f" \u00b7 {_tool_uses(state['tools'])}"
                f" \u00b7 {_format_count(_agent_tokens(agent))} tokens"
                + (f" \u00b7 {queued} queued" if queued else '')),

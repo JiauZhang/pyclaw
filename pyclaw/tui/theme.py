@@ -37,6 +37,17 @@ PREVIEW_CHARS = 80
 RECENT_ACTIVITIES = 5
 
 
+PLAN_ICONS = {"completed": "\u2713", "in_progress": "\u25aa",
+              "pending": "\u25ab"}
+DONE_COLOR = "#4EBA65"
+PLAN_MAX_LINES = 10
+PLAN_MIN_ROWS = 10
+PLAN_RECENT_SECONDS = 30.0
+NEXT_PREFIX = "Next: "
+BLOCKED_PREFIX = " \u203a blocked by "
+PLAN_HIDDEN = " \u2026 +"
+
+
 AGENT_TRAIL_LIMIT = 3
 INITIALIZING_TEXT = "Starting up\u2026"
 EXPAND_HINT = "ctrl+o shows more"

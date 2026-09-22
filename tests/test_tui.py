@@ -30,6 +30,7 @@ from pyclaw.tui.roster import (hide_row, leader_row, status_text,
                                teammate_row)
 from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.widgets import _TextBlock, _ToolBlock
+from chatchat.core.tasks import TaskList
 from fakes import Usage
 from markup import plain
 
@@ -62,6 +63,7 @@ class _FakeTeam:
             async def idle(self):
                 return not owner._running
         self.agents = {"lead@t": _A()}
+        self.tasks = None
         self.children = {}
         self.lead = self.agents["lead@t"]
         self._messages = []
@@ -3445,6 +3447,76 @@ def test_k_stops_the_selected_teammate():
             assert team.stopped == ["worker"]
             assert app._selected_index == -1
     asyncio.run(scenario())
+
+
+class _PlanTeam(_FakeTeam):
+
+    def __init__(self, directory):
+        super().__init__()
+        self.tasks = TaskList(directory)
+
+    def plan(self, subject, **kw):
+        task = self.tasks.create(subject, subject)
+        if kw:
+            self.tasks.update(task.id, **kw)
+        return self.tasks.get(task.id)
+
+
+def test_the_pane_names_the_next_task_when_there_is_nothing_to_expand(
+        tmp_path):
+    team = _PlanTeam(tmp_path / 'tasks')
+    team.plan('Fix the parser')
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._refresh_agents()
+            return _tree(app)
+
+    assert asyncio.run(scenario()) == 'Next: Fix the parser'
+
+
+def test_the_tasks_pane_leads_with_the_plan(tmp_path):
+    team = _PlanTeam(tmp_path / 'tasks')
+    team.plan('Fix the parser')
+    team.plan('Write the tests', status='in_progress', active_form='Testing')
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app.action_toggle_tasks()
+            return str(app._tasks_pane.content)
+
+    text = _plain(asyncio.run(scenario()))
+    assert '▪ Write the tests' in text
+    assert '▫ Fix the parser' in text
+    assert 'Agents' in text
+
+
+def test_a_claimed_task_s_active_form_is_the_teammate_s_activity(tmp_path):
+    team = _SwarmTeam()
+    team.tasks = TaskList(tmp_path / 'tasks')
+    task = team.tasks.create('Review the diff', 'Review the diff')
+    team.tasks.update(task.id, owner='worker', status='in_progress',
+                      active_form='Reviewing')
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _run_turn(pilot)
+            team.worker_busy = True
+            state = app._state('worker')
+            state['last_tool'] = ''
+            state['recent'] = []
+            return _plain(app._tree_markup(True, False))
+
+    assert 'Reviewing…' in asyncio.run(scenario())
 
 
 def test_a_teammate_row_counts_the_messages_waiting_on_it():

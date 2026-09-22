@@ -35,6 +35,8 @@ from pyclaw.tui.readout import (HUD_TICK_SECONDS, _agent_tokens, context_meter,
                                 mode_pill, thinking_label, usage_hud,
                                 usage_meter)
 from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
+from pyclaw.tui.plan import (next_task_line, plan_lines,
+                              recent_completions)
 from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
                                 PermissionsScreen, TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
@@ -252,6 +254,7 @@ class PyClawApp(App[None]):
         self._interrupted_call = False
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
+        self._task_seen: dict[str, float] = {}
         self._expanded_view = 'none'
         self._view_selection = 'none'
         self._preview = False
@@ -403,6 +406,24 @@ class PyClawApp(App[None]):
             return False
         return bool(getattr(agent, 'busy', False))
 
+    def _plan(self) -> list:
+        return [] if self._team.tasks is None else self._team.tasks.all()
+
+    def _plan_activity(self) -> dict:
+        running = {}
+        for agent in self._teammates():
+            if not self._agent_running(agent):
+                continue
+            state = self._state(str(getattr(agent, 'name', '')))
+            text = recent_rollup(state['recent']) or state['last_tool']
+            if text:
+                running[str(agent.name)] = text
+        return running
+
+    def _active_forms(self) -> dict:
+        return {task.owner: task.active_form for task in self._plan()
+                if task.status == 'in_progress' and task.active_form}
+
     def _tree_markup(self, rows: bool, idle_line: bool) -> str:
         teammates = self._teammates()
         if not teammates:
@@ -414,6 +435,7 @@ class PyClawApp(App[None]):
         columns = self.screen.size.width or self.size.width
         awaiting = {approval.prompt._agent for approval in self._approvals
                     if approval.prompt._agent}
+        work = self._active_forms()
         lines = []
         if idle_line:
             suffix = '' if all_idle else f" \u00b7 {AGENT_TEAMMATES_HINT}"
@@ -434,7 +456,8 @@ class PyClawApp(App[None]):
                     columns=columns, foregrounded=self._viewing == name,
                     stopping=bool(self._state(name).get('stopping')),
                     awaiting=name in awaiting,
-                    queued=len(agent.inbox.unread())))
+                    queued=len(agent.inbox.unread()),
+                    work=work.get(name, '')))
                 if self._preview:
                     lines += preview_rows(agent, last=last, cwd=self._cwd())
             if selecting:
@@ -457,7 +480,8 @@ class PyClawApp(App[None]):
         teammates = self._teammates()
         rows = bool(teammates) and self._expanded_view == 'teammates'
         idle_line = bool(teammates) and self._processing is None
-        text = self._tree_markup(rows, idle_line)
+        text = self._tree_markup(rows, idle_line) or next_task_line(
+            self._plan())
         if not text:
             if self._agents_pane is not None:
                 self._agents_pane.remove()
@@ -1596,7 +1620,22 @@ class PyClawApp(App[None]):
     def _render_tasks(self):
         if self._team is None:
             return
-        lines = ["[bold]Agents[/bold]"]
+        lines = plan_lines(self._plan(), columns=self.screen.size.width
+                           or self.size.width,
+                           rows=self.screen.size.height or self.size.height,
+                           brand=self.brand,
+                           colors={str(getattr(a, 'name', '')):
+                                   self._agent_color(str(getattr(a, 'name', '')))
+                                   for a in self._teammates()},
+                           activity=self._plan_activity(),
+                           alive={str(getattr(a, 'name', ''))
+                                  for a in self._teammates()},
+                           recent=recent_completions(self._plan(),
+                                                     self._task_seen,
+                                                     time.monotonic()))
+        if lines:
+            lines += ['']
+        lines += ["[bold]Agents[/bold]"]
 
         def walk(agent_id, prefix, is_last):
             a = self._team.agents.get(agent_id)
