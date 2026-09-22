@@ -476,6 +476,10 @@ class Session:
     def turns(self) -> list:
         return self._team.turns()
 
+    def rewind_stats(self, mark: int) -> dict | None:
+        history = self._team.file_history
+        return None if history is None else history.diff_stats(mark)
+
     def rewind(self, mark: int, *, code: bool = True,
                conversation: bool = True) -> dict:
         result = self._team.rewind(mark, code=code, conversation=conversation)

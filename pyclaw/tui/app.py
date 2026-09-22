@@ -28,7 +28,7 @@ from pyclaw.tui.agentview import agent_view_markup
 from pyclaw.tui.approval import _Approval, _PermissionPrompt
 from pyclaw.tui.formatting import (_content_text, _direct_message,
                                    _display_cwd, _fit, _format_count,
-                                   _summarize, _token_rate, duration)
+                                   _plural, _summarize, _token_rate, duration)
 from pyclaw.tui.readout import (HUD_TICK_SECONDS, _agent_tokens, context_meter,
                                 context_note, elapsed_row, git_label,
                                 git_status, message_count, meter_cells,
@@ -38,7 +38,8 @@ from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
 from pyclaw.tui.plan import (next_task_line, plan_lines,
                               recent_completions)
 from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
-                                PermissionsScreen, TranscriptScreen)
+                                PermissionsScreen, RewindScreen,
+                                TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
 from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK,
@@ -127,6 +128,9 @@ class PyClawApp(App[None]):
     #transcript > Static { width: 100%; margin-bottom: 1; }
     #history { width: 1fr; height: 1fr; background: $background;
                padding: 0 1; }
+    #rewind { width: 1fr; height: auto; max-height: 20;
+              background: $background; padding: 1 2; }
+    #rewind > Static { width: 100%; height: auto; }
     #hs-input { height: 1; margin-bottom: 1; border: none;
                 background: $background; color: $text; }
     #hs-list { width: 100%; height: auto; margin-bottom: 1; }
@@ -939,6 +943,35 @@ class PyClawApp(App[None]):
         self._discard_think()
         await self._after_mount()
 
+    async def _replay_transcript(self):
+        self._live = None
+        self._live_text = ""
+        self._tools = {}
+        self._tool_meta = {}
+        self._spawns = {}
+        self._teammate_spawns = set()
+        self._group = None
+        self._agent_group = None
+        self._solo_spawn = None
+        self._work_block = None
+        self._turn_start = 0
+        self._conv().remove_children()
+        await self._render_history()
+
+    async def _apply_rewind(self, mark: int, *, code: bool,
+                            conversation: bool):
+        result = self._session.rewind(mark, code=code,
+                                      conversation=conversation)
+        if conversation:
+            await self._replay_transcript()
+        moved = []
+        if code:
+            moved.append(f"{_plural(len(result['files']), 'file')} put back")
+        if conversation:
+            moved.append(f"{_plural(result['messages'], 'message')} dropped")
+        await self._append_block(escape(
+            f"Rewound to that turn{' · ' + ', '.join(moved) if moved else ''}"))
+
     async def _render_history(self):
         for message in self._session.transcript():
             role = message.get("role")
@@ -1199,6 +1232,20 @@ class PyClawApp(App[None]):
             self.query_one("#input", Input).value = ""
             await self._append_user(text)
             self.push_screen(PermissionsScreen(self._session))
+            return
+        if text == '/rewind':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            if self._processing:
+                await self._append_block(escape(
+                    'PyClaw is still working. Press esc to stop it first, '
+                    'then rewind.'))
+                return
+            if not self._session.turns():
+                await self._append_block(escape(
+                    'PyClaw has not recorded any turn to go back to.'))
+                return
+            self.push_screen(RewindScreen(self))
             return
         if text == '/agents':
             self.query_one("#input", Input).value = ""

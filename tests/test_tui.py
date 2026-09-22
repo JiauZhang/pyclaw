@@ -4617,3 +4617,134 @@ def test_a_group_card_points_at_the_transcript_for_the_detail():
             return _plain(app._agent_group.content)
 
     assert '(ctrl+o shows more)' in asyncio.run(scenario()).splitlines()[0]
+
+
+class _RewindHistory:
+
+    def diff_stats(self, mark):
+        return {'files': ['a.py'], 'insertions': 1, 'deletions': 2}
+
+
+class _RewindTeam(_FakeTeam):
+
+    def __init__(self):
+        super().__init__()
+        self.file_history = _RewindHistory()
+        self.rewound = []
+        self.record("user", "set up the parser")
+        self.record("assistant", "done")
+        self.record("user", "fix the tests")
+        self.record("assistant", "done again")
+
+    def turns(self):
+        return [(0, "set up the parser"), (2, "fix the tests")]
+
+    def rewind(self, mark, *, code=True, conversation=True):
+        self.rewound.append((mark, code, conversation))
+        if conversation:
+            self._messages = self._messages[:mark]
+        return {'files': ['a.py'] if code else [],
+                'messages': 2 if conversation else 0}
+
+
+async def _open_rewind(pilot):
+    from pyclaw.agents import Session
+    with mock.patch.object(Session, 'save_transcript', lambda self: None):
+        await _submit_and_wait(pilot, '/rewind')
+        return pilot.app.screen
+
+
+def _rewind_body(screen) -> str:
+    return _plain(str(screen.query_one('#rw-body', Static).content))
+
+
+def test_the_rewind_picker_lists_turns_then_restore_modes():
+    async def scenario():
+        async with PyClawApp(builder=_RewindTeam, resume=True,
+                             session_id='rewind-both').run_test(
+                size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            screen = await _open_rewind(pilot)
+            turns = _rewind_body(screen)
+            await pilot.press("enter")
+            modes = _rewind_body(pilot.app.screen)
+            await pilot.press("enter")
+            await pilot.pause()
+            conversation = ''.join(str(widget.content)
+                                   for widget in app._conv().query(Static)
+                                   if hasattr(widget, 'content'))
+            return turns, modes, app._team.rewound, app.screen, conversation
+
+    turns, modes, rewound, final, conversation = asyncio.run(scenario())
+    assert 'set up the parser' in conversation
+    assert '1. set up the parser' in turns
+    assert '2. fix the tests' in turns
+    assert '1 file' in turns
+    assert 'Restore code and conversation' in modes
+    assert 'Never mind' in modes
+    assert rewound == [(2, True, True)]
+    assert type(final).__name__ != 'RewindScreen'
+    assert 'fix the tests' not in conversation
+
+
+def test_the_rewind_picker_can_restore_only_the_files():
+    async def scenario():
+        async with PyClawApp(builder=_RewindTeam, resume=True,
+                             session_id='rewind-code').run_test(
+                size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _open_rewind(pilot)
+            await pilot.press("enter")
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            conversation = ''.join(str(widget.content)
+                                   for widget in app._conv().query(Static)
+                                   if hasattr(widget, 'content'))
+            return app._team.rewound, app._team.transcript(), conversation
+
+    rewound, transcript, conversation = asyncio.run(scenario())
+    assert rewound == [(2, True, False)]
+    assert len(transcript) == 4
+    assert 'fix the tests' in conversation
+
+
+def test_the_rewind_picker_can_be_backed_out_of():
+    async def scenario():
+        async with PyClawApp(builder=_RewindTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _open_rewind(pilot)
+            await pilot.press("enter")
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("down")
+            await pilot.press("enter")
+            await pilot.pause()
+            return app._team.rewound, app._team.transcript()
+
+    rewound, transcript = asyncio.run(scenario())
+    assert rewound == []
+    assert len(transcript) == 4
+
+
+def test_the_rewind_picker_waits_for_a_running_turn():
+    async def scenario():
+        async with PyClawApp(builder=_RewindTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._processing = 'set up the parser'
+            await _submit_and_wait(pilot, '/rewind')
+            await pilot.pause()
+            note = ''.join(str(widget.content)
+                           for widget in app._conv().query(Static)
+                           if hasattr(widget, 'content'))
+            return app.screen, app._team.rewound, note
+
+    screen, rewound, note = asyncio.run(scenario())
+    assert screen.__class__.__name__ != 'RewindScreen'
+    assert rewound == []
+    assert 'still working' in _plain(note)
