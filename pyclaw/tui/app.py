@@ -55,7 +55,8 @@ from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds,
 from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
                                 _GroupBlock, _JumpToBottom,
                                 _LogoBlock, _PagerScroll, _PromptInput,
-                                _TextBlock, _ToolBlock, _UserBlock, _half_page)
+                                _TextBlock, _ToolBlock, _UserBlock,
+                                _half_page, teammate_name)
 
 
 logger = logging.getLogger(__name__)
@@ -106,8 +107,8 @@ class PyClawApp(App[None]):
     .user { background: $user-message; }
     .diff { border-top: dashed $subtle; border-bottom: dashed $subtle;
             border-left: none; border-right: none; padding: 0 1; }
-    .permission { width: 100%; margin-bottom: 1; }
-    .permission Input { display: none; width: 100%; height: 1; margin-top: 1;
+    .permission { width: 100%; height: auto; margin-bottom: 1; }
+    .permission Input { display: none; width: 100%; height: 1;
                         border: round $permission; background: $background;
                         color: $text; padding: 0 1; }
     .logo { width: auto; margin-bottom: 1; }
@@ -265,6 +266,7 @@ class PyClawApp(App[None]):
         self._agents_pane: _AgentPane | None = None
         self._view_pane: Static | None = None
         self._spawns: dict[str, str] = {}
+        self._teammate_spawns: set[str] = set()
         self._agent_colors: dict[str, str] = {}
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
@@ -805,7 +807,12 @@ class PyClawApp(App[None]):
         block = self._tools.get(uid)
         if block is None or block._done:
             return
+        if not stopped and uid in self._teammate_spawns:
+            agent = self._agent_by_name(name)
+            if agent is not None and getattr(agent, 'is_running', False):
+                return
         meta = self._tool_meta.setdefault(uid, {})
+        state['stopped'] = stopped
         if 'agent_summary' not in meta:
             started = state['started_at']
             elapsed = max(0, int(time.monotonic() - started))
@@ -818,7 +825,10 @@ class PyClawApp(App[None]):
                 f"{duration(elapsed)})")
             logger.info("sub-agent %s finished: %s", name,
                         meta['agent_summary'])
-        block.end_progress()
+        if uid in self._teammate_spawns:
+            block.set_result(meta['agent_summary'], meta=meta)
+        else:
+            block.end_progress()
 
     _SPIN = "".join(SPINNER_FRAMES)
 
@@ -857,14 +867,24 @@ class PyClawApp(App[None]):
                   or state.get('last_tool')
                   or recent_rollup(sub.get('recent', []))
                   or sub.get('last_tool') or '')
+        running = bool(getattr(agent, 'is_running', False))
+        if running:
+            member['seen'] = True
         return {'tools': state.get('tools') or sub.get('tools', 0),
                 'tokens': tokens,
-                'status': status, 'done_text': DONE_TEXT,
+                'running': running,
+                'status': status,
+                'done_text': STOPPED_TEXT if state.get('stopped')
+                else DONE_TEXT,
                 'error': bool(state.get('error'))}
 
     async def _mount_spawn(self, uid: str, raw_input):
         self._close_read_group()
         label, detail = agent_group_label('create_agent', raw_input)
+        teammate = teammate_name(raw_input)
+        if teammate:
+            self._teammate_spawns.add(uid)
+            self._spawns[teammate] = uid
         if self._agent_group is None:
             if self._solo_spawn is None:
                 self._solo_spawn = uid
@@ -874,7 +894,7 @@ class PyClawApp(App[None]):
                 self._discard_think()
                 return await self._after_mount()
             await self._open_group(self._solo_spawn)
-        self._agent_group.add(uid, label, detail)
+        self._agent_group.add(uid, label, detail, agent=teammate)
         self._tools[uid] = self._agent_group.member(uid)
         self._discard_think()
         await self._after_mount()
@@ -886,7 +906,8 @@ class PyClawApp(App[None]):
         group._frame = self._spin_char()
         if isinstance(card, _ToolBlock):
             label, detail = agent_group_label('create_agent', card._input)
-            group.add(first_uid, label, detail)
+            group.add(first_uid, label, detail,
+                      agent=teammate_name(card._input))
             self._tools[first_uid] = group.member(first_uid)
             card.display = False
         await self._conv().mount(group, before=card)
@@ -1145,6 +1166,8 @@ class PyClawApp(App[None]):
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     results[block.get("tool_use_id")] = block.get("content", "")
         for uid, block in self._tools.items():
+            if uid in self._teammate_spawns:
+                continue
             if not block._done and uid in results:
                 block.set_result(str(results[uid]),
                                  meta=self._tool_meta.get(uid))

@@ -62,6 +62,7 @@ class _PermissionPrompt(Vertical):
         self._focused = 0
         self._open_accept = False
         self._open_reject = False
+        self._open_rule = False
         self.on_choice = None
 
     def compose(self) -> ComposeResult:
@@ -96,7 +97,7 @@ class _PermissionPrompt(Vertical):
         return options
 
     def _row_field(self, option: _PermOption) -> Input | None:
-        if option.feedback == "rule":
+        if option.feedback == "rule" and self._open_rule:
             return self.query_one("#perm-rule", Input)
         if option.feedback == "accept" and self._open_accept:
             return self.query_one("#perm-accept", Input)
@@ -139,10 +140,14 @@ class _PermissionPrompt(Vertical):
             row = escape(f"  {marker} {index + 1}. {option.label}")
             lines.append(f"[#B1B9F9]{row}[/]" if index == self._focused
                          else f"[dim]{row}[/]")
-        hint = ((focused.feedback == "accept" and not self._open_accept)
-                or (focused.feedback == "reject" and not self._open_reject))
-        lines.append("[dim]  esc cancels"
-                     + (" \u00b7 tab adds a note" if hint else "") + "[/]")
+        closed = {"accept": not self._open_accept,
+                  "reject": not self._open_reject,
+                  "rule": not self._open_rule}.get(focused.feedback, False)
+        note = ''
+        if closed:
+            note = (" \u00b7 tab edits the rule" if focused.feedback == "rule"
+                    else " \u00b7 tab adds a note")
+        lines.append(f"[dim]  esc cancels{note}[/]")
         self.query_one("#perm-body", Static).update("\n".join(lines))
 
     def _move(self, delta: int, wrap: bool):
@@ -156,6 +161,10 @@ class _PermissionPrompt(Vertical):
         if option != "reject" and self._open_reject:
             self._open_reject = bool(
                 self.query_one("#perm-reject", Input).value.strip())
+        if option != "rule" and self._open_rule:
+            self._open_rule = bool(
+                self.query_one("#perm-rule", Input).value.strip()
+                != self._rule.strip())
         self._sync_row()
 
     def action_opt_next(self):
@@ -176,6 +185,8 @@ class _PermissionPrompt(Vertical):
             self._open_accept = not self._open_accept
         elif option.feedback == "reject":
             self._open_reject = not self._open_reject
+        elif option.feedback == "rule":
+            self._open_rule = not self._open_rule
         else:
             return
         self._sync_row()
@@ -201,9 +212,14 @@ class _PermissionPrompt(Vertical):
             return PermissionChoice(option.value, feedback=text)
         return PermissionChoice(option.value)
 
-    async def _submit(self, option: _PermOption):
+    def _text_for(self, option: _PermOption) -> str:
+        if option.feedback == "rule":
+            return self.query_one("#perm-rule", Input).value
         field = self._row_field(option)
-        await self._finish(self._choice(option, field.value if field else ""))
+        return '' if field is None else field.value
+
+    async def _submit(self, option: _PermOption):
+        await self._finish(self._choice(option, self._text_for(option)))
 
     async def on_input_submitted(self, event: Input.Submitted):
         event.stop()

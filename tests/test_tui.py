@@ -990,6 +990,18 @@ def test_the_note_stays_on_the_footer_while_its_own_row():
     assert "│██████████│ 95%" in _row1(lambda: _TightTeam(), window=200_000)
 
 
+def test_the_context_meter_names_the_window_it_measures_against():
+    """The percentage alone is meaningless without the window it is a share of,
+    so the meter prints the real configured window next to it."""
+    assert _row1(lambda: _meter_team(68_000)(),
+                 window=200_000).startswith(
+        "m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (200k)")
+    assert _row1(lambda: _meter_team(340_000)(),
+                 window=1_000_000).startswith(
+        "m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (1m)")
+    assert "(0)" not in _row1(lambda: _meter_team(68_000)())
+
+
 def test_the_first_row_shortens_its_meters_on_a_narrow_terminal():
     assert _row1(lambda: _meter_team(80_000)(), window=200_000,
                  size=(60, 40)).startswith("m \u00b7 thinking off \u00b7 │██░░░│ 40%")
@@ -2276,6 +2288,50 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
     asyncio.run(scenario())
 
 
+def test_the_permission_card_holds_no_rows_beyond_its_own_text():
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 30)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = _PermissionPrompt("Bash", {"command": "git commit -m x"},
+                                       rememberable=True,
+                                       rule="Bash(git commit:*)")
+            await app._conv().mount(prompt)
+            await pilot.pause()
+            body = prompt.query_one("#perm-body", Static)
+            assert prompt.region.height == len(str(body.content).splitlines())
+            prompt.action_opt_next()
+            await pilot.pause()
+            assert prompt.region.height == len(str(body.content).splitlines())
+    asyncio.run(scenario())
+
+
+def test_focusing_the_remember_option_keeps_the_rule_row_shut():
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 30)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = _PermissionPrompt("Bash", {"command": "git commit -m x"},
+                                       rememberable=True,
+                                       rule="Bash(git commit:*)")
+            await app._conv().mount(prompt)
+            await pilot.pause()
+            rule = prompt.query_one("#perm-rule", Input)
+            prompt.action_opt_next()
+            await pilot.pause()
+            assert rule.display is False
+            prompt.action_toggle_feedback()
+            await pilot.pause()
+            assert rule.display is True
+            assert rule.value == "Bash(git commit:*)"
+            prompt.action_opt_next()
+            await pilot.pause()
+            assert rule.display is False
+    asyncio.run(scenario())
+
+
 def test_runtime_sink_released_on_unmount():
     from chatchat.hooks import events
 
@@ -2412,6 +2468,9 @@ def test_bash_rule_row_is_editable_where_it_is_focused():
             await pilot.press("down")
             await pilot.pause()
             assert prompt._focused == 1
+            assert not rule_field.display
+            await pilot.press("tab")
+            await pilot.pause()
             assert rule_field.display
             assert rule_field.has_focus
             assert rule_field.value == "Bash(git commit:*)"
@@ -2562,6 +2621,8 @@ def test_a_digit_types_into_an_open_rule_row_instead_of_selecting():
             await pilot.pause()
             task, prompt = await _asked_prompt(app, pilot)
             await pilot.press("down")
+            await pilot.pause()
+            await pilot.press("tab")
             await pilot.pause()
             rule_field = prompt.query_one("#perm-rule", Input)
             assert rule_field.has_focus
@@ -3776,6 +3837,84 @@ def test_a_group_row_tracks_its_agent_and_closes_when_it_answers():
     assert '1k tokens' in live.splitlines()[1]
     assert done.startswith('\u23fa 2 Explore agents finished')
     assert 'Done' in done.splitlines()[1]
+
+
+def test_a_teammate_row_stays_live_while_that_teammate_runs():
+    """The spawn acknowledgement arrives as a tool_result, but it is not an
+    answer: the teammate is still working, so its row must keep reporting
+    activity instead of settling on Done."""
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'w1', name='worker')
+            await _spawn(app, pilot, 'a2')
+            await pilot.pause()
+            app._team.record("user", [{"type": "tool_result",
+                                       "tool_use_id": "w1",
+                                       "content": 'Teammate "worker" spawned '
+                                                  'and idle.'}])
+            app._tools['a2'].set_result('one-off answer')
+            app._sync_tool_states()
+            await pilot.pause()
+            return _plain(app._agent_group.content)
+
+    lines = asyncio.run(scenario()).splitlines()
+    assert 'Running 2' in lines[0]
+    assert 'finished' not in lines[0]
+    assert 'Done' not in lines[1]
+    assert 'Done' in lines[2]
+
+
+def test_a_teammate_row_closes_once_that_teammate_is_gone():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'w1', name='worker')
+            await _spawn(app, pilot, 'a2')
+            await pilot.pause()
+            app._team.record("user", [{"type": "tool_result",
+                                       "tool_use_id": "w1",
+                                       "content": 'Teammate "worker" spawned '
+                                                  'and idle.'}])
+            app._tools['a2'].set_result('one-off answer')
+            app._sync_tool_states()
+            await pilot.pause()
+            live = _plain(app._agent_group.content)
+            app._team.agents.pop("worker@t")
+            await app._refresh_agents()
+            await pilot.pause()
+            return live, _plain(app._agent_group.content)
+
+    live, gone = asyncio.run(scenario())
+    assert 'finished' not in live.splitlines()[0]
+    assert 'finished' in gone.splitlines()[0]
+    assert 'Done' in gone.splitlines()[1]
+
+
+def test_a_solo_teammate_card_is_not_settled_by_its_spawn_ack():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'w1', name='worker')
+            await pilot.pause()
+            app._team.record("user", [{"type": "tool_result",
+                                       "tool_use_id": "w1",
+                                       "content": 'Teammate "worker" spawned '
+                                                  'and idle.'}])
+            app._sync_tool_states()
+            await pilot.pause()
+            card = app._tools['w1']
+            live = _plain(card.content)
+            app._finish_agent('worker', stopped=True)
+            return live, _plain(card.content)
+
+    live, stopped = asyncio.run(scenario())
+    assert 'spawned' not in live
+    assert 'Done' not in live
+    assert 'Stopped' in stopped
 
 
 def test_a_teammate_spawn_is_labelled_by_its_name():

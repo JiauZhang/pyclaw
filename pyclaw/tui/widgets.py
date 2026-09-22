@@ -182,6 +182,11 @@ class _GroupBlock(Static):
         self.update(f"[{color}]{marker}[/] {body}{hint}")
 
 
+def teammate_name(tool_input) -> str:
+    return (str(tool_input.get('name') or '')
+            if isinstance(tool_input, dict) else '')
+
+
 class _AgentGroupBlock(Static):
 
     def _width(self) -> int:
@@ -196,9 +201,10 @@ class _AgentGroupBlock(Static):
         self._frame = BULLET
         self._draw()
 
-    def add(self, uid: str, label: str, detail: str):
-        self.members.append({'uid': uid, 'name': '', 'label': label,
+    def add(self, uid: str, label: str, detail: str, agent: str = ''):
+        self.members.append({'uid': uid, 'name': agent, 'label': label,
                              'detail': detail, 'resolved': False,
+                             'settled': False, 'seen': False,
                              'error': False, 'progress': []})
         self._draw()
 
@@ -243,17 +249,20 @@ class _AgentGroupBlock(Static):
         stats = [self._stats_for(member) for member in self.members]
         kinds = {member['label'] for member in self.members}
         kind = kinds.pop() if len(kinds) == 1 and 'Agent' not in kinds else ''
-        done = bool(stats) and all(m['resolved'] for m in self.members)
+        closed = [bool(member['resolved'] or member['settled']
+                       or (member['seen'] and not stat['running']))
+                  for member, stat in zip(self.members, stats)]
+        done = bool(stats) and all(closed)
         header = agent_group_header(len(stats), kind=kind, done=done)
         color = (self.app.brand if self.active and not done else DONE_COLOR)
         marker = self._frame if self.active and not done else BULLET
         lines = [f'[{color}]{marker}[/] {header} [dim]({EXPAND_HINT})[/]']
-        for index, (member, stat) in enumerate(zip(self.members, stats)):
+        for index, (member, stat, is_closed) in enumerate(
+                zip(self.members, stats, closed)):
             lines.append(agent_group_row(
                 label=member['label'], detail=member['detail'],
                 tools=stat['tools'], tokens=stat['tokens'],
-                status=(stat['status'] if not member['resolved']
-                        else stat['done_text']),
+                status=stat['done_text'] if is_closed else stat['status'],
                 error=member['error'],
                 last=index == len(self.members) - 1))
         self.update('\n'.join(lines))
@@ -267,7 +276,8 @@ class _AgentMember:
 
     @property
     def _done(self) -> bool:
-        return self._group.state(self.uid)['resolved']
+        state = self._group.state(self.uid)
+        return state['resolved'] or state['settled']
 
     def set_result(self, output, meta=None):
         self._group.resolve(self.uid, output)
@@ -278,6 +288,7 @@ class _AgentMember:
         self._group.redraw()
 
     def end_progress(self):
+        self._group.state(self.uid)['settled'] = True
         self._group.redraw()
 
     def _width(self) -> int:
@@ -436,9 +447,7 @@ class _ToolBlock(Static):
         return _content_width(self, len(RESULT_PREFIX))
 
     def _is_teammate_spawn(self) -> bool:
-        return (self._name == 'create_agent'
-                and isinstance(self._input, dict)
-                and bool(self._input.get('name')))
+        return self._name == 'create_agent' and bool(teammate_name(self._input))
 
     def _agent_summary(self) -> str | None:
         return (self._meta or {}).get('agent_summary')
@@ -458,6 +467,11 @@ class _ToolBlock(Static):
                         f"{escape(self._rejected)}[/]")
             return
         if self._is_teammate_spawn():
+            summary = self._agent_summary()
+            if summary is not None:
+                rows = escape(summary).replace("\n", "\n" + RESULT_HANG)
+                self.update(f"{head}\n[dim]{RESULT_PREFIX}{rows}[/]")
+                return
             trail = self._trail_markup()
             self.update(f"{head}\n{trail}" if trail else head)
             return
