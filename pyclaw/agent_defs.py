@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 import re
 from pathlib import Path
 
@@ -11,6 +12,7 @@ _FRONTMATTER = re.compile(r'^---\s*\n([\s\S]*?)\n---\s*\n?')
 BUILT_IN = 'built-in'
 USER = 'user'
 PROJECT = 'project'
+CLI = 'command line'
 
 _NAME = re.compile(r'^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]$')
 _NAME_RANGE = (3, 50)
@@ -33,8 +35,9 @@ def agents_dir(scope: str, cwd: str) -> Path:
 
 
 SCOPE_LABELS = {BUILT_IN: 'Bundled agents', USER: 'Your agents',
-                PROJECT: 'This project'}
-SCOPE_ORDER = (USER, PROJECT, BUILT_IN)
+                PROJECT: 'This project', CLI: 'Given with --agents'}
+SCOPE_ORDER = (CLI, USER, PROJECT, BUILT_IN)
+READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI})
 _DISPLAY_DIRS = {USER: '~/.pyclaw/agents', PROJECT: '.pyclaw/agents'}
 
 _READ_ONLY = frozenset({'Glob', 'Grep', 'Read', 'TaskOutput', 'TaskStop'})
@@ -160,7 +163,7 @@ def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None
     return _definition_from_md(text, all_tools)
 
 
-def discover(cwd: str, all_tools: list) -> list[AgentEntry]:
+def discover(cwd: str, all_tools: list, cli=()) -> list[AgentEntry]:
     entries = [AgentEntry(d.agent_type, BUILT_IN, None, d)
                for d in builtin_agent_defs(all_tools)]
     for scope in (USER, PROJECT):
@@ -172,6 +175,7 @@ def discover(cwd: str, all_tools: list) -> list[AgentEntry]:
             defn = _definition_from_path(path, all_tools)
             if defn is not None:
                 entries.append(AgentEntry(defn.agent_type, scope, path, defn))
+    entries += [AgentEntry(d.agent_type, CLI, None, d) for d in cli]
     winner = {e.agent_type: e.scope for e in entries}
     for entry in entries:
         if winner[entry.agent_type] != entry.scope:
@@ -179,8 +183,32 @@ def discover(cwd: str, all_tools: list) -> list[AgentEntry]:
     return entries
 
 
-def load_agent_defs(cwd: str, all_tools: list) -> list[AgentDefinition]:
-    return [e.defn for e in discover(cwd, all_tools=all_tools)
+def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
+    try:
+        data = json.loads(str(text or ''))
+    except ValueError:
+        raise ValueError('--agents is not valid JSON') from None
+    if not isinstance(data, dict):
+        raise ValueError('--agents must be a JSON object of name: definition')
+    by_name = {t.name: t for t in all_tools}
+    defs = []
+    for name, spec in data.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f'--agents: {name} must be an object')
+        wanted = spec.get('tools')
+        tools = (list(all_tools) if not wanted
+                 else [by_name[n] for n in wanted if n in by_name])
+        defs.append(AgentDefinition(
+            str(name), system_prompt=str(spec.get('prompt') or ''),
+            tools=tools, model=spec.get('model') or None,
+            permission_mode=spec.get('permissionMode') or None,
+            description=str(spec.get('description') or '')))
+    return defs
+
+
+def load_agent_defs(cwd: str, all_tools: list,
+                    cli=()) -> list[AgentDefinition]:
+    return [e.defn for e in discover(cwd, all_tools=all_tools, cli=cli)
             if e.shadowed_by is None]
 
 

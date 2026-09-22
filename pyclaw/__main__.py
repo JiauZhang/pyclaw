@@ -112,9 +112,10 @@ def _cli_resume(args) -> bool:
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
                       resume=False, resume_from=None, allow=None, ask=None,
-                      deny=None, use_team=False) -> dict:
+                      deny=None, use_team=False, agents=None) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
-                      allow=allow, ask=ask, deny=deny, use_team=use_team)
+                      allow=allow, ask=ask, deny=deny, use_team=use_team,
+                      agents_json=agents)
     session = Session(team, session_id=session_id, resume_from=resume_from)
     try:
         if resume:
@@ -149,7 +150,7 @@ async def run_headless(args):
                             session_id=session_id, resume=_cli_resume(args),
                             resume_from=resume_from,
                             allow=args.allow, ask=args.ask, deny=args.deny,
-                            use_team=args.use_team)
+                            use_team=args.use_team, agents=args.agents)
     render_output(args.output, out)
 
 
@@ -171,7 +172,7 @@ def run_tui(args):
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
         allow=args.allow, ask=args.ask, deny=args.deny,
-        use_team=args.use_team),
+        use_team=args.use_team, agents_json=args.agents),
         session_id=session_id,
         resume=_cli_resume(args),
         resume_from=resume_from).run()
@@ -221,6 +222,11 @@ def _add_session_args(target):
     target.add_argument("--use-team", action="store_true", default=False,
                         help="Run in team (multi-agent) mode; fixed for the "
                              "whole session")
+    target.add_argument("--agents", type=str, default=None, metavar="JSON",
+                        help="Agent definitions as one JSON object keyed by "
+                             "name, each with description, prompt, tools, "
+                             "model and permissionMode. Wins over the "
+                             ".pyclaw/agents files.")
 
 
 def _build_parser() -> argparse.ArgumentParser:

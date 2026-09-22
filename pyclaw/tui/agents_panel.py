@@ -125,9 +125,10 @@ class AgentsScreen(Screen):
 
     def _reload(self):
         self._entries = agent_defs.list_order(
-            agent_defs.discover(self._cwd, self._all_tools))
+            agent_defs.discover(self._cwd, self._all_tools,
+                                cli=self._session.cli_agent_defs))
         self._selectable = [e for e in self._entries
-                            if e.scope != agent_defs.BUILT_IN]
+                            if e.scope not in agent_defs.READ_ONLY_SCOPES]
         self._pos = min(self._pos, len(self._selectable))
 
     def _selected(self):
@@ -195,7 +196,8 @@ class AgentsScreen(Screen):
         return [f'[#FF6B80]{escape(self._error)}[/#FF6B80]', '']
 
     def _render_list(self) -> list:
-        if not self._selectable:
+        given = [e for e in self._entries if e.scope == agent_defs.CLI]
+        if not self._selectable and not given:
             lines = self._header('Nothing defined yet')
             lines += self._options(['New agent'], self._pos, indent=0)
             lines += ['',
@@ -212,14 +214,23 @@ class AgentsScreen(Screen):
             lines += self._options(['New agent'], self._pos, indent=0)
             lines.append('')
             position = 0
-            for scope in (agent_defs.USER, agent_defs.PROJECT):
+            for scope in (agent_defs.CLI, agent_defs.USER,
+                          agent_defs.PROJECT):
                 group = [e for e in self._entries if e.scope == scope]
                 if not group:
                     continue
-                directory = agent_defs.agents_dir(scope, self._cwd)
+                if scope == agent_defs.CLI:
+                    lines.append('[bold][#9A9A9A]'
+                                 f'{escape(agent_defs.SCOPE_LABELS[scope])}'
+                                 '[/#9A9A9A][/bold]')
+                    lines += [self._row(e, -1) for e in group]
+                    continue
+                where = (None if scope == agent_defs.CLI
+                         else agent_defs.agents_dir(scope, self._cwd))
+                where = '' if where is None else f' ({escape(str(where))})'
                 lines.append('[bold][#9A9A9A]'
-                             f'{escape(agent_defs.SCOPE_LABELS[scope])} '
-                             f'({escape(str(directory))})[/#9A9A9A][/bold]')
+                             f'{escape(agent_defs.SCOPE_LABELS[scope])}'
+                             f'{where}[/#9A9A9A][/bold]')
                 for entry in group:
                     position += 1
                     lines.append(self._row(entry, position))
@@ -231,7 +242,7 @@ class AgentsScreen(Screen):
         return lines + self._footer(AGENT_NAV)
 
     def _row(self, entry, position) -> str:
-        is_built_in = entry.scope == agent_defs.BUILT_IN
+        is_built_in = entry.scope in agent_defs.READ_ONLY_SCOPES
         chosen = not is_built_in and self._pos == position
         marker = '' if is_built_in else (f'{_POINTER} ' if chosen else '  ')
         model = agent_defs.model_display(entry.defn, self._session.model)

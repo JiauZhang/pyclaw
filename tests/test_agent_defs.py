@@ -315,3 +315,67 @@ def test_editing_an_agent_rewrites_its_own_file(tmp_path):
               load_agent_defs(str(tmp_path), all_tools=ALL_TOOLS)}
     assert loaded['worker'].system_prompt == 'New body.'
     assert [t.name for t in loaded['worker'].tools] == ['Read']
+
+
+def test_agents_given_as_json_become_definitions():
+    defs = mod.parse_agents_json(
+        '{"reviewer": {"description": "reads diffs", "prompt": "be harsh",'
+        ' "tools": ["Read", "Grep"], "model": "cheap-m",'
+        ' "permissionMode": "plan"}}', ALL_TOOLS)
+
+    assert [d.agent_type for d in defs] == ['reviewer']
+    assert defs[0].description == 'reads diffs'
+    assert defs[0].system_prompt == 'be harsh'
+    assert [t.name for t in defs[0].tools] == ['Read', 'Grep']
+    assert defs[0].model == 'cheap-m'
+    assert defs[0].permission_mode == 'plan'
+
+
+def test_an_agent_given_without_tools_sees_all_of_them():
+    defs = mod.parse_agents_json('{"scout": {"description": "d"}}', ALL_TOOLS)
+
+    assert {t.name for t in defs[0].tools} == {t.name for t in ALL_TOOLS}
+
+
+def test_bad_agent_json_is_reported_instead_of_swallowed():
+    for broken in ('{"a": ', '[]', '{"a": "not an object"}'):
+        with pytest.raises(ValueError) as err:
+            mod.parse_agents_json(broken, ALL_TOOLS)
+        assert '--agents' in str(err.value)
+
+
+async def _cli_agent(cwd, agents_json):
+    team = build_team('agnes', 'agnes-2.5-flash', cwd=str(cwd),
+                      agents_json=agents_json)
+    return team.agent_defs.get('reviewer')
+
+
+def test_agents_from_the_command_line_win_over_a_file(tmp_path, user_agents):
+    write_agent(AgentDefinition('reviewer', system_prompt='from file',
+                               description='from file'),
+                'user', str(tmp_path), ALL_TOOLS)
+    defn = asyncio.run(_cli_agent(
+        tmp_path, '{"reviewer": {"description": "from flag",'
+                  ' "prompt": "from flag"}}'))
+
+    assert defn.description == 'from flag'
+    assert defn.system_prompt == 'from flag'
+
+
+def test_agents_given_on_the_command_line_shadow_a_file_of_the_same_name(tmp_path):
+    _project(tmp_path, 'reviewer.md', REVIEWER)
+    given = [AgentDefinition('reviewer', description='from the flag',
+                             system_prompt='from the flag')]
+
+    entries = mod.discover(str(tmp_path), ALL_TOOLS, cli=given)
+    by_scope = {e.scope: e for e in entries if e.agent_type == 'reviewer'}
+
+    assert set(by_scope) == {mod.PROJECT, mod.CLI}
+    assert by_scope[mod.PROJECT].shadowed_by == mod.CLI
+    assert by_scope[mod.CLI].shadowed_by is None
+    assert mod.list_order(entries)[0].scope == mod.CLI
+    assert [d.description for d in
+            mod.load_agent_defs(str(tmp_path), ALL_TOOLS, cli=given)
+            if d.agent_type == 'reviewer'] == ['from the flag']
+
+

@@ -34,6 +34,7 @@ class _AgentsTeam(_FakeTeam):
             cwd=cwd, mode=SimpleNamespace(value='default'),
             bypass_available=False)
         self.provided_tools = list(tools)
+        self.cli_agent_defs = []
 
     def register_agent_definition(self, defn):
         return self.agent_defs.register(defn)
@@ -459,3 +460,21 @@ def test_editing_the_model_rewrites_just_the_model(
             assert team.agent_defs.find('reviewer').model == 'other-model'
             assert screen._changes == ['Saved changes to reviewer']
     asyncio.run(scenario())
+
+
+def test_an_agent_from_the_command_line_is_listed_and_read_only(tmp_path):
+    team = _AgentsTeam(tmp_path, _tools())
+    team.cli_agent_defs = [AgentDefinition('auditor', description='from --agents',
+                                           system_prompt='check every claim')]
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            screen = await _open_panel(app, pilot)
+            return screen, _plain(_body(screen))
+
+    screen, body = asyncio.run(scenario())
+    assert 'Given with --agents' in body
+    assert 'auditor' in body
+    assert [e.agent_type for e in screen._selectable] == []

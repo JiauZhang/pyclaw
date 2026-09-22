@@ -297,6 +297,7 @@ def build_team(
     allow: Optional[list] = None,
     ask: Optional[list] = None,
     deny: Optional[list] = None,
+    agents_json: Optional[str] = None,
     use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
@@ -339,11 +340,14 @@ def build_team(
     if memory:
         team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)
 
-    from .agent_defs import builtin_agent_defs, load_agent_defs
+    from .agent_defs import (builtin_agent_defs, load_agent_defs,
+                          parse_agents_json)
     for defn in builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)
-    for defn in load_agent_defs(cwd, all_tools=resolved):
+    cli_defs = parse_agents_json(agents_json, resolved) if agents_json else []
+    for defn in load_agent_defs(cwd, all_tools=resolved, cli=cli_defs):
         team.register_agent_definition(defn)
+    team.cli_agent_defs = cli_defs
 
     from .tools.coding import background as _background
 
@@ -454,6 +458,10 @@ class Session:
     @property
     def active_agents(self) -> int:
         return len(self._team.agents) - 1
+
+    @property
+    def cli_agent_defs(self) -> list:
+        return list(getattr(self._team, 'cli_agent_defs', []))
 
     @property
     def agent_types(self) -> list:

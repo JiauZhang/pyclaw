@@ -59,6 +59,10 @@ def test_session_parsers_carry_the_flags_that_steer_a_run():
         assert args.ask == ["Bash(docker:*)"]
         assert args.use_team is team
         assert __main__._build_parser().parse_args(argv).use_team is False
+        assert args.agents is None
+        given = __main__._build_parser().parse_args(
+            argv + ['--agents', '{"reviewer": {"description": "d"}}'])
+        assert given.agents == '{"reviewer": {"description": "d"}}'
 
 
 def test_finalize_args_keeps_existing_log_level():
