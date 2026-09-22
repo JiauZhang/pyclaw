@@ -38,7 +38,7 @@ from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
 from pyclaw.tui.plan import (next_task_line, plan_lines,
                               recent_completions)
 from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
-                                PermissionsScreen, RewindScreen,
+                                PermissionsScreen, RewindScreen, TasksScreen,
                                 TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
@@ -131,6 +131,9 @@ class PyClawApp(App[None]):
     #rewind { width: 1fr; height: auto; max-height: 20;
               background: $background; padding: 1 2; }
     #rewind > Static { width: 100%; height: auto; }
+    #tasks-panel { width: 1fr; height: auto; max-height: 20;
+                   background: $background; padding: 1 2; }
+    #tasks-panel > Static { width: 100%; height: auto; }
     #hs-input { height: 1; margin-bottom: 1; border: none;
                 background: $background; color: $text; }
     #hs-list { width: 100%; height: auto; margin-bottom: 1; }
@@ -543,6 +546,12 @@ class PyClawApp(App[None]):
             await self._enter_agent_view(teammates[index])
         self._render_status()
         await self._refresh_agents()
+
+    async def _view_teammate(self, name: str):
+        agent = self._agent_by_name(name)
+        if agent is None:
+            return
+        await self._enter_agent_view(agent)
 
     async def _enter_agent_view(self, agent):
         self._viewing = str(getattr(agent, 'name', ''))
@@ -958,6 +967,18 @@ class PyClawApp(App[None]):
         self._conv().remove_children()
         await self._render_history()
 
+    def _task_rows(self) -> list:
+        return self._session.task_rows()
+
+    async def _stop_task_row(self, row: dict) -> str:
+        note = await self._session.stop_task(row)
+        logger.info("stopped background task %s: %s", row.get('id'), note)
+        await self._refresh_agents()
+        return note
+
+    async def _append_note(self, text: str):
+        await self._append_block(escape(text))
+
     async def _apply_rewind(self, mark: int, *, code: bool,
                             conversation: bool):
         result = self._session.rewind(mark, code=code,
@@ -1247,6 +1268,15 @@ class PyClawApp(App[None]):
                 return
             self.push_screen(RewindScreen(self))
             return
+        if text in ('/tasks', '/bashes'):
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            if not self._task_rows():
+                await self._append_block(escape(
+                    'No background tasks are running.'))
+                return
+            self.push_screen(TasksScreen(self))
+            return
         if text == '/agents':
             self.query_one("#input", Input).value = ""
             await self._append_user(text)
@@ -1268,7 +1298,8 @@ class PyClawApp(App[None]):
                 self._suggest_items = []
                 self._show_suggest_widget(False)
                 return
-            text = f"/{item['name']}"
+            if item['name'].startswith(text[1:].strip().lower()):
+                text = f"/{item['name']}"
         self.query_one("#input", Input).value = ""
         if not text:
             return

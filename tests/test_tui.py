@@ -4748,3 +4748,106 @@ def test_the_rewind_picker_waits_for_a_running_turn():
     assert screen.__class__.__name__ != 'RewindScreen'
     assert rewound == []
     assert 'still working' in _plain(note)
+
+
+def _fake_shells():
+    return mock.patch.object(
+        background, 'snapshot',
+        lambda: [{'id': 'b1', 'command': 'npm run dev', 'seconds': 12,
+                  'exit': None, 'killed': False}])
+
+
+def _task_body(app) -> str:
+    return _plain(str(app.screen.query_one('#tk-body', Static).content))
+
+
+def test_the_task_panel_lists_live_work_and_stops_the_selected_row():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with _fake_shells(), mock.patch.object(background, 'stop',
+                                                   lambda task_id: None):
+                await _submit_and_wait(pilot, '/tasks')
+                body = _task_body(app)
+                await pilot.press('x')
+                await pilot.pause()
+                return body, list(app._team.stopped)
+
+    body, stopped = asyncio.run(scenario())
+    assert '@worker' in body
+    assert 'npm run dev' in body
+    assert 'running 12s' in body
+    assert stopped == ['worker']
+
+
+def test_the_task_panel_can_stop_everything_at_once():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            killed = []
+            with _fake_shells(), mock.patch.object(
+                    background, 'stop', lambda task_id: killed.append(task_id)):
+                await _submit_and_wait(pilot, '/bashes')
+                await pilot.press('a')
+                await pilot.pause()
+                return killed, list(app._team.stopped)
+
+    killed, stopped = asyncio.run(scenario())
+    assert killed == ['b1']
+    assert stopped == ['worker']
+
+
+def test_the_task_panel_opens_the_view_of_a_selected_teammate():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with _fake_shells(), mock.patch.object(background, 'stop',
+                                                   lambda task_id: None):
+                await _submit_and_wait(pilot, '/tasks')
+                await pilot.press('enter')
+                await pilot.pause()
+                return app._viewing, type(app.screen).__name__
+
+    viewing, screen = asyncio.run(scenario())
+    assert viewing == 'worker'
+    assert screen != 'TasksScreen'
+
+
+def test_the_task_panel_says_so_when_nothing_is_running():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with mock.patch.object(background, 'snapshot', lambda: []):
+                await _submit_and_wait(pilot, '/tasks')
+                await pilot.pause()
+                note = ''.join(_plain(str(widget.content))
+                               for widget in app._conv().query(Static)
+                               if hasattr(widget, 'content'))
+                return type(app.screen).__name__, note
+
+    screen, note = asyncio.run(scenario())
+    assert screen != 'TasksScreen'
+    assert 'No background tasks are running' in note
+
+
+def test_enter_does_not_run_a_command_the_user_did_not_type():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = '/tsks'
+            await pilot.pause()
+            await pilot.press('enter')
+            await pilot.pause()
+            texts = [_plain(str(widget.content))
+                     for widget in app._conv().query(Static)
+                     if hasattr(widget, 'content')]
+            return texts[-1] if texts else '', type(app.screen).__name__
+
+    note, screen = asyncio.run(scenario())
+    assert 'Unknown command' in note
+    assert screen != 'TasksScreen'
