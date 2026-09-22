@@ -49,6 +49,7 @@ PLAN_HIDDEN = " \u2026 +"
 
 
 AGENT_TRAIL_LIMIT = 3
+DONE_TEXT = "Done"
 INITIALIZING_TEXT = "Starting up\u2026"
 EXPAND_HINT = "ctrl+o shows more"
 

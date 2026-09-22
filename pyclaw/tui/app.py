@@ -44,14 +44,16 @@ from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
 from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK,
                               BULLET, IDLE_TEXT, INTERRUPTED_TEXT,
                               NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS,
-                              POINTER, RECENT_ACTIVITIES, RESULT_GLYPH,
+                              DONE_TEXT, POINTER, RECENT_ACTIVITIES,
+                              RESULT_GLYPH,
                               SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT,
                               TEAMMATE_VIEW_HINT)
 from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds,
                                  _hidden_card, _last_assistant_key, _read_key,
                                  _tool_label, _tool_use_args, _tool_uses,
-                                 recent_rollup)
-from pyclaw.tui.widgets import (_AgentPane, _Conv, _GroupBlock, _JumpToBottom,
+                                 agent_group_label, recent_rollup)
+from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
+                                _GroupBlock, _JumpToBottom,
                                 _LogoBlock, _PagerScroll, _PromptInput,
                                 _TextBlock, _ToolBlock, _UserBlock, _half_page)
 
@@ -271,6 +273,8 @@ class PyClawApp(App[None]):
         self._tool_meta: dict[str, dict] = {}
         self._stashed: str | None = None
         self._group: _GroupBlock | None = None
+        self._agent_group: _AgentGroupBlock | None = None
+        self._solo_spawn: str | None = None
         self._last_interrupt = 0.0
         self._history: list[str] = []
         self._history_index: int | None = None
@@ -787,7 +791,7 @@ class PyClawApp(App[None]):
         if not uid:
             return None
         block = self._tools.get(uid)
-        return block if isinstance(block, _ToolBlock) else None
+        return block if hasattr(block, 'add_progress') else None
 
     def _finish_agent(self, name: str, *, stopped: bool = False):
         state = self._state(name)
@@ -825,13 +829,72 @@ class PyClawApp(App[None]):
                                ev.data.get("input", ""),
                                ev.data.get("tool_use_id", ""))
 
-    def _reset_tool_group(self):
+    def _close_read_group(self):
         if self._group is not None:
             self._group.finish()
             self._group = None
 
+    def _reset_tool_group(self):
+        self._close_read_group()
+        if self._agent_group is not None:
+            self._agent_group.finish()
+            self._agent_group = None
+        self._solo_spawn = None
+
+    def _spawn_stats(self, member: dict) -> dict:
+        name = member['name'] or next(
+            (agent for agent, uid in self._spawns.items() if uid == member['uid']),
+            '')
+        member['name'] = name
+        state = self._agent_state.get(name, {})
+        sub = self._subagents.get(name, {})
+        agent = self._agent_by_name(name) if name else None
+        tokens = sub.get('tokens')
+        if tokens is None and agent is not None:
+            tokens = _agent_tokens(agent)
+        status = (recent_rollup(state.get('recent', []))
+                  or state.get('last_tool')
+                  or recent_rollup(sub.get('recent', []))
+                  or sub.get('last_tool') or '')
+        return {'tools': state.get('tools') or sub.get('tools', 0),
+                'tokens': tokens,
+                'status': status, 'done_text': DONE_TEXT,
+                'error': bool(state.get('error'))}
+
+    async def _mount_spawn(self, uid: str, raw_input):
+        self._close_read_group()
+        label, detail = agent_group_label('create_agent', raw_input)
+        if self._agent_group is None:
+            if self._solo_spawn is None:
+                self._solo_spawn = uid
+                card = _ToolBlock('create_agent', raw_input, cwd=self._cwd())
+                self._tools[uid] = card
+                await self._conv().mount(card)
+                self._discard_think()
+                return await self._after_mount()
+            await self._open_group(self._solo_spawn)
+        self._agent_group.add(uid, label, detail)
+        self._tools[uid] = self._agent_group.member(uid)
+        self._discard_think()
+        await self._after_mount()
+
+    async def _open_group(self, first_uid: str):
+        card = self._tools.get(first_uid)
+        self._solo_spawn = None
+        group = _AgentGroupBlock(self._spawn_stats)
+        group._frame = self._spin_char()
+        if isinstance(card, _ToolBlock):
+            label, detail = agent_group_label('create_agent', card._input)
+            group.add(first_uid, label, detail)
+            self._tools[first_uid] = group.member(first_uid)
+            card.display = False
+        await self._conv().mount(group, before=card)
+        self._agent_group = group
+
     async def _mount_tool(self, name, raw_input, tool_use_id):
         uid = tool_use_id or name
+        if name == 'create_agent':
+            return await self._mount_spawn(uid, raw_input)
         block = _ToolBlock(name, raw_input, cwd=self._cwd())
         self._tools[uid] = block
         if _hidden_card(name, raw_input):
@@ -1014,9 +1077,10 @@ class PyClawApp(App[None]):
         if msg is None:
             return
         if msg.get('role') == 'assistant':
-            usage = data.get('usage') or {}
-            st['tokens'] = ((usage.get('prompt_tokens') or 0)
-                            + (usage.get('completion_tokens') or 0))
+            usage = data.get('usage')
+            if usage:
+                st['tokens'] = int(usage.get('prompt_tokens') or 0) + \
+                    int(usage.get('completion_tokens') or 0)
             content = msg.get('content')
             if isinstance(content, list):
                 for b in content:
@@ -1058,6 +1122,8 @@ class PyClawApp(App[None]):
         self._sync_tool_states()
         if self._group is not None and self._group.active:
             self._group.tick(char)
+        if self._agent_group is not None and self._agent_group.active:
+            self._agent_group.tick(char)
         for block in self.query(_ToolBlock):
             block.tick(char)
         if self._agents_pane is not None:

@@ -9,11 +9,13 @@ from pyclaw import banner
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _edit_summary, _plural, _user_markup
 from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
-                              GROUP_PARTS, INITIALIZING_TEXT, INTERRUPTED_TEXT,
-                              RESULT_HANG, RESULT_PREFIX,
+                              DONE_COLOR, GROUP_PARTS, INITIALIZING_TEXT,
+                              INTERRUPTED_TEXT,
+                              RESULT_HANG, RESULT_PREFIX, TREE_INDENT,
                               WAITING_PERMISSION_TEXT)
 from pyclaw.tui.toolcard import (_more_tool_uses, _result_summary, _tool_label,
-                                 _tool_use_args, group_text)
+                                 _tool_use_args, agent_group_header,
+                                 agent_group_row, group_text)
 
 
 class _Conv(VerticalScroll):
@@ -23,6 +25,16 @@ class _Conv(VerticalScroll):
             self.app._set_follow(bool(self.is_vertical_scroll_end))
         except Exception:
             pass
+
+
+def _content_width(widget, indent: int) -> int:
+    width = widget.size.width or 0
+    if width <= 0:
+        try:
+            width = widget.app.size.width
+        except Exception:
+            width = 0
+    return max(20, (width or 80) - indent - 2)
 
 
 def _half_page(view) -> int:
@@ -167,6 +179,96 @@ class _GroupBlock(Static):
         marker = self._frame if self.active else BULLET
         hint = "" if self.active else " [dim](ctrl+o for the list)[/]"
         self.update(f"[{color}]{marker}[/] {body}{hint}")
+
+
+class _AgentGroupBlock(Static):
+
+    def _width(self) -> int:
+        return _content_width(self, len(TREE_INDENT) + 2)
+
+
+    def __init__(self, stats_for, **kw):
+        super().__init__(markup=True, **kw)
+        self._stats_for = stats_for
+        self.members: list[dict] = []
+        self.active = True
+        self._frame = BULLET
+        self._draw()
+
+    def add(self, uid: str, label: str, detail: str):
+        self.members.append({'uid': uid, 'name': '', 'label': label,
+                             'detail': detail, 'resolved': False,
+                             'error': False})
+        self._draw()
+
+    def state(self, uid: str) -> dict:
+        return next(m for m in self.members if m['uid'] == uid)
+
+    def member(self, uid: str) -> '_AgentMember':
+        return _AgentMember(self, uid)
+
+    def resolve(self, uid: str, output) -> None:
+        member = self.state(uid)
+        member['resolved'] = True
+        member['error'] = str(output).startswith('Error')
+        self._draw()
+
+    def tick(self, char: str):
+        if self.active:
+            self._frame = char
+            self._draw()
+
+    def redraw(self):
+        self._draw()
+
+    def finish(self):
+        if not self.active:
+            return
+        self.active = False
+        self._frame = BULLET
+        self._draw()
+
+    def _draw(self):
+        stats = [self._stats_for(member) for member in self.members]
+        kinds = {member['label'] for member in self.members}
+        kind = kinds.pop() if len(kinds) == 1 and 'Agent' not in kinds else ''
+        done = bool(stats) and all(m['resolved'] for m in self.members)
+        header = agent_group_header(len(stats), kind=kind, done=done)
+        color = (self.app.brand if self.active and not done else DONE_COLOR)
+        marker = self._frame if self.active and not done else BULLET
+        lines = [f'[{color}]{marker}[/] {header}']
+        for index, (member, stat) in enumerate(zip(self.members, stats)):
+            lines.append(agent_group_row(
+                label=member['label'], detail=member['detail'],
+                tools=stat['tools'], tokens=stat['tokens'],
+                status=(stat['status'] if not member['resolved']
+                        else stat['done_text']),
+                error=member['error'],
+                last=index == len(self.members) - 1))
+        self.update('\n'.join(lines))
+
+
+class _AgentMember:
+
+    def __init__(self, group: _AgentGroupBlock, uid: str):
+        self._group = group
+        self.uid = uid
+
+    @property
+    def _done(self) -> bool:
+        return self._group.state(self.uid)['resolved']
+
+    def set_result(self, output, meta=None):
+        self._group.resolve(self.uid, output)
+
+    def add_progress(self, rows, tool_uses: int):
+        self._group.redraw()
+
+    def end_progress(self):
+        self._group.redraw()
+
+    def _width(self) -> int:
+        return self._group._width()
 
 
 class _LogoBlock(Static):
@@ -317,13 +419,7 @@ class _ToolBlock(Static):
         self._draw()
 
     def _width(self) -> int:
-        width = self.size.width or 0
-        if width <= 0:
-            try:
-                width = self.app.size.width
-            except Exception:
-                width = 0
-        return max(20, (width or 80) - len(RESULT_PREFIX) - 2)
+        return _content_width(self, len(RESULT_PREFIX))
 
     def _is_teammate_spawn(self) -> bool:
         return (self._name == 'create_agent'

@@ -3,14 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 from rich.markup import escape
 
-from pyclaw.tui.formatting import (_clip_lines, _display_path, _plural,
-                                   _preview, _single_line, _summarize)
+from pyclaw.tui.formatting import (_clip_lines, _display_path, _format_count,
+                                   _plural, _preview, _single_line, _summarize)
 from pyclaw.tui.theme import (BASH_LIST_COMMANDS, BASH_NEUTRAL_COMMANDS,
                               BASH_READ_COMMANDS, BASH_SEARCH_COMMANDS,
                               DISPLAY_NAMES, EXPAND_HINT, GROUP_PARTS,
-                              MAX_COMMAND_CHARS, MAX_COMMAND_LINES,
-                              MAX_USE_ARG_CHARS, MEMORY_FILE_NAME, PATH_TOOLS,
-                              ROLLUP_KINDS, SEARCH_TOOLS)
+                              INITIALIZING_TEXT, MAX_COMMAND_CHARS,
+                              MAX_COMMAND_LINES, MAX_USE_ARG_CHARS,
+                              MEMORY_FILE_NAME, PATH_TOOLS, ROLLUP_KINDS,
+                              SEARCH_TOOLS, TREE_BRANCH, TREE_INDENT,
+                              TREE_LAST)
 
 
 def _is_memory_path(value) -> bool:
@@ -205,3 +207,42 @@ def _agent_progress_rows(message, cwd, width: int) -> tuple[list[str], int]:
                                 max(width * 2, 80))
             rows.append(f"{label}({escape(args)})" if args else label)
     return rows, uses
+
+
+
+def agent_group_label(name: str, tool_input) -> tuple[str, str]:
+    """The grouped card labels a teammate spawn by its name and a one-off by
+    its agent type, and keeps the other half as the parenthesised detail."""
+    data = tool_input if isinstance(tool_input, dict) else {}
+    teammate = str(data.get('name') or '')
+    if teammate:
+        label = f'@{teammate}'
+        detail = str(data.get('subagent_type') or '')
+    else:
+        label = _agent_tool_name(tool_input) if name == 'create_agent' else name
+        detail = str(data.get('prompt') or data.get('description') or '')
+    return label, _summarize(detail, MAX_USE_ARG_CHARS)
+
+
+def agent_group_header(count: int, *, kind: str = '', done: bool = False,
+                       background: bool = False) -> str:
+    group = f'{kind} agents' if kind else 'agents'
+    if done:
+        return (f'[bold]{count}[/] background {group} launched' if background
+                else f'[bold]{count}[/] {group} finished')
+    return f'Running [bold]{count}[/] {group}…'
+
+
+def agent_group_row(*, label: str, detail: str = '', tools: int = 0,
+                    tokens: int | None = None, status: str = '',
+                    last: bool = False, error: bool = False) -> str:
+    glyph = TREE_LAST[0] if last else TREE_BRANCH[0]
+    row = f'{TREE_INDENT}{glyph} [bold]{escape(label)}[/]'
+    if detail:
+        row += f'[dim]({escape(detail)})[/]'
+    row += f' \u00b7 {_tool_uses(tools)}'
+    if tokens:
+        row += f' \u00b7 {_format_count(tokens)} tokens'
+    state = status or INITIALIZING_TEXT
+    return row + (f' \u00b7 [red]{escape(state)}[/]' if error
+                  else f' \u00b7 {escape(state)}')

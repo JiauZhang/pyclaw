@@ -29,7 +29,8 @@ from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import (hide_row, leader_row, status_text,
                                teammate_row)
 from pyclaw.tui.screens import HistorySearchScreen
-from pyclaw.tui.widgets import _TextBlock, _ToolBlock
+from pyclaw.tui.widgets import (_AgentGroupBlock, _TextBlock,
+                                _ToolBlock)
 from chatchat.core.tasks import TaskList
 from fakes import Usage
 from markup import plain
@@ -3705,6 +3706,113 @@ def test_a_teammate_you_stopped_is_reported_as_stopped_not_done():
     content = asyncio.run(scenario())
     assert "Stopped (0 tool calls" in content
     assert "Done (" not in content
+
+
+def _spawn(app, pilot, uid, **input_):
+    data = {'tool': 'create_agent', 'tool_use_id': uid}
+    data['input'] = {'prompt': f'job {uid}', 'subagent_type': 'Explore',
+                     **input_}
+    return app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent='lead', data=data))
+
+
+def test_two_agents_launched_together_share_one_card():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            await pilot.pause()
+            return _plain(app._agent_group.content)
+
+    lines = asyncio.run(scenario()).splitlines()
+    assert lines[0].endswith('Running 2 Explore agents\u2026')
+    assert lines[1:] == ['   \u251c\u2500 Explore(job a1) \u00b7 0 tool calls '
+                        '\u00b7 Starting up\u2026',
+                        '   \u2514\u2500 Explore(job a2) \u00b7 0 tool calls '
+                        '\u00b7 Starting up\u2026']
+
+
+def test_a_group_row_tracks_its_agent_and_closes_when_it_answers():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent='sub-1', data={
+                'tool_use_id': 'a1', 'subagent_type': 'Explore'}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'g1', 'name': 'Grep',
+                     'input': {'pattern': 'p'}}]},
+                    'usage': {'prompt_tokens': 900, 'completion_tokens': 100}}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'user', 'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'g1',
+                     'content': '3 matches'}]}}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'g2', 'name': 'Glob',
+                     'input': {'pattern': '*.py'}}]}}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'user', 'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'g2',
+                     'content': '4 files'}]}}))
+            await pilot.pause()
+            live = _plain(app._agent_group.content)
+            app._tools['a1'].set_result('the answer')
+            app._tools['a2'].set_result('another answer')
+            return live, _plain(app._agent_group.content)
+
+    live, done = asyncio.run(scenario())
+    assert 'Looking for 2 patterns' in live.splitlines()[1]
+    assert '2 tool calls' in live.splitlines()[1]
+    assert '1k tokens' in live.splitlines()[1]
+    assert done.startswith('\u23fa 2 Explore agents finished')
+    assert 'Done' in done.splitlines()[1]
+
+
+def test_a_teammate_spawn_is_labelled_by_its_name():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 't1', name='researcher')
+            await _spawn(app, pilot, 't2', name='writer')
+            await pilot.pause()
+            return _plain(app._agent_group.content)
+
+    text = asyncio.run(scenario())
+    assert '@researcher(Explore)' in text
+    assert '@writer(Explore)' in text
+    assert 'Running 2 agents' in text
+
+
+def test_a_different_card_between_two_spawns_opens_a_second_group():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            first = app._agent_group
+            await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent='lead', data={
+                'tool': 'Write', 'input': {'file_path': 'a.py', 'content': 'x'},
+                'tool_use_id': 'b1'}))
+            await _spawn(app, pilot, 'a3')
+            await pilot.pause()
+            return first, app._agent_group is not first
+
+    first, reopened = asyncio.run(scenario())
+    assert first.active is False
+    assert reopened is True
+    assert _plain(first.content).startswith(
+        '\u23fa Running 2 Explore agents\u2026')
 
 
 def test_subagent_task_card_reports_done_with_stats():
