@@ -469,3 +469,27 @@ def test_tasks_says_so_when_nothing_runs():
     session = _fake_session(task_rows=lambda: [])
     assert _strip(asyncio.run(_call('/tasks', session))) == (
         'No background tasks are running.')
+
+
+def test_skills_lists_what_was_found_and_where_it_came_from():
+    session = _fake_session(skill_problems=lambda: [], skill_rows=lambda: [
+        {'name': 'notes', 'description': 'turn a log into bullets',
+         'source': 'project', 'allowed_tools': ('Read',)},
+        {'name': 'pdf', 'description': 'work with pdfs', 'source': 'user',
+         'allowed_tools': ()}])
+    out = _strip(asyncio.run(_call('/skills', session)))
+    assert 'notes' in out and 'project' in out
+    assert 'allows Read' in out
+    assert 'pdf' in out
+
+
+def test_skills_reports_the_directories_it_could_not_use():
+    session = _fake_session(skill_rows=lambda: [],
+                            skill_problems=lambda: ['vague: no description'])
+    out = _strip(asyncio.run(_call('/skills', session)))
+    assert 'vague: no description' in out
+
+
+def test_skills_says_so_when_none_are_installed():
+    session = _fake_session(skill_rows=lambda: [], skill_problems=lambda: [])
+    assert 'No skills are installed' in _strip(asyncio.run(_call('/skills', session)))

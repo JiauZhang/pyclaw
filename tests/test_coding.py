@@ -1395,3 +1395,35 @@ def test_a_background_shell_can_be_stopped_by_id():
         assert background.stop('b0deadbeef') is None
     finally:
         background.cleanup_background_tasks()
+
+
+def test_a_project_skill_is_offered_and_loads_on_demand():
+    with tempfile.TemporaryDirectory() as d:
+        directory = Path(d) / '.pyclaw' / 'skills' / 'notes'
+        directory.mkdir(parents=True)
+        (directory / 'SKILL.md').write_text(
+            '---\nname: notes\ndescription: turn a log into bullets\n'
+            '---\n\nRewrite the log as bullets.\n', encoding='utf-8')
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            schemas = team.tool_schemas(team.tool_context)
+            schema = next(schema for schema in schemas
+                          if schema['name'] == 'use_skill')
+            outcome = await team.execute_tool('use_skill',
+                                              {'skill': 'notes'}, team.lead)
+            return schema['description'], outcome.text
+
+        description, body = asyncio.run(main())
+        assert '- notes: turn a log into bullets' in description
+        assert body.startswith('Rewrite the log as bullets.')
+
+
+def test_no_skill_tool_is_offered_when_nothing_is_installed():
+    with tempfile.TemporaryDirectory() as d:
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, skills=[])
+            return [schema['name'] for schema in
+                    team.tool_schemas(team.tool_context)]
+
+        assert 'use_skill' not in asyncio.run(main())

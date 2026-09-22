@@ -10,6 +10,8 @@ COMMANDS = [
      'hint': '[n] [code|conversation]'},
     {'name': 'tasks', 'aliases': ('bashes',),
      'desc': 'List what is running in the background', 'hint': ''},
+    {'name': 'skills', 'desc': 'List the skills PyClaw can load on demand',
+     'hint': ''},
     {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
@@ -263,6 +265,28 @@ def _handle_rewind(session, arg: str) -> str:
             f'{messages} dropped.')
 
 
+def _handle_skills(session, arg: str) -> str:
+    rows = session.skill_rows()
+    problems = session.skill_problems()
+    lines = []
+    if rows:
+        lines.append('Skills:')
+        for row in rows:
+            line = f"  {row['name']} ({row['source']}) - {row['description']}"
+            if row['allowed_tools']:
+                line += f" \u00b7 allows {', '.join(row['allowed_tools'])}"
+            lines.append(line)
+    else:
+        lines.append('No skills are installed.')
+        lines.append('Put a SKILL.md with a name and description under '
+                     '.pyclaw/skills/<name>/ in this project or in the PyClaw '
+                     'home.')
+    if problems:
+        lines.append('Skipped:')
+        lines.extend(f'  {problem}' for problem in problems)
+    return '\n'.join(lines)
+
+
 def _handle_tasks(session, arg: str) -> str:
     rows = session.task_rows()
     if not rows:
@@ -414,6 +438,8 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _handle_rewind(session, arg)
     if cmd in ('tasks', 'bashes'):
         return _handle_tasks(session, arg)
+    if cmd == 'skills':
+        return _handle_skills(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':

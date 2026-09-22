@@ -20,8 +20,8 @@ from chatchat.hooks.events import (
 from chatchat.tool import ToolContext
 
 from . import pyclaw_home
-from .plugins import discover_skills, discover_tools
-from .skills import skill_roots
+from .plugins import discover_tools
+from .skills import discover_registry
 from .tools import tools as base_tools
 from .tools.coding import CODING_TOOLS, PermissionController, PermissionMode, \
     parse_mode
@@ -50,10 +50,11 @@ def _resolve_tools(tools):
     return tools
 
 
-def _resolve_skills(skills):
+def _resolve_skills(skills, cwd):
     if skills is None:
-        return list(skill_roots) + discover_skills()
-    return skills
+        return discover_registry(cwd)
+    from chatchat.core.skills import SkillRegistry
+    return SkillRegistry.load([(Path(root), 'plugin') for root in skills])
 
 
 def team_instruction(tool_names: list) -> str:
@@ -306,7 +307,7 @@ def build_team(
     use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
-    _resolve_skills(skills)
+    registry = _resolve_skills(skills, cwd)
     coding_tools = list(CODING_TOOLS)
     coding_names = {t.name for t in coding_tools}
     candidates = coding_tools + [t for t in _resolve_tools(tools)
@@ -333,6 +334,7 @@ def build_team(
         http_options=http_options or {},
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
         tasks_dir=str(pyclaw_home() / 'tasks'),
+        skills=registry,
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
@@ -479,6 +481,14 @@ class Session:
     def rewind_stats(self, mark: int) -> dict | None:
         history = self._team.file_history
         return None if history is None else history.diff_stats(mark)
+
+    def skill_rows(self) -> list:
+        return [{'name': skill.name, 'description': skill.description,
+                 'source': skill.source, 'allowed_tools': skill.allowed_tools}
+                for skill in self._team.skills.all()]
+
+    def skill_problems(self) -> list:
+        return list(self._team.skills.problems)
 
     def task_rows(self) -> list:
         """What the shell can stop: live teammates and background shells."""
