@@ -61,7 +61,8 @@ def context_meter(triple: tuple, used: int, window: int,
     return (f'{_meter_edges()}[{colour}]{METER_FILL * filled}[/]'
             f'[on {track}]{METER_EMPTY * (cells - filled)}[/]{_meter_edges()} '
             f'[{banner.rgb_to_hex(banner.ramp(triple[0], triple[1], 0.5))}]'
-            f'{round(fraction * 100)}%[/]')
+            f'{round(fraction * 100)}%[/]'
+            f'[dim] ({_format_count(window)})[/]')
 
 
 def usage_meter(triple: tuple, usage,

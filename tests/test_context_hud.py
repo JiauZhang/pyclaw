@@ -95,11 +95,12 @@ def test_meter_is_blank_without_a_window():
 
 def test_meter_cells_track_the_ratio_the_window_and_the_width():
     for used, window, cells, expected in (
-            (34_000, 100_000, CONTEXT_METER_CELLS, '│███░░░░░░░│ 34%'),
-            (50_000, 100_000, CONTEXT_METER_CELLS, '│█████░░░░░│ 50%'),
-            (0, 100_000, CONTEXT_METER_CELLS, '│░░░░░░░░░░│ 0%'),
-            (250_000, 100_000, CONTEXT_METER_CELLS, '│██████████│ 100%'),
-            (40_000, 100_000, 5, '│██░░░│ 40%')):
+            (34_000, 100_000, CONTEXT_METER_CELLS, '│███░░░░░░░│ 34% (100k)'),
+            (50_000, 100_000, CONTEXT_METER_CELLS, '│█████░░░░░│ 50% (100k)'),
+            (0, 100_000, CONTEXT_METER_CELLS, '│░░░░░░░░░░│ 0% (100k)'),
+            (250_000, 100_000, CONTEXT_METER_CELLS,
+             '│██████████│ 100% (100k)'),
+            (40_000, 100_000, 5, '│██░░░│ 40% (100k)')):
         assert _plain(context_meter(TRIPLE, used, window,
                                     cells=cells)) == expected
 
