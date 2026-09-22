@@ -220,3 +220,69 @@ def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
     assert [s['name'] for s in session.tool_schemas()] == \
         [s['name'] for s in session._team.tool_schemas(
             session._team.tool_context)]
+
+
+def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
+    from pyclaw.tools.coding import background
+
+    monkeypatch.setattr(
+        background, 'snapshot',
+        lambda: [{'id': 'b1', 'command': 'npm run dev', 'seconds': 12,
+                  'exit': None, 'killed': False},
+                 {'id': 'b2', 'command': 'pytest', 'seconds': 4,
+                  'exit': 1, 'killed': False}])
+
+    async def main():
+        team = _team()
+        worker = team.create_agent('worker', instruction='do work')
+        session = agents.Session(team, session_id='hud')
+        rows = session.task_rows()
+        await team.stop_agent(worker)
+        return rows
+
+    rows = asyncio.run(main())
+    assert [row['label'] for row in rows] == ['@worker', 'npm run dev',
+                                              'pytest']
+    shell = rows[1]
+    assert shell['detail'] == 'running 12s'
+    assert shell['stoppable'] is True
+    assert rows[2]['detail'] == 'exited 1'
+    assert rows[2]['stoppable'] is False
+
+
+def test_stopping_a_shell_row_kills_that_shell(monkeypatch):
+    from pyclaw.tools.coding import background
+    stopped = []
+    monkeypatch.setattr(background, 'stop',
+                        lambda task_id: stopped.append(task_id))
+
+    async def main():
+        return await _session().stop_task({'kind': 'shell', 'id': 'b7',
+                                           'label': 'sleep 30'})
+
+    text = asyncio.run(main())
+    assert stopped == ['b7']
+    assert 'b7' in text
+
+
+def test_stopping_a_teammate_row_stops_that_agent(monkeypatch):
+    async def main():
+        team = _team()
+        worker = team.create_agent('worker', instruction='do work')
+        session = agents.Session(team, session_id='hud')
+        text = await session.stop_task({'kind': 'teammate', 'id': 'worker',
+                                        'label': '@worker'})
+        return text, session.task_rows(), worker
+
+    text, rows, worker = asyncio.run(main())
+    assert '@worker' in text
+    assert worker.is_running is False
+    assert not any(row['id'] == 'worker' for row in rows)
+
+
+def test_a_task_row_that_already_went_away_is_reported(monkeypatch):
+    async def main():
+        return await _session().stop_task({'kind': 'teammate', 'id': 'ghost',
+                                           'label': '@ghost'})
+
+    assert 'gone' in asyncio.run(main())
