@@ -20,7 +20,7 @@ from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.slash import suggest as slash_suggest
-from pyclaw.tools.coding import next_mode
+from pyclaw.tools.coding import background, next_mode
 from pyclaw.tools.coding.permission import PermissionChoice
 
 from pyclaw.tui.agents_panel import AgentsScreen
@@ -1737,6 +1737,16 @@ class PyClawApp(App[None]):
                 lines.append(f"{tc} [bold]{label}[/] \u00b7 "
                              f"{_tool_uses(st['tools'])}{tokens}")
                 lines.append(f"{stat_pre}{RESULT_GLYPH}  {escape(status)}")
+        shells = background.snapshot()
+        if shells:
+            lines.append("")
+            lines.append(f"[bold]Background shells[/bold] {len(shells)}")
+            for row in shells:
+                state = (f"exited {row['exit']}" if row['exit'] is not None
+                         else f"running {duration(row['seconds'])}")
+                lines.append(f"  {escape(str(row['id']))} \u00b7 "
+                             f"{escape(_summarize(row['command'], 60))} "
+                             f"\u00b7 {state}")
         lines.append("")
         lines.append(f"[bold]Tools[/bold] {len(self._session.available_tools)}")
         lines += [f"  {escape(str(t['name']))}"

@@ -20,6 +20,7 @@ from chatchat.hooks.events import (
 )
 from chatchat.tool import ToolContext
 from pyclaw import agents, banner, config, statusline, welcome
+from pyclaw.tools.coding import background
 from pyclaw.tui import app as tui
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
@@ -4445,3 +4446,22 @@ def test_the_transcript_keeps_each_grouped_agent_s_own_steps():
     assert 'Explore(job a1)' in text
     assert 'Explore(job a2)' in text
     assert 'Search(pattern: \"bug\")' in text
+
+
+def test_the_tasks_pane_lists_a_background_shell():
+    async def scenario():
+        task_id = background.spawn('/tmp', 'sleep 2')
+        try:
+            async with PyClawApp(builder=_builder).run_test() as pilot:
+                app = pilot.app
+                await pilot.pause()
+                await app.action_toggle_tasks()
+                return task_id, _plain(str(app._tasks_pane.content))
+        finally:
+            background.cleanup_background_tasks()
+
+    task_id, text = asyncio.run(scenario())
+    assert 'Background shells 1' in text
+    assert task_id in text
+    assert 'sleep 2' in text
+    assert 'running' in text

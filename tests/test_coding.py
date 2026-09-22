@@ -1312,3 +1312,18 @@ def test_auto_tools_do_not_leak_into_other_tool_decisions():
         assert gate.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert gate.decide("Bash", {"command": "rm -rf /"}) == "ask"
         assert gate.decide("Read", {"file_path": "a.txt"}) == "allow"
+
+
+def test_a_background_shell_is_listed_with_its_state():
+    task_id = background.spawn('/tmp', 'sleep 3')
+    try:
+        rows = {row['id']: row for row in background.snapshot()}
+        assert rows[task_id]['command'] == 'sleep 3'
+        assert rows[task_id]['exit'] is None
+        assert rows[task_id]['seconds'] >= 0
+        background._tasks[task_id]['process'].wait()
+        done = {row['id']: row for row in background.snapshot()}
+        assert done[task_id]['exit'] == 0
+    finally:
+        background.cleanup_background_tasks()
+    assert background.snapshot() == []

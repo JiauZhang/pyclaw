@@ -63,7 +63,8 @@ def _output_path(task_id: str) -> Path:
 def adopt(command: str, process, output: Path) -> str:
     task_id = _new_task_id()
     _tasks[task_id] = {'command': command, 'process': process,
-                       'output': output, 'killed': False}
+                       'output': output, 'killed': False,
+                       'started': time.monotonic()}
     threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
@@ -79,7 +80,8 @@ def spawn(cwd: str, command: str) -> str:
     finally:
         handle.close()
     _tasks[task_id] = {'command': command, 'process': process,
-                       'output': path, 'killed': False}
+                       'output': path, 'killed': False,
+                       'started': time.monotonic()}
     threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
@@ -93,6 +95,18 @@ def _tail(path: Path, limit: int = TASK_OUTPUT_TAIL_CHARS) -> str:
         return text
     return (f'[... {len(text) - limit} chars of earlier output omitted ...]\n'
             + text[-limit:])
+
+
+def snapshot() -> list[dict]:
+    """Every shell the session moved into the background, oldest first."""
+    now = time.monotonic()
+    rows = []
+    for task_id, task in _tasks.items():
+        code = task['process'].poll()
+        rows.append({'id': task_id, 'command': task['command'],
+                     'seconds': int(now - task['started']),
+                     'exit': code, 'killed': bool(task['killed'])})
+    return sorted(rows, key=lambda row: row['id'])
 
 
 def cleanup_background_tasks():
