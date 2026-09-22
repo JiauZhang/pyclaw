@@ -4419,3 +4419,29 @@ def test_the_second_row_holds_the_directory_then_git():
 
 def test_the_second_row_leaves_the_branch_out_outside_a_repository():
     assert "\u00b1" not in _row2()
+
+
+def test_the_transcript_keeps_each_grouped_agent_s_own_steps():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            await app._handle(RuntimeEvent(AGENT_PROGRESS, agent='sub-1', data={
+                'tool_use_id': 'a1', 'subagent_type': 'Explore'}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'g1', 'name': 'Grep',
+                     'input': {'pattern': 'bug'}}]}}))
+            app.action_toggle_transcript()
+            await pilot.pause()
+            text = '\n'.join(app.screen._entries())
+            app.pop_screen()
+            return _plain(text)
+
+    text = asyncio.run(scenario())
+    assert 'Explore(job a1)' in text
+    assert 'Explore(job a2)' in text
+    assert 'Search(pattern: \"bug\")' in text

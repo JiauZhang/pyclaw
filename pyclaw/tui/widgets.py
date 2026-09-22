@@ -198,7 +198,7 @@ class _AgentGroupBlock(Static):
     def add(self, uid: str, label: str, detail: str):
         self.members.append({'uid': uid, 'name': '', 'label': label,
                              'detail': detail, 'resolved': False,
-                             'error': False})
+                             'error': False, 'progress': []})
         self._draw()
 
     def state(self, uid: str) -> dict:
@@ -220,6 +220,16 @@ class _AgentGroupBlock(Static):
 
     def redraw(self):
         self._draw()
+
+    def verbose_entries(self) -> list[str]:
+        entries = []
+        for member in self.members:
+            head = f'{BULLET_PREFIX}[bold]{escape(member["label"])}[/]'
+            if member['detail']:
+                head += f'[dim]({escape(member["detail"])})[/]'
+            steps = [row for rows, _uses in member['progress'] for row in rows]
+            entries.append('\n'.join([head, *steps]) if steps else head)
+        return entries
 
     def finish(self):
         if not self.active:
@@ -262,6 +272,8 @@ class _AgentMember:
         self._group.resolve(self.uid, output)
 
     def add_progress(self, rows, tool_uses: int):
+        self._group.state(self.uid)['progress'].append((list(rows),
+                                                        int(tool_uses)))
         self._group.redraw()
 
     def end_progress(self):

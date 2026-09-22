@@ -13,9 +13,9 @@ from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _hang, thinking_map
 from pyclaw.tui.theme import (ASTERISK, BULLET_PREFIX, RESULT_HANG,
                               RESULT_PREFIX)
-from pyclaw.tui.widgets import (_GroupBlock, _JumpToBottom, _LogoBlock,
-                                _PagerScroll, _TextBlock, _ToolBlock,
-                                _UserBlock)
+from pyclaw.tui.widgets import (_AgentGroupBlock, _GroupBlock, _JumpToBottom,
+                                _LogoBlock, _PagerScroll, _TextBlock,
+                                _ToolBlock, _UserBlock)
 
 
 class TranscriptScreen(Screen):
@@ -77,6 +77,8 @@ class TranscriptScreen(Screen):
                     block = app._tools.get(uid)
                     if block is not None:
                         entries.append(self._tool_entry(block))
+            elif isinstance(widget, _AgentGroupBlock):
+                entries.extend(widget.verbose_entries())
             elif isinstance(widget, _ToolBlock):
                 if widget.display:
                     entries.append(self._tool_entry(widget))
