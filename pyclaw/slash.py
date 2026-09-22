@@ -12,6 +12,8 @@ COMMANDS = [
      'desc': 'List what is running in the background', 'hint': ''},
     {'name': 'skills', 'desc': 'List the skills PyClaw can load on demand',
      'hint': ''},
+    {'name': 'hooks', 'desc': 'List the hooks that will run and where they '
+                              'come from', 'hint': ''},
     {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
@@ -155,7 +157,7 @@ def _status(session, session_key: str) -> str:
     )
 
 
-def _handle_permissions(session, arg: str) -> str:
+async def _handle_permissions(session, arg: str) -> str:
     if arg.startswith('remove '):
         rule = arg[len('remove '):].strip()
         if not rule:
@@ -163,6 +165,7 @@ def _handle_permissions(session, arg: str) -> str:
         remover = getattr(session, 'remove_rule', None)
         if remover is None or not remover(rule):
             return f'Rule not found or read-only: {rule}'
+        await session.note_config_change('permissions')
         return f'Removed rule: {rule}'
     if arg:
         try:
@@ -208,10 +211,10 @@ def _handle_resume(session, arg: str) -> str:
     return f'Resumed {count} messages from {arg}.'
 
 
-def _handle_plan(session, arg: str):
+async def _handle_plan(session, arg: str):
     if arg == 'open':
         return 'No plan file to open: pyclaw keeps the plan in the conversation.'
-    message = _handle_permissions(session, 'plan')
+    message = await _handle_permissions(session, 'plan')
     if arg:
         return f'{message}\nPlan goal: {arg}', arg
     return message
@@ -265,6 +268,19 @@ def _handle_rewind(session, arg: str) -> str:
             f'{messages} dropped.')
 
 
+def _handle_hooks(session, arg: str) -> str:
+    rows = session.hook_rows()
+    if not rows:
+        return ('No hooks are configured. Put them under "hooks" in '
+                '.pyclaw/settings.json or register them from code.')
+    lines = ['Hooks PyClaw will run:']
+    for row in rows:
+        detail = f" {row['detail']}" if row['detail'] else ''
+        lines.append(f"  {row['event']} [{row['matcher']}] "
+                     f"({row['type']}, {row['source']}){detail}")
+    return '\n'.join(lines)
+
+
 def _handle_skills(session, arg: str) -> str:
     rows = session.skill_rows()
     problems = session.skill_problems()
@@ -300,7 +316,7 @@ def _handle_tasks(session, arg: str) -> str:
     return '\n'.join(lines)
 
 
-def _handle_model(session, arg: str) -> str:
+async def _handle_model(session, arg: str) -> str:
     if not arg:
         return f'Model: {session.model}'
     session.set_model(arg)
@@ -309,6 +325,7 @@ def _handle_model(session, arg: str) -> str:
     config = load_config()
     config['model'] = session.model
     save_config(config)
+    await session.note_config_change('config')
     return f'Model: {session.model}'
 
 
@@ -440,16 +457,18 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _handle_tasks(session, arg)
     if cmd == 'skills':
         return _handle_skills(session, arg)
+    if cmd == 'hooks':
+        return _handle_hooks(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':
-        return _handle_permissions(session, arg)
+        return await _handle_permissions(session, arg)
     if cmd == 'agents':
         return _handle_agents(session)
     if cmd == 'plan':
-        return _handle_plan(session, arg)
+        return await _handle_plan(session, arg)
     if cmd == 'model':
-        return _handle_model(session, arg)
+        return await _handle_model(session, arg)
     if cmd == 'cost':
         return _handle_cost(session, arg)
     if cmd == 'context':

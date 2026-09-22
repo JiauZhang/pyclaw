@@ -192,3 +192,30 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
 
     assert len(calls) == 2
     assert all(a == () and kw == {"console": False} for a, kw in calls)
+
+
+def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
+    started = {}
+
+    class _App:
+
+        def __init__(self, **kw):
+            started.update(kw)
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(__main__, "load_config",
+                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
+    monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
+    args = __main__._build_parser().parse_args(["tui", "--include-hook-events"])
+    assert args.include_hook_events is True
+    __main__.run_tui(args)
+    assert started["hook_events"] is True
+
+    args = __main__._build_parser().parse_args(["tui"])
+    assert args.include_hook_events is False
+    __main__.run_tui(args)
+    assert started["hook_events"] is False

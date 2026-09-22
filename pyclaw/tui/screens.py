@@ -241,8 +241,8 @@ class _RuleList(VerticalScroll):
     def action_move_down(self):
         self._screen.action_move_down()
 
-    def action_remove_rule(self):
-        self._screen.action_remove_rule()
+    async def action_remove_rule(self):
+        await self._screen.action_remove_rule()
 
     def action_close(self):
         self._screen.action_close()
@@ -304,7 +304,7 @@ class PermissionsScreen(Screen):
         self._selected = min(max(0, len(rules) - 1), self._selected + 1)
         self._refresh_body()
 
-    def action_remove_rule(self):
+    async def action_remove_rule(self):
         rules = self._rules()
         if not rules:
             return
@@ -313,6 +313,7 @@ class PermissionsScreen(Screen):
         remover = getattr(self._session, 'remove_rule', None)
         if remover is None or not remover(rule):
             return
+        await self._session.note_config_change('permissions')
         self._selected = max(0, self._selected - 1)
         self._refresh_body()
 

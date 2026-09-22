@@ -37,6 +37,16 @@ from fakes import Usage
 from markup import plain
 
 
+class _NullHooks:
+
+    async def execute_config_change_hooks(self, agent=None, source=''):
+        return None
+
+    async def execute_permission_denied_hooks(self, agent, tool_name,
+                                             tool_input):
+        return None
+
+
 class _FakeTeam:
     provider = "p"
     model = "m"
@@ -54,6 +64,7 @@ class _FakeTeam:
 
     def __init__(self):
         self._running = False
+        self.hooks = _NullHooks()
         owner = self
 
         class _A:
@@ -4851,3 +4862,52 @@ def test_enter_does_not_run_a_command_the_user_did_not_type():
     note, screen = asyncio.run(scenario())
     assert 'Unknown command' in note
     assert screen != 'TasksScreen'
+
+
+def _hook_events_app(**kw):
+    return PyClawApp(builder=_builder, **kw)
+
+
+def test_hook_activity_reaches_the_transcript_only_when_asked():
+    from chatchat.hooks import events
+
+    async def scenario():
+        async with _hook_events_app(hook_events=True).run_test(
+                size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            events.emit_response('h1', 'npm test', 'PreToolUse',
+                                 outcome='success')
+            for _ in range(3):
+                await pilot.pause()
+            text = ''.join(_plain(str(widget.content))
+                           for widget in app._conv().query(Static)
+                           if hasattr(widget, 'content'))
+            unreg = app._unreg_hooks
+            unreg()
+            return text
+
+    text = asyncio.run(scenario())
+    assert 'PreToolUse' in text and 'npm test' in text
+
+
+def test_hook_activity_stays_out_of_the_transcript_by_default():
+    from chatchat.hooks import events
+
+    async def scenario():
+        async with _hook_events_app().run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            registered = app._unreg_hooks
+            events.emit_response('h1', 'npm test', 'PreToolUse',
+                                 outcome='success')
+            for _ in range(3):
+                await pilot.pause()
+            text = ''.join(_plain(str(widget.content))
+                           for widget in app._conv().query(Static)
+                           if hasattr(widget, 'content'))
+            return registered, text
+
+    registered, text = asyncio.run(scenario())
+    assert registered is None
+    assert 'npm test' not in text

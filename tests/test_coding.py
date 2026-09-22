@@ -1427,3 +1427,93 @@ def test_no_skill_tool_is_offered_when_nothing_is_installed():
                     team.tool_schemas(team.tool_context)]
 
         assert 'use_skill' not in asyncio.run(main())
+
+
+def test_a_denied_call_is_reported_to_hooks():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.hooks.register('PermissionDenied', '*',
+                                fn=lambda inp: seen.append(inp) or True)
+            team._pyclaw_gate.request = None
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        outcome = asyncio.run(main())
+        assert _decision(outcome)["permissionDecision"] == "deny"
+        assert seen and seen[0]['tool_name'] == 'Edit'
+
+
+def test_a_remembered_rule_is_reported_as_a_config_change():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def approve(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("dont_ask")
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                'ConfigChange', '*',
+                fn=lambda inp: seen.append(inp['source']) or True)
+            team._pyclaw_gate.request = approve
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        asyncio.run(main())
+        assert seen == ['permissions']
+
+
+def test_an_ordinary_approval_changes_no_configuration():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def approve(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("approved")
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                'ConfigChange', '*',
+                fn=lambda inp: seen.append(inp['source']) or True)
+            team._pyclaw_gate.request = approve
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        asyncio.run(main())
+        assert seen == []
+
+
+def test_changing_a_setting_reports_the_config_change():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                'ConfigChange', '*',
+                fn=lambda inp: seen.append(inp['source']) or True)
+            session = agents_mod.Session(team, session_id='cfg')
+            await session.note_config_change('config')
+            return session.task_rows()
+
+        asyncio.run(main())
+        assert seen == ['config']
+
+
+def test_a_denied_rule_only_change_is_reported_once():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def refuse(name, inp, *, tool_use_id='', agent=''):
+            return PermissionChoice("denied")
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                'ConfigChange', '*',
+                fn=lambda inp: seen.append(inp['source']) or True)
+            team._pyclaw_gate.request = refuse
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        asyncio.run(main())
+        assert seen == []

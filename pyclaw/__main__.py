@@ -169,13 +169,15 @@ def run_tui(args):
         "tui session starting (provider=%s model=%s team=%s log=%s)",
         provider, model, args.use_team, log_path)
     session_id, resume_from = _cli_session(args)
+    hook_events = bool(args.include_hook_events
+                       or config.get("includeHookEvents"))
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
         allow=args.allow, ask=args.ask, deny=args.deny,
         use_team=args.use_team, agents_json=args.agents),
         session_id=session_id,
         resume=_cli_resume(args),
-        resume_from=resume_from).run()
+        resume_from=resume_from, hook_events=hook_events).run()
 
 
 async def run_channel_rebind(args):
@@ -219,6 +221,9 @@ def _add_session_args(target):
             ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'")):
         target.add_argument(flag, action="append", default=None, metavar="RULE",
                             help=help_text)
+    target.add_argument("--include-hook-events", action="store_true",
+                        default=False,
+                        help="Show each hook run as its own line")
     target.add_argument("--use-team", action="store_true", default=False,
                         help="Run in team (multi-agent) mode; fixed for the "
                              "whole session")

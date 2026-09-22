@@ -226,6 +226,7 @@ class PermissionController:
         self.bypass_available = self.mode is PermissionMode.bypass_permissions
         self.request = request
         self.permission_hooks = None
+        self.config_changed = None
 
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)
@@ -296,13 +297,14 @@ class PermissionController:
             if tool_name == BASH_TOOL:
                 command = _command_of(tool_input)
                 if not command:
-                    return
+                    return None
                 rule = rule or f'Bash({" ".join(command.split())})'
             rule = rule or tool_name
         if rule not in self._allow:
             self._allow.append(rule)
             self._layers.append(('allow', rule, 'session'))
         self._save_local_rule(rule)
+        return rule
 
     def _in_workspace(self, tool_name: str, input) -> bool:
         target = self.path_of(tool_name, input)
@@ -432,10 +434,14 @@ class PermissionController:
             return answer
         choice = answer
         if choice.value == 'dont_ask':
+            stored = None
             if choice.rule:
-                self.remember_allow(tool_name, tool_input, rule=choice.rule)
+                stored = self.remember_allow(tool_name, tool_input,
+                                             rule=choice.rule)
             elif self._rememberable(tool_name, tool_input):
-                self.remember_allow(tool_name, tool_input)
+                stored = self.remember_allow(tool_name, tool_input)
+            if stored and self.config_changed is not None:
+                await self.config_changed('permissions')
         if choice.value in ('approved', 'dont_ask'):
             if not choice.feedback:
                 return True

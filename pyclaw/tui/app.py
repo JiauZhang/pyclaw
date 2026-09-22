@@ -13,9 +13,10 @@ from textual.containers import Horizontal, VerticalScroll
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import Input, Static
 from chatchat.hooks.events import (AGENT_PROGRESS, AGENT_REASON_START,
-                                   AGENT_STATE, AGENT_TEXT, AGENT_TOOL_CALL,
-                                   AGENT_TOOL_RESULT, AGENT_TURN_FINISHED,
-                                   AGENT_WARN, register_runtime_handler)
+                                    AGENT_STATE, AGENT_TEXT, AGENT_TOOL_CALL,
+                                    AGENT_TOOL_RESULT, AGENT_TURN_FINISHED,
+                                    AGENT_WARN, register_hook_event_handler,
+                                    register_runtime_handler)
 from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
@@ -42,13 +43,7 @@ from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
                                 TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
-from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK,
-                              BULLET, IDLE_TEXT, INTERRUPTED_TEXT,
-                              NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS,
-                              DONE_TEXT, POINTER, RECENT_ACTIVITIES,
-                              RESULT_GLYPH,
-                              SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT,
-                              TEAMMATE_VIEW_HINT)
+from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK, BULLET, DONE_TEXT, IDLE_TEXT, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_GLYPH, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT, TEAMMATE_VIEW_HINT)
 from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds,
                                  _hidden_card, _last_assistant_key, _read_key,
                                  _tool_label, _tool_use_args, _tool_uses,
@@ -212,7 +207,7 @@ class PyClawApp(App[None]):
         return bool(self._overlays - NON_MODAL_OVERLAYS)
 
     def __init__(self, *, builder, session_id=None, resume=False,
-                 resume_from=None):
+                 resume_from=None, hook_events=False):
         super().__init__()
         self._triple = banner.palette(config.load()["banner"])
         self.brand = banner.brand(self._triple)
@@ -274,6 +269,8 @@ class PyClawApp(App[None]):
         self._view_pane: Static | None = None
         self._spawns: dict[str, str] = {}
         self._teammate_spawns: set[str] = set()
+        self._hook_events = hook_events
+        self._unreg_hooks = None
         self._agent_colors: dict[str, str] = {}
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
@@ -310,6 +307,8 @@ class PyClawApp(App[None]):
                                 resume_from=self._resume_from)
         self._session.attach_approval(self._ask_permission)
         self._unreg = register_runtime_handler(self._on_event)
+        if self._hook_events:
+            self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
         self._tasks_pane = Static("", markup=True)
         await self.query_one("#tasks", VerticalScroll).mount(self._tasks_pane)
         asyncio.create_task(self._pump())
@@ -332,6 +331,9 @@ class PyClawApp(App[None]):
         await self._refresh_agents()
 
     async def on_unmount(self):
+        if self._unreg_hooks is not None:
+            self._unreg_hooks()
+            self._unreg_hooks = None
         if self._spin_timer is not None:
             self._spin_timer.stop()
         if self._statusline_timer is not None:
@@ -793,6 +795,15 @@ class PyClawApp(App[None]):
             asyncio.create_task(self._finish_work_when_settled())
         elif ev.kind == AGENT_STATE:
             self._note(name, busy=bool(ev.data.get("busy", False)))
+
+    def _on_hook_event(self, event) -> None:
+        if getattr(event, 'type', '') != 'response':
+            return
+        outcome = str(getattr(event, 'outcome', '') or 'done')
+        line = (f"[dim]{RESULT_PREFIX}hook {escape(str(event.hook_event))}"
+                f" \u00b7 {escape(str(event.hook_name))} \u00b7 "
+                f"{escape(outcome)}[/]")
+        asyncio.create_task(self._append_block(line))
 
     def _note_tool(self, name: str, data: dict):
         state = self._state(name)

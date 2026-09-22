@@ -47,6 +47,9 @@ def _fake_session(**kwargs):
         async def end_session(self, reason):
             self.ended.append(reason)
 
+        async def note_config_change(self, source):
+            self.noticed = source
+
         def reset(self):
             self._reset = True
 
@@ -278,6 +281,10 @@ def test_permissions_lists_mode_and_rules_with_sources():
 def test_permissions_remove_rule():
     class _S:
         removed = None
+        noted = None
+
+        async def note_config_change(self, source):
+            self.noted = source
 
         def permission_mode(self):
             return "default"
@@ -294,6 +301,7 @@ def test_permissions_remove_rule():
     s = _S()
     out = asyncio.run(_call("/permissions remove Bash(a:*)", s))
     assert s.removed == "Bash(a:*)"
+    assert s.noted == "permissions"
     assert "Removed" in out
     out = asyncio.run(_call("/permissions remove Nope", _S()))
     assert "not found" in out
@@ -493,3 +501,20 @@ def test_skills_reports_the_directories_it_could_not_use():
 def test_skills_says_so_when_none_are_installed():
     session = _fake_session(skill_rows=lambda: [], skill_problems=lambda: [])
     assert 'No skills are installed' in _strip(asyncio.run(_call('/skills', session)))
+
+
+def test_hooks_lists_what_will_run_and_where_it_came_from():
+    session = _fake_session(hook_rows=lambda: [
+        {'event': 'PreToolUse', 'matcher': 'Bash', 'type': 'command',
+         'source': 'projectSettings', 'detail': 'npm test'},
+        {'event': 'Stop', 'matcher': '*', 'type': 'prompt',
+         'source': 'sessionHook', 'detail': 'check the tests'}])
+    out = _strip(asyncio.run(_call('/hooks', session)))
+    assert 'PreToolUse' in out and 'projectSettings' in out
+    assert 'npm test' in out
+    assert 'Stop' in out
+
+
+def test_hooks_says_so_when_none_are_configured():
+    session = _fake_session(hook_rows=lambda: [])
+    assert 'No hooks' in _strip(asyncio.run(_call('/hooks', session)))

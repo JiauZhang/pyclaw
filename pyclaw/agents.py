@@ -382,13 +382,19 @@ def build_team(
             mode = (defn.permission_mode if defn is not None else None) \
                 or 'acceptEdits'
         asker = str(hook_input.get('agent_id') or '')
-        return await gate.authorize(hook_input.get('tool_name', ''),
-                                    hook_input.get('tool_input') or {},
-                                    mode=mode,
-                                    tool_use_id=str(
-                                        hook_input.get('tool_use_id') or ''),
-                                    agent='' if asker == team.lead.name
-                                    else asker)
+        who = (team.get_by_name(asker) if asker else None) or team.lead
+        tool_name = hook_input.get('tool_name', '')
+        tool_input = hook_input.get('tool_input') or {}
+        outcome = await gate.authorize(
+            tool_name, tool_input, mode=mode,
+            tool_use_id=str(hook_input.get('tool_use_id') or ''),
+            agent='' if asker == team.lead.name else asker)
+        specific = (outcome.get('hookSpecificOutput') or {}
+                    if isinstance(outcome, dict) else {})
+        if specific.get('permissionDecision') == 'deny':
+            await team.hooks.execute_permission_denied_hooks(who, tool_name,
+                                                             tool_input)
+        return outcome
 
     team.hooks.permission_mode = gate.mode.value
     team.hooks.register('PreToolUse', fn=_permission_gate, timeout=3600)
@@ -406,7 +412,11 @@ def build_team(
                                 if agg.blocking_error else '')}
         return None
 
+    async def _config_changed(source: str):
+        await team.hooks.execute_config_change_hooks(team.lead, source)
+
     gate.permission_hooks = _permission_request
+    gate.config_changed = _config_changed
     return team
 
 
@@ -482,6 +492,10 @@ class Session:
         history = self._team.file_history
         return None if history is None else history.diff_stats(mark)
 
+    async def note_config_change(self, source: str):
+        await self._team.hooks.execute_config_change_hooks(self._team.lead,
+                                                           source)
+
     def skill_rows(self) -> list:
         return [{'name': skill.name, 'description': skill.description,
                  'source': skill.source, 'allowed_tools': skill.allowed_tools}
@@ -489,6 +503,9 @@ class Session:
 
     def skill_problems(self) -> list:
         return list(self._team.skills.problems)
+
+    def hook_rows(self) -> list:
+        return self._team.hooks.configured()
 
     def task_rows(self) -> list:
         """What the shell can stop: live teammates and background shells."""
