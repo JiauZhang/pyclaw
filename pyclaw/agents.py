@@ -445,6 +445,17 @@ class Session:
     def transcript(self) -> list:
         return self._team.transcript()
 
+    @property
+    def lead_instruction(self) -> str:
+        return str(self._team.lead.instruction or '')
+
+    @property
+    def instruction_files(self) -> list:
+        return list(self._team.instruction_files)
+
+    def tool_schemas(self) -> list:
+        return self._team.tool_schemas(self._team.tool_context)
+
     def save_transcript(self):
         if self.conv_session_id:
             save_transcript(self.conv_session_id, self._team.transcript())

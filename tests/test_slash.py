@@ -1,12 +1,13 @@
 import asyncio
 
 from fakes import Usage
+from markup import plain
 
 from pyclaw import config, slash
 
 
 HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost",
-                 "/agents")
+                 "/agents", "/context")
 
 
 class _Bare:
@@ -22,6 +23,16 @@ def _fake_session(**kwargs):
         model = "m"
         available_tools = ["a", "b"]
         context_messages = 0
+        lead_instruction = "You solve the task."
+        instruction_files = [{"path": "AGENTS.md", "content": "# rules"}]
+        schemas = [{"name": "Read", "description": "read a file",
+                    "input_schema": {"type": "object"}}]
+
+        def tool_schemas(self):
+            return list(self.schemas)
+
+        def transcript(self):
+            return list(getattr(self, 'messages', []))
         active_agents = 0
         usage = Usage()
 
@@ -43,6 +54,10 @@ def _fake_session(**kwargs):
             self.model = model
 
     return FakeSession(**kwargs)
+
+
+def _strip(text):
+    return plain(text)
 
 
 async def _call(*args, **kw):
@@ -340,3 +355,38 @@ def test_handle_slash_tracks_usage():
         assert "unknown-zzz" not in slash._USAGE
     finally:
         slash._USAGE.clear()
+
+
+CONTEXT_SESSION = dict(
+    model="m", used_context=40_000, context_window=200_000,
+    compact_threshold=160_000, context_messages=12,
+    lead_instruction="You solve the task.",
+    instruction_files=[{"path": "AGENTS.md", "content": "# project rules\n"}],
+    schemas=[{"name": "Read", "description": "d", "input_schema": {}},
+             {"name": "Bash", "description": "e" * 400, "input_schema": {}}],
+    agent_types=[("reviewer", "reads diffs")], messages=[
+        {"role": "user", "content": "do the thing"},
+        {"role": "assistant", "content": "on it"},
+    ])
+
+
+def test_context_reports_what_the_model_is_shown_in_characters(monkeypatch):
+    monkeypatch.setattr(config, "load", lambda: {})
+    out = asyncio.run(_call("/context", _fake_session(**CONTEXT_SESSION)))
+    plain = _strip(out)
+
+    assert "System prompt" in plain
+    assert "Memory files" in plain and "AGENTS.md" in plain
+    assert "Tools:" in plain and "Bash" in plain
+    assert "Agents:" in plain and "reviewer" in plain
+    assert "Conversation:   12 messages" in plain
+
+
+def test_context_shows_only_the_measured_token_numbers(monkeypatch):
+    monkeypatch.setattr(config, "load", lambda: {})
+    out = _strip(asyncio.run(_call("/context", _fake_session(**CONTEXT_SESSION))))
+
+    assert "Measured: 40,000 of 200,000 tokens (20%) \u00b7 160,000 free" in out
+    assert "Auto-compact at 160,000 tokens" in out
+    assert "in characters" in out
+    assert "token" not in out.split('in characters')[1]

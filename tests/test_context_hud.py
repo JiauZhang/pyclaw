@@ -206,3 +206,16 @@ def test_agent_usage_lists_each_agent_with_its_own_model_and_spend():
     assert models['researcher'] == 'cheap-m'
     spend = {name: usage.total_tokens for name, _model, usage in rows}
     assert spend['team-lead'] == 120
+
+
+def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
+    async def main():
+        session = _session()
+        return session
+
+    session = asyncio.run(main())
+    assert session.lead_instruction == session._team.lead.instruction
+    assert session.instruction_files == []
+    assert [s['name'] for s in session.tool_schemas()] == \
+        [s['name'] for s in session._team.tool_schemas(
+            session._team.tool_context)]

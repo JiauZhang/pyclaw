@@ -9,6 +9,8 @@ COMMANDS = [
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
+    {'name': 'context', 'desc': 'Show what the model is sent and how full the '
+                                'window is', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
     {'name': 'agents', 'desc': 'List and manage the agent definitions PyClaw can delegate to', 'hint': ''},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
@@ -248,6 +250,47 @@ def _handle_cost(session, arg: str) -> str:
     return '\n'.join(lines)
 
 
+def _context(session, arg: str) -> str:
+    import json
+
+    def size(value) -> int:
+        return len(str(value if value is not None else ''))
+
+    window = int(session.context_window or 0)
+    used = int(session.used_context)
+    out = [f'Context for {session.model}']
+    if window:
+        out.append(f'Measured: {used:,} of {window:,} tokens '
+                   f'({round(used / window * 100)}%) '
+                   f'\u00b7 {max(0, window - used):,} free')
+        out.append(f'Auto-compact at {int(session.compact_threshold):,} tokens')
+    else:
+        out.append(f'Measured: {used:,} tokens \u00b7 no window configured')
+
+    tools = sorted(((str(schema.get('name', '')),
+                     size(json.dumps(schema, sort_keys=True))
+                     + size(schema.get('description', '')))
+                    for schema in session.tool_schemas()),
+                   key=lambda row: -row[1])
+    memory = [str(item.get('path') or '') for item in session.instruction_files
+              if isinstance(item, dict)]
+    agents = list(session.agent_types)
+    transcript = session.transcript()
+
+    out += ['', 'What the model is sent, in characters:',
+            f'  System prompt:  {size(session.lead_instruction):,}',
+            f'  Memory files:   {len(memory)}']
+    out += [f'    {path}' for path in memory if path]
+    out.append(f'  Tools:          {len(tools)}')
+    out += [f'    {name} {chars:,}' for name, chars in tools[:5]]
+    out.append(f'  Agents:         {len(agents)}')
+    out += [f'    {name}' for name, _ in agents]
+    out.append(f'  Conversation:   {session.context_messages} messages '
+               f'({sum(size(message.get("content")) for message in transcript):,}'
+               f' chars)')
+    return '\n'.join(out)
+
+
 STATUSLINE_PROMPT = 'Set up my status line from my shell PS1 configuration'
 
 
@@ -313,6 +356,8 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _handle_model(session, arg)
     if cmd == 'cost':
         return _handle_cost(session, arg)
+    if cmd == 'context':
+        return _context(session, arg)
     if cmd == 'statusline':
         return _handle_statusline(arg)
 
