@@ -480,6 +480,42 @@ class Session:
         history = self._team.file_history
         return None if history is None else history.diff_stats(mark)
 
+    def task_rows(self) -> list:
+        """What the shell can stop: live teammates and background shells."""
+        from pyclaw.tools.coding import background
+        rows = []
+        lead = self._team.lead
+        teammates = [agent for agent in self._team.agents.values()
+                     if agent is not lead and not getattr(agent, '_internal',
+                                                          False)
+                     and getattr(agent, 'is_running', True)]
+        for agent in sorted(teammates, key=lambda a: str(a.name)):
+            rows.append({'kind': 'teammate', 'id': str(agent.name),
+                         'label': f'@{agent.name}',
+                         'detail': 'working' if agent.busy else 'idle',
+                         'stoppable': True})
+        for shell in background.snapshot():
+            rows.append({'kind': 'shell', 'id': shell['id'],
+                         'label': shell['command'],
+                         'detail': (f'running {shell["seconds"]}s'
+                                    if shell['exit'] is None
+                                    else f'exited {shell["exit"]}'),
+                         'stoppable': shell['exit'] is None})
+        return rows
+
+    async def stop_task(self, row: dict) -> str:
+        from pyclaw.tools.coding import background
+        if row['kind'] == 'shell':
+            background.stop(row['id'])
+            return f'Stopped the shell {row["id"]}.'
+        agent = next((candidate for candidate in self._team.agents.values()
+                      if str(getattr(candidate, 'name', '')) == row['id']),
+                     None)
+        if agent is None:
+            return f'{row["label"]} is already gone.'
+        await self._team.stop_agent(agent)
+        return f'Stopped {row["label"]}.'
+
     def rewind(self, mark: int, *, code: bool = True,
                conversation: bool = True) -> dict:
         result = self._team.rewind(mark, code=code, conversation=conversation)

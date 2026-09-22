@@ -1383,3 +1383,15 @@ def test_file_history_can_be_switched_off():
     team = asyncio.run(main())
     assert team.file_history is None
     assert team.tool_context.files is None
+
+
+def test_a_background_shell_can_be_stopped_by_id():
+    task_id = background.spawn('/tmp', 'sleep 30')
+    try:
+        row = background.stop(task_id)
+        assert row['id'] == task_id
+        assert row['killed'] is True
+        assert row['exit'] is not None
+        assert background.stop('b0deadbeef') is None
+    finally:
+        background.cleanup_background_tasks()

@@ -451,3 +451,21 @@ def test_rewind_says_so_when_nothing_is_recorded():
     session = _fake_session(turns=lambda: [])
     out = _strip(asyncio.run(_call('/rewind', session)))
     assert 'file history' in out
+
+
+def test_tasks_lists_what_is_running_in_the_background():
+    session = _fake_session(task_rows=lambda: [
+        {'kind': 'teammate', 'id': 'worker', 'label': '@worker',
+         'detail': 'working', 'stoppable': True},
+        {'kind': 'shell', 'id': 'b1', 'label': 'npm run dev',
+         'detail': 'running 12s', 'stoppable': True}])
+    out = _strip(asyncio.run(_call('/tasks', session)))
+    assert '@worker · working' in out
+    assert 'b1 npm run dev · running 12s' in out
+    assert 'panel' in out
+
+
+def test_tasks_says_so_when_nothing_runs():
+    session = _fake_session(task_rows=lambda: [])
+    assert _strip(asyncio.run(_call('/tasks', session))) == (
+        'No background tasks are running.')

@@ -109,6 +109,22 @@ def snapshot() -> list[dict]:
     return sorted(rows, key=lambda row: row['id'])
 
 
+def stop(task_id: str) -> dict | None:
+    """Kill one background shell by id and return its row, or None if unknown."""
+    task = _tasks.get(task_id)
+    if task is None:
+        return None
+    process = task['process']
+    if process.poll() is None:
+        _kill(process)
+        task['killed'] = True
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+    return next((row for row in snapshot() if row['id'] == task_id), None)
+
+
 def cleanup_background_tasks():
     for task in _tasks.values():
         process = task['process']
@@ -198,17 +214,9 @@ def TaskOutput(context, task_id: str, block: bool = True,
     },
 )
 def TaskStop(context, task_id: str) -> str:
-    task = _tasks.get(task_id)
-    if task is None:
+    row = stop(task_id)
+    if row is None:
         return f'Error: no such background task: {task_id}'
-    process = task['process']
-    if process.poll() is None:
-        _kill(process)
-        task['killed'] = True
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            pass
     return ToolResult(
-        text=f'Stopped {task_id} ({task["command"]})',
+        text=f'Stopped {task_id} ({row["command"]})',
         meta={'stopped': True})

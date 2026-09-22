@@ -8,6 +8,8 @@ COMMANDS = [
     {'name': 'rewind', 'desc': 'Put the files and conversation back to an '
                                'earlier turn',
      'hint': '[n] [code|conversation]'},
+    {'name': 'tasks', 'aliases': ('bashes',),
+     'desc': 'List what is running in the background', 'hint': ''},
     {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
@@ -261,6 +263,19 @@ def _handle_rewind(session, arg: str) -> str:
             f'{messages} dropped.')
 
 
+def _handle_tasks(session, arg: str) -> str:
+    rows = session.task_rows()
+    if not rows:
+        return 'No background tasks are running.'
+    lines = ['Running in the background:']
+    for row in rows:
+        marker = row['id'] if row['kind'] == 'shell' else ''
+        lines.append(f'  {marker} {row["label"]} · {row["detail"]}'.rstrip())
+    lines.append('The terminal builds the same list as a panel that can stop '
+                 'them: /tasks.')
+    return '\n'.join(lines)
+
+
 def _handle_model(session, arg: str) -> str:
     if not arg:
         return f'Model: {session.model}'
@@ -397,6 +412,8 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _handle_resume(session, arg)
     if cmd == 'rewind':
         return _handle_rewind(session, arg)
+    if cmd in ('tasks', 'bashes'):
+        return _handle_tasks(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':
