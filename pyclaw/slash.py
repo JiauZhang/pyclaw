@@ -220,6 +220,14 @@ def _handle_model(session, arg: str) -> str:
     return f'Model: {session.model}'
 
 
+def _agent_cost(model: str, usage) -> str:
+    from pyclaw.cost import format_cost, usage_cost
+    cost = usage_cost(model, usage, _pricing())
+    price = format_cost(cost) + ('' if cost is not None else ' unpriced')
+    return (f'{usage.prompt_tokens} in / {usage.completion_tokens} out'
+            f' / {usage.total_tokens} tokens \u00b7 {price}')
+
+
 def _handle_cost(session, arg: str) -> str:
     from pyclaw.cost import format_cost
     usage = session.usage
@@ -227,10 +235,17 @@ def _handle_cost(session, arg: str) -> str:
     detail = format_cost(cost)
     if cost is None:
         detail += f' (add pricing.{session.model} to config)'
-    return (f"Model: {session.model}\n"
-            f"Tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out"
-            f" / {usage.total_tokens} total\n"
-            f"Cost: {detail}")
+    lines = [f"Model: {session.model}",
+             f"Tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out"
+             f" / {usage.total_tokens} total",
+             f"Cost: {detail}"]
+    agents = session.agent_usage()
+    if len(agents) > 1:
+        lines += ['', 'By agent:'] + [
+            f'@{name} \u00b7 {model or session.model} \u00b7 '
+            f'{_agent_cost(model or session.model, agent_usage)}'
+            for name, model, agent_usage in agents]
+    return '\n'.join(lines)
 
 
 STATUSLINE_PROMPT = 'Set up my status line from my shell PS1 configuration'

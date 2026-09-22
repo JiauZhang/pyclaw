@@ -19,7 +19,7 @@ async def _answer(messages, tools=None, *, stream_cb=None):
 
 def _session(handler, session_id):
     team = Team("t1", client_factory=lambda inst, model=None:
-                MockClient(handler=handler))
+                MockClient(handler=handler, model=model))
     return agents.Session(team, session_id=session_id)
 
 

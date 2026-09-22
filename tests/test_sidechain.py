@@ -23,7 +23,8 @@ def _spawn_subagent(team_name, session_id=None):
 
     async def main():
         team = Team(team_name, client_factory=lambda inst, model=None:
-                    MockClient(handler=sub_respond))
+                    MockClient(handler=sub_respond,
+                               model=model))
         Session(team, session_id=session_id)
         return await team.spawn_subagent('do it', subagent_type='general-purpose')
 

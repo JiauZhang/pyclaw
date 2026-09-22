@@ -32,7 +32,7 @@ def _team(usage=None):
     async def respond(messages, tools=None, *, stream_cb=None):
         return 'ok'
     return Team('hud', client_factory=lambda inst, model=None: MockClient(
-        handler=respond, usage=usage))
+        handler=respond, usage=usage, model=model))
 
 
 def _session(usage=None):
@@ -189,3 +189,20 @@ def test_git_label_keeps_a_clean_tree_short():
 def test_git_label_is_blank_when_git_says_nothing_useful():
     assert git_label('') == ''
     assert git_label('# branch.oid abc\n') == ''
+
+
+def test_agent_usage_lists_each_agent_with_its_own_model_and_spend():
+    async def main():
+        session = _session(usage={'prompt_tokens': 100,
+                                  'completion_tokens': 20,
+                                  'total_tokens': 120})
+        session._team.create_agent('researcher', model='cheap-m')
+        await session._team.query('go')
+        return session.agent_usage()
+
+    rows = asyncio.run(main())
+    assert [name for name, _model, _usage in rows] == ['researcher', 'team-lead']
+    models = {name: model for name, model, _usage in rows}
+    assert models['researcher'] == 'cheap-m'
+    spend = {name: usage.total_tokens for name, _model, usage in rows}
+    assert spend['team-lead'] == 120

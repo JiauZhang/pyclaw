@@ -30,6 +30,9 @@ def _fake_session(**kwargs):
             for k, v in kwargs.items():
                 setattr(self, k, v)
 
+        def agent_usage(self):
+            return list(getattr(self, 'agents', ()))
+
         async def end_session(self, reason):
             self.ended.append(reason)
 
@@ -183,6 +186,26 @@ def test_cost_command_with_pricing(monkeypatch):
     session = _fake_session(usage=Usage(1000, 500, 1500))
     out = asyncio.run(_call("/cost", session))
     assert "$0.0020" in out
+
+
+def test_cost_breaks_the_spend_down_by_agent(monkeypatch):
+    monkeypatch.setattr(config, "load", lambda: {
+        "pricing": {"m": {"input": 1, "output": 2}}})
+    session = _fake_session(usage=Usage(1500, 600, 2100), agents=[
+        ("team-lead", "m", Usage(1000, 500, 1500)),
+        ("researcher", "cheap-m", Usage(500, 100, 600)),
+    ])
+    out = asyncio.run(_call("/cost", session))
+
+    assert "By agent:" in out
+    assert "@researcher \u00b7 cheap-m \u00b7 500 in / 100 out" in out
+    assert "@team-lead \u00b7 m \u00b7 1000 in / 500 out" in out
+
+
+def test_cost_stays_a_single_block_without_a_team(monkeypatch):
+    monkeypatch.setattr(config, "load", lambda: {"pricing": {}})
+    out = asyncio.run(_call("/cost", _fake_session(usage=Usage(1200, 300, 1500))))
+    assert "By agent:" not in out
 
 
 def test_mode_switch_commands_removed():

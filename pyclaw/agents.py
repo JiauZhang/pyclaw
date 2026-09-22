@@ -459,9 +459,12 @@ class Session:
     def agent_types(self) -> list:
         return self._team.agent_defs.describe()
 
-    @property
-    def total_usage(self) -> dict:
-        return {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+    def agent_usage(self) -> list:
+        return sorted(
+            ((str(agent.name), str(getattr(agent.client, 'model', '') or ''),
+              agent.total_usage)
+             for agent in self._team.agents.values() if not agent._internal),
+            key=lambda row: str(row[0]))
 
     def set_thinking(self, on: bool):
         self._thinking = bool(on)
