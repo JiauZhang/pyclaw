@@ -530,3 +530,10 @@ def test_status_names_the_active_team():
 def test_status_omits_the_team_line_without_one():
     out = _strip(asyncio.run(_call('/status', _fake_session())))
     assert 'Team:' not in out
+
+
+def test_status_names_the_worktree_the_session_moved_into():
+    session = _fake_session(worktree={'name': 'side', 'branch': 'wt/side',
+                                      'path': '/tmp/repo/.pyclaw/worktrees/side'})
+    out = _strip(asyncio.run(_call('/status', session)))
+    assert 'Worktree: wt/side' in out

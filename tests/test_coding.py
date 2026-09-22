@@ -1545,3 +1545,37 @@ def test_the_session_reports_the_team_it_joined(tmp_path):
     before, after = asyncio.run(main())
     assert before is None
     assert after['name'] == 'parser'
+
+
+def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
+    import subprocess
+
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    subprocess.run(['git', 'config', 'user.email', 't@example.com'],
+                   cwd=tmp_path, check=True)
+    subprocess.run(['git', 'config', 'user.name', 't'], cwd=tmp_path,
+                   check=True)
+    (tmp_path / 'a.txt').write_text('x\n', encoding='utf-8')
+    subprocess.run(['git', 'add', 'a.txt'], cwd=tmp_path, check=True)
+    subprocess.run(['git', 'commit', '-qm', 'first'], cwd=tmp_path, check=True)
+
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        session = agents_mod.Session(team, session_id='wtree')
+        before = Path(team._pyclaw_gate.cwd)
+        await team.enter_worktree('side')
+        return team, session, before
+
+    team, session, before = asyncio.run(main())
+    assert team.tool_context.cwd != before
+    assert team._pyclaw_gate.cwd == team.tool_context.cwd
+    assert session.worktree['name'] == 'side'
+    assert team._pyclaw_gate.decide("Edit", {"file_path": "../a.txt"}) == "ask"
+
+    async def leave():
+        await team.exit_worktree()
+        return team._pyclaw_gate.cwd, session.worktree
+
+    back, worktree = asyncio.run(leave())
+    assert back == before
+    assert worktree is None

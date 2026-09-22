@@ -147,6 +147,9 @@ def _status(session, session_key: str) -> str:
     team = getattr(session, 'team_context', None)
     if team:
         lines.append(f'Team: {team["name"]}')
+    worktree = getattr(session, 'worktree', None)
+    if worktree:
+        lines.append(f'Worktree: {worktree["branch"]} at {worktree["path"]}')
     lines += [f'Provider: {session.provider}',
               f'Model: {session.model}',
               f'Thinking: {"on" if session.thinking else "off"}',

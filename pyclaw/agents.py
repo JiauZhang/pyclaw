@@ -342,6 +342,11 @@ def build_team(
         context_window=configured_context_window(),
     )
     team._pyclaw_gate = gate
+
+    def _follow_worktree(cwd):
+        gate.move_to(cwd)
+
+    team._cwd_changed = _follow_worktree
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
     from .agent_memory import load_instruction_files, load_project_memory
@@ -504,6 +509,11 @@ class Session:
 
     def skill_problems(self) -> list:
         return list(self._team.skills.problems)
+
+    @property
+    def worktree(self) -> dict | None:
+        worktree = self._team.worktree
+        return None if worktree is None else dict(worktree)
 
     @property
     def team_context(self) -> dict | None:

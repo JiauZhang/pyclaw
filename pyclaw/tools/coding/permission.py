@@ -228,6 +228,12 @@ class PermissionController:
         self.permission_hooks = None
         self.config_changed = None
 
+    def move_to(self, cwd):
+        self.cwd = Path(cwd).resolve()
+        self._layer_files['project'] = (
+            self.cwd / '.pyclaw' / 'settings.json')
+        self._layer_files['local'] = _local_settings_file(self.cwd)
+
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)
 
