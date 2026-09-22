@@ -1355,3 +1355,31 @@ def test_a_file_created_by_the_tools_can_be_taken_away_again():
 
         assert history.rewind(0) == ['new.py']
         assert not (root / 'new.py').exists()
+
+
+def test_a_team_keeps_file_history_under_the_pyclaw_home():
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            return build_team("agnes", "agnes-2.5-flash", cwd=d), d
+
+    team, d = asyncio.run(main())
+    assert team.file_history is not None
+    assert team.file_history.directory.parent.name == 'file-history'
+    assert team.file_history.cwd == Path(d).resolve()
+    assert team.tool_context.files is team.file_history
+
+
+def test_file_history_can_be_switched_off():
+    from unittest import mock
+
+    from pyclaw import config
+
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(config, 'load',
+                                   lambda: {'checkpoints': False}):
+                return build_team("agnes", "agnes-2.5-flash", cwd=d)
+
+    team = asyncio.run(main())
+    assert team.file_history is None
+    assert team.tool_context.files is None

@@ -390,3 +390,64 @@ def test_context_shows_only_the_measured_token_numbers(monkeypatch):
     assert "Auto-compact at 160,000 tokens" in out
     assert "in characters" in out
     assert "token" not in out.split('in characters')[1]
+
+
+def test_rewind_lists_the_turns_that_can_be_given_back():
+    session = _fake_session(
+        turns=lambda: [(0, 'set up the parser'), (2, 'fix the tests')])
+    out = _strip(asyncio.run(_call('/rewind', session)))
+    assert '1. set up the parser' in out
+    assert '2. fix the tests' in out
+
+
+def test_rewind_puts_a_turn_back_and_reports_what_moved():
+    seen = {}
+
+    def rewind(mark, code, conversation):
+        seen.update(mark=mark, code=code, conversation=conversation)
+        return {'files': ['a.py'], 'messages': 3}
+
+    session = _fake_session(turns=lambda: [(0, 'a'), (2, 'b')], rewind=rewind)
+    out = _strip(asyncio.run(_call('/rewind 1', session)))
+    assert seen == {'mark': 0, 'code': True, 'conversation': True}
+    assert '1 file' in out
+    assert '3 messages' in out
+
+
+def test_rewind_can_be_limited_to_the_files():
+    seen = {}
+
+    def rewind(mark, code, conversation):
+        seen.update(code=code, conversation=conversation)
+        return {'files': ['a.py', 'b.py'], 'messages': 0}
+
+    session = _fake_session(turns=lambda: [(0, 'a')], rewind=rewind)
+    out = _strip(asyncio.run(_call('/rewind 1 code', session)))
+    assert seen == {'code': True, 'conversation': False}
+    assert '2 files' in out
+    assert 'messages' not in out
+
+
+def test_rewind_can_be_limited_to_the_conversation():
+    def rewind(mark, code, conversation):
+        return {'files': [], 'messages': 5}
+
+    session = _fake_session(turns=lambda: [(0, 'a')], rewind=rewind)
+    out = _strip(asyncio.run(_call('/rewind 1 conversation', session)))
+    assert '5 messages' in out
+    assert 'files' not in out
+
+
+def test_rewind_refuses_a_turn_it_has_no_record_of():
+    called = []
+    session = _fake_session(turns=lambda: [(0, 'a')],
+                            rewind=lambda **kw: called.append(kw))
+    out = _strip(asyncio.run(_call('/rewind 9', session)))
+    assert 'no turn 9' in out
+    assert called == []
+
+
+def test_rewind_says_so_when_nothing_is_recorded():
+    session = _fake_session(turns=lambda: [])
+    out = _strip(asyncio.run(_call('/rewind', session)))
+    assert 'file history' in out

@@ -35,6 +35,11 @@ def configured_context_window() -> int:
     return int(load().get('contextWindow') or 0)
 
 
+def checkpoints_enabled() -> bool:
+    from .config import load
+    return bool(load().get('checkpoints', True))
+
+
 def session_for(team_name) -> Optional['Session']:
     return _sessions_by_root.get(team_name)
 
@@ -328,6 +333,8 @@ def build_team(
         http_options=http_options or {},
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
         tasks_dir=str(pyclaw_home() / 'tasks'),
+        file_history_dir=(str(pyclaw_home() / 'file-history')
+                          if checkpoints_enabled() else None),
         multi_agent=use_team,
         context_window=configured_context_window(),
     )
@@ -465,6 +472,16 @@ class Session:
         if messages:
             self._team.restore(messages)
         return len(messages)
+
+    def turns(self) -> list:
+        return self._team.turns()
+
+    def rewind(self, mark: int, *, code: bool = True,
+               conversation: bool = True) -> dict:
+        result = self._team.rewind(mark, code=code, conversation=conversation)
+        if result['messages']:
+            self.save_transcript()
+        return result
 
     @property
     def active_agents(self) -> int:

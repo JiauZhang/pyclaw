@@ -5,6 +5,9 @@ COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
     {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
+    {'name': 'rewind', 'desc': 'Put the files and conversation back to an '
+                               'earlier turn',
+     'hint': '[n] [code|conversation]'},
     {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
@@ -210,6 +213,54 @@ def _handle_plan(session, arg: str):
     return message
 
 
+def _count(n: int, word: str) -> str:
+    return f'{n} {word}' if n == 1 else f'{n} {word}s'
+
+
+def _first_line(text) -> str:
+    for line in str(text).splitlines():
+        if line.strip():
+            return line.strip()[:70]
+    return ''
+
+
+def _turn_list(turns) -> str:
+    lines = ['Turns PyClaw can go back to:']
+    for index, (_mark, prompt) in enumerate(turns, start=1):
+        lines.append(f'  {index}. {_first_line(prompt)}')
+    lines.append('/rewind <n> gives both back; add code or conversation '
+                 'for one of them.')
+    return '\n'.join(lines)
+
+
+def _handle_rewind(session, arg: str) -> str:
+    turns = session.turns()
+    if not turns:
+        return ('PyClaw is not keeping file history in this session, so '
+                'there is nothing to rewind to.')
+    parts = arg.split()
+    if not parts:
+        return _turn_list(turns)
+    if not parts[0].isdigit():
+        return 'Usage: /rewind <n> [code|conversation]'
+    index = int(parts[0])
+    if not 1 <= index <= len(turns):
+        return f'There is no turn {index} to go back to.'
+    mode = parts[1] if len(parts) > 1 else 'both'
+    if mode not in ('both', 'code', 'conversation'):
+        return 'Usage: /rewind <n> [code|conversation]'
+    result = session.rewind(turns[index - 1][0], code=mode != 'conversation',
+                            conversation=mode != 'code')
+    files = _count(len(result['files']), 'file')
+    messages = _count(result['messages'], 'message')
+    if mode == 'code':
+        return f'Put the files of turn {index} back: {files} restored.'
+    if mode == 'conversation':
+        return f'Put the conversation back to turn {index}: {messages} dropped.'
+    return (f'Went back to turn {index}: {files} put back, '
+            f'{messages} dropped.')
+
+
 def _handle_model(session, arg: str) -> str:
     if not arg:
         return f'Model: {session.model}'
@@ -344,6 +395,8 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return 'Conversation history cleared. Started a new session.'
     if cmd == 'resume':
         return _handle_resume(session, arg)
+    if cmd == 'rewind':
+        return _handle_rewind(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':
