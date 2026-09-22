@@ -64,6 +64,7 @@ def Write(context, file_path: str, content: str) -> str:
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         existed = path.exists()
+        context.track_edit(path)
         path.write_text(content, encoding='utf-8')
     except OSError as e:
         return f'Write to {file_path} failed: {e}'
@@ -159,6 +160,7 @@ def _replace(context, file_path: str, pairs) -> str:
                     f'{file_path}. Provide more surrounding context.')
         working = working.replace(old, new, 1)
     try:
+        context.track_edit(path)
         path.write_text(working, encoding='utf-8')
     except OSError as e:
         return f'Write to {file_path} failed: {e}'

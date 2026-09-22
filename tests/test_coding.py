@@ -7,6 +7,7 @@ from pathlib import Path
 from conippets import json
 
 from chatchat.core.agents import AgentDefinition
+from chatchat.core.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import agents as agents_mod
@@ -24,8 +25,8 @@ from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
                                              parse_bash_rule, suggested_rule)
 
 
-def _tools(d):
-    ctx = ToolContext(cwd=Path(d).resolve())
+def _tools(d, files=None):
+    ctx = ToolContext(cwd=Path(d).resolve(), files=files)
 
     def bound(tool):
         def call(**kwargs):
@@ -1327,3 +1328,30 @@ def test_a_background_shell_is_listed_with_its_state():
     finally:
         background.cleanup_background_tasks()
     assert background.snapshot() == []
+
+
+def test_the_editing_tools_back_up_a_file_before_changing_it():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d).resolve()
+        (root / 'a.py').write_text('v0\n', encoding='utf-8')
+        history = FileHistory(directory=root / 'history', cwd=root)
+        tools = _tools(d, files=history)
+        history.snapshot(0)
+        _text(tools['Write'](file_path='a.py', content='v1\n'))
+        _text(tools['Edit'](file_path='a.py', old_string='v1',
+                            new_string='v2'))
+
+        assert history.rewind(0) == ['a.py']
+        assert (root / 'a.py').read_text(encoding='utf-8') == 'v0\n'
+
+
+def test_a_file_created_by_the_tools_can_be_taken_away_again():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d).resolve()
+        history = FileHistory(directory=root / 'history', cwd=root)
+        tools = _tools(d, files=history)
+        history.snapshot(0)
+        _text(tools['Write'](file_path='new.py', content='created\n'))
+
+        assert history.rewind(0) == ['new.py']
+        assert not (root / 'new.py').exists()
