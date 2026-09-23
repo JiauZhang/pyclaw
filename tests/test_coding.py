@@ -1579,3 +1579,23 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
     back, worktree = asyncio.run(leave())
     assert back == before
     assert worktree is None
+
+
+def test_a_teammate_approval_request_names_that_teammate():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def ask(name, inp, *, tool_use_id='', agent=''):
+            asked.append((name, agent))
+            return PermissionChoice("approved")
+
+        async def main():
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                              use_team=True)
+            team._pyclaw_gate.request = ask
+            worker = team.create_agent("worker", instruction="do work")
+            return await team.execute_tool("Write", {"file_path": "a.txt",
+                                                     "content": "x"}, worker)
+
+        asyncio.run(main())
+        assert asked == [("Write", "worker")]
