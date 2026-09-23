@@ -46,6 +46,12 @@ class _NullHooks:
                                              tool_input):
         return None
 
+    async def execute_elicitation_hooks(self, agent, question=''):
+        return None
+
+    async def execute_elicitation_result_hooks(self, agent, text=''):
+        return None
+
 
 class _FakeTeam:
     provider = "p"
@@ -4911,3 +4917,138 @@ def test_hook_activity_stays_out_of_the_transcript_by_default():
     registered, text = asyncio.run(scenario())
     assert registered is None
     assert 'npm test' not in text
+
+
+def _question(multi=False):
+    return {'question': 'Which shape?', 'header': 'shape',
+            'options': [{'label': 'round', 'description': 'a circle'},
+                        {'label': 'square'}],
+            'multiSelect': multi}
+
+
+async def _type(pilot, text):
+    for char in text:
+        await pilot.press("space" if char == " " else char)
+    await pilot.pause()
+
+
+async def _ask_on_screen(app, pilot, questions):
+    from pyclaw.tui.approval import _QuestionPrompt
+    task = asyncio.create_task(app._ask_questions('lead', questions))
+    for _ in range(3):
+        await pilot.pause()
+    card = next(widget for widget in app._conv().query(_QuestionPrompt))
+    return task, card
+
+
+def test_the_question_card_asks_and_answers_one_question():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot, [_question()])
+            text = _plain(str(card.query_one("#q-body", Static).content))
+            await pilot.press("down")
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            return text, await task
+
+    text, answers = asyncio.run(scenario())
+    assert 'Which shape?' in text and 'square' in text
+    assert answers == ['square']
+
+
+def test_the_question_card_can_take_several_options():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot,
+                                              [_question(multi=True)])
+            await pilot.press("space")
+            await pilot.pause()
+            await pilot.press("down")
+            await pilot.press("space")
+            await pilot.pause()
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()) == ['round, square']
+
+
+def test_the_question_card_lets_the_answer_be_typed():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot, [_question()])
+            await pilot.press("tab")
+            await pilot.pause()
+            await _type(pilot, "a hexagon")
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()) == ['a hexagon']
+
+
+def test_backing_out_of_a_question_leaves_it_unanswered():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot, [_question()])
+            await pilot.press("escape")
+            for _ in range(4):
+                await pilot.pause()
+            return await task
+
+    assert asyncio.run(scenario()) == ['no answer']
+
+
+def test_the_question_card_keeps_the_prompt_history_out_of_its_way():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._history.append('an earlier message')
+            task, card = await _ask_on_screen(app, pilot, [_question()])
+            await pilot.press("up")
+            await pilot.pause()
+            focused = card._focused
+            typed = app.query_one("#input", Input).value
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            return focused, typed, await task
+
+    focused, typed, answers = asyncio.run(scenario())
+    assert focused == 1
+    assert typed == ''
+    assert answers == ['square']
+
+
+def test_the_session_can_answer_a_model_question():
+    async def scenario():
+        from chatchat.core.tools import ask_user
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            assert app._session._team.ask_user is not None
+            asked = asyncio.create_task(ask_user(
+                app._session._team, app._session._team.lead,
+                {'questions': [_question()]}))
+            for _ in range(4):
+                await pilot.pause()
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            return await asked
+
+    assert 'Which shape?: round' in asyncio.run(scenario())

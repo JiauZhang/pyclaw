@@ -8,7 +8,7 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
-from pyclaw.tui.approval import _PermissionPrompt
+from pyclaw.tui.approval import _PermissionPrompt, _QuestionPrompt
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _hang, _plural, _summarize, thinking_map
 from pyclaw.tui.theme import (ASTERISK, BULLET_PREFIX, POINTER, RESULT_HANG,
@@ -61,7 +61,8 @@ class TranscriptScreen(Screen):
         entries: list[str] = []
         thoughts = thinking_map(app._team.transcript())
         for widget in app._conv().children:
-            if isinstance(widget, (_PermissionPrompt, _JumpToBottom, _LogoBlock)):
+            if isinstance(widget, (_PermissionPrompt, _QuestionPrompt,
+                                   _JumpToBottom, _LogoBlock)):
                 continue
             if isinstance(widget, _TextBlock):
                 body = widget._body or ""

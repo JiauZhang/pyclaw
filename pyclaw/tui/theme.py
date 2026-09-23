@@ -62,6 +62,7 @@ OPTION_PAGE_SIZE = 5
 ACCEPT_FEEDBACK_HINT = "and tell PyClaw what to do next"
 REJECT_FEEDBACK_HINT = "and tell PyClaw what to do differently"
 RULE_FEEDBACK_HINT = "a command prefix, like npm run:*"
+ANSWER_HINT = "answer in your own words"
 
 
 NON_MODAL_OVERLAYS = frozenset({'autocomplete'})

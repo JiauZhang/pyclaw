@@ -639,6 +639,9 @@ class Session:
         if self._gate is not None:
             self._gate.request = coro
 
+    def attach_question(self, coro):
+        self._team.ask_user = coro
+
     def permission_rule(self, tool_name: str, tool_input) -> str:
         if self._gate is None:
             return ''

@@ -26,7 +26,7 @@ from pyclaw.tools.coding.permission import PermissionChoice
 
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.agentview import agent_view_markup
-from pyclaw.tui.approval import _Approval, _PermissionPrompt
+from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
 from pyclaw.tui.formatting import (_content_text, _direct_message,
                                    _display_cwd, _fit, _format_count,
                                    _plural, _summarize, _token_rate, duration)
@@ -107,6 +107,10 @@ class PyClawApp(App[None]):
     .permission Input { display: none; width: 100%; height: 1;
                         border: round $permission; background: $background;
                         color: $text; padding: 0 1; }
+    .question { width: 100%; height: auto; margin-bottom: 1; }
+    .question Input { display: none; width: 100%; height: 1;
+                      border: round $permission; background: $background;
+                      color: $text; padding: 0 1; }
     .logo { width: auto; margin-bottom: 1; }
     .text-block { width: 100%; height: auto; margin-bottom: 1; }
     .text-row { width: 100%; height: auto; }
@@ -306,6 +310,7 @@ class PyClawApp(App[None]):
         self._session = Session(self._team, session_id=self._session_id,
                                 resume_from=self._resume_from)
         self._session.attach_approval(self._ask_permission)
+        self._session.attach_question(self._ask_questions)
         self._unreg = register_runtime_handler(self._on_event)
         if self._hook_events:
             self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
@@ -1514,6 +1519,21 @@ class PyClawApp(App[None]):
         except asyncio.CancelledError:
             self._withdraw_approval(approval)
             raise
+
+    async def _ask_questions(self, agent, questions) -> list[str]:
+        name = getattr(agent, 'name', agent)
+        prompt = _QuestionPrompt(list(questions), agent=self._badge(name))
+        future = asyncio.get_running_loop().create_future()
+        prompt.on_answer = lambda answers: (
+            None if future.done() else future.set_result(answers))
+        await self._conv().mount(prompt)
+        await self._after_mount()
+        try:
+            return await future
+        finally:
+            prompt.remove()
+            for field in self.query("#input"):
+                field.focus()
 
     def _withdraw_approval(self, approval: _Approval):
         if approval in self._approvals:
