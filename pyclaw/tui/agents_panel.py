@@ -209,8 +209,9 @@ class AgentsScreen(Screen):
                       'reviewer, tech lead.[/]']
         else:
             count = agent_defs.agent_count(self._entries)
-            lines = self._header(f'{count} agents',
-                                 self._changes[-1] if self._changes else None)
+            note = (self._changes[-1] if self._changes
+                    else self._notes_notice())
+            lines = self._header(f'{count} agents', note)
             lines += self._options(['New agent'], self._pos, indent=0)
             lines.append('')
             position = 0
@@ -280,6 +281,8 @@ class AgentsScreen(Screen):
         if defn.permission_mode:
             lines.append('[bold]Permission mode[/bold]: '
                          f'{escape(defn.permission_mode)}')
+        if defn.memory:
+            lines.append(f'[bold]Notes[/bold]: {escape(defn.memory)} scope')
         lines += ['', '[bold]System prompt[/bold]',
                   escape(defn.system_prompt or '')]
         return lines + self._footer('enter or esc goes back')
@@ -383,8 +386,22 @@ class AgentsScreen(Screen):
             items += [('tool', name, (name,)) for name in self._names]
         return items
 
+    def _notes_notice(self) -> str | None:
+        pending = self._session.snapshot_updates
+        if not pending:
+            return None
+        return ('Newer notes are saved in this project for: '
+                + ', '.join(pending))
+
+    def _pending_notes_copy(self) -> bool:
+        defn = getattr(self._target, 'defn', None)
+        return (defn is not None and bool(defn.memory)
+                and defn.agent_type in self._session.snapshot_updates)
+
     def _menu_options(self) -> list:
         options = [('Open', 'view')]
+        if self._pending_notes_copy():
+            options.append(('Use the project copy of its notes', 'notes'))
         if self._target.scope != agent_defs.BUILT_IN:
             options += [('Change', 'edit'), ('Delete', 'delete')]
         return options + [('Back', 'back')]
@@ -466,12 +483,27 @@ class AgentsScreen(Screen):
         elif value == 'delete':
             self._mode = 'delete'
             self._delete_pos = 0
+        elif value == 'notes':
+            self._apply_notes_copy()
+        elif value == 'notes':
+            self._apply_notes_copy()
         elif value == 'tools':
             self._start_edit_tools()
         elif value == 'model':
             self._start_edit_model()
         else:
             self._mode = 'list'
+
+    def _apply_notes_copy(self):
+        defn = self._target.defn
+        self._session.apply_snapshot_update(defn.agent_type, defn.memory)
+        self._team._pyclaw_snapshot_updates = [
+            name for name in self._session.snapshot_updates
+            if name != defn.agent_type]
+        self._changes.append(
+            f'{defn.agent_type} now works from the notes saved in this '
+            f'project.')
+        self._mode = 'list'
 
     def _choose_tool_item(self):
         if self._mode == 'create' and self._step_name == 'confirm':

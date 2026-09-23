@@ -290,6 +290,16 @@ def _dispatch_event(on_event, ev):
         on_event(ev)
 
 
+def _agent_memory(cwd: str):
+    from chatchat.core.agent_memory import AgentMemory
+    workspace = Path(cwd) / '.pyclaw'
+    return AgentMemory(
+        roots={'user': pyclaw_home() / 'agent-memory',
+               'project': workspace / 'agent-memory',
+               'local': workspace / 'agent-memory-local'},
+        snapshots=workspace / 'agent-memory-snapshots')
+
+
 def build_team(
     provider: str,
     model: str,
@@ -336,11 +346,13 @@ def build_team(
         tasks_dir=str(pyclaw_home() / 'tasks'),
         skills=registry,
         team_store=str(pyclaw_home() / 'teams'),
+        agent_memory=_agent_memory(cwd),
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
         context_window=configured_context_window(),
     )
+    gate.agent_memory = team.agent_memory
     team._pyclaw_gate = gate
 
     def _follow_worktree(cwd):
@@ -360,9 +372,15 @@ def build_team(
     for defn in builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)
     cli_defs = parse_agents_json(agents_json, resolved) if agents_json else []
-    for defn in load_agent_defs(cwd, all_tools=resolved, cli=cli_defs):
+    definitions = load_agent_defs(cwd, all_tools=resolved, cli=cli_defs)
+    for defn in definitions:
         team.register_agent_definition(defn)
     team.cli_agent_defs = cli_defs
+    team._pyclaw_snapshot_updates = [
+        defn.agent_type for defn in definitions
+        if defn.memory
+        and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory)
+        != 'none']
 
     from .tools.coding import background as _background
 
@@ -648,6 +666,13 @@ class Session:
 
     def attach_question(self, coro):
         self._team.ask_user = coro
+
+    @property
+    def snapshot_updates(self) -> list:
+        return list(getattr(self._team, '_pyclaw_snapshot_updates', []))
+
+    def apply_snapshot_update(self, agent_type: str, scope: str) -> str:
+        return self._team.agent_memory.apply_snapshot(agent_type, scope)
 
     def permission_rule(self, tool_name: str, tool_input) -> str:
         if self._gate is None:

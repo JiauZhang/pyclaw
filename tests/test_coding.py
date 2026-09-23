@@ -1599,3 +1599,61 @@ def test_a_teammate_approval_request_names_that_teammate():
 
         asyncio.run(main())
         assert asked == [("Write", "worker")]
+
+
+def test_a_built_team_gives_every_agent_type_a_place_for_notes(tmp_path):
+    from pyclaw import pyclaw_home
+
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        return team.agent_memory
+
+    memory = asyncio.run(main())
+    assert memory is not None
+    assert (memory.directory('reviewer', 'user').parent
+            == pyclaw_home() / 'agent-memory')
+    assert memory.directory('reviewer', 'project').parent == (
+        tmp_path / '.pyclaw' / 'agent-memory')
+
+
+def test_an_agent_writing_its_own_notes_needs_no_approval(tmp_path):
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        held = (team.agent_memory.directory('reviewer', 'user')
+                / 'MEMORY.md')
+        return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
+
+    assert asyncio.run(main()) == 'allow'
+
+
+def test_an_explicit_rule_still_asks_about_a_notes_file(tmp_path):
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path),
+                          ask=["Write(*)"])
+        held = (team.agent_memory.directory('reviewer', 'user')
+                / 'MEMORY.md')
+        return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
+
+    assert asyncio.run(main()) == 'ask'
+
+
+def test_loading_the_defs_seeds_an_agents_notes_from_the_project(tmp_path):
+    snapshot = (tmp_path / '.pyclaw' / 'agent-memory-snapshots' / 'reviewer')
+    snapshot.mkdir(parents=True)
+    (snapshot / 'MEMORY.md').write_text('- seeded note', encoding='utf-8')
+    (snapshot / 'snapshot.json').write_text(
+        '{"updatedAt": "2026-01-01T00:00:00Z"}', encoding='utf-8')
+    agents = tmp_path / '.pyclaw' / 'agents'
+    agents.mkdir(parents=True)
+    (agents / 'reviewer.md').write_text(
+        '---\nname: reviewer\ndescription: reads diffs for a living\n'
+        'memory: project\n---\n\n' + 'be harsh about the diff ' * 5,
+        encoding='utf-8')
+
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        held = (team.agent_memory.directory('reviewer', 'project')
+                / 'MEMORY.md')
+        return held.read_text(encoding='utf-8') if held.exists() else ''
+
+    assert 'seeded note' in asyncio.run(main())

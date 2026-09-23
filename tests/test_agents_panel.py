@@ -478,3 +478,88 @@ def test_an_agent_from_the_command_line_is_listed_and_read_only(tmp_path):
     assert 'Given with --agents' in body
     assert 'auditor' in body
     assert [e.agent_type for e in screen._selectable] == []
+
+
+def _noted(monkeypatch, tmp_path, pending=False):
+    from chatchat.core.agent_memory import AgentMemory
+
+    user = _write_agents(_home(monkeypatch, tmp_path), 'reviewer')
+    (user / 'reviewer.md').write_text(
+        REVIEWER.replace('model: review-model\n',
+                         'model: review-model\nmemory: project\n'),
+        encoding='utf-8')
+    team = _AgentsTeam(tmp_path, _tools())
+    workspace = tmp_path / '.pyclaw'
+    team.agent_memory = AgentMemory(
+        roots={'user': tmp_path / 'home' / 'agent-memory',
+               'project': workspace / 'agent-memory',
+               'local': workspace / 'agent-memory-local'},
+        snapshots=workspace / 'agent-memory-snapshots')
+    team._pyclaw_snapshot_updates = ['reviewer'] if pending else []
+    if pending:
+        snapshot = team.agent_memory.directory('reviewer', 'project')
+        snapshot.mkdir(parents=True, exist_ok=True)
+        (snapshot / 'snapshot.json').write_text(
+            '{"updatedAt": "2026-01-01T00:00:00Z"}', encoding='utf-8')
+        (snapshot / 'MEMORY.md').write_text('- from the project copy',
+                                            encoding='utf-8')
+    return team
+
+
+def test_an_agent_with_notes_says_where_they_are_kept(monkeypatch, tmp_path):
+    team = _noted(monkeypatch, tmp_path)
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            screen = await _open_panel(app, pilot)
+            screen._open(next(e for e in screen._entries
+                              if e.agent_type == 'reviewer'))
+            await pilot.press('enter')
+            await pilot.pause()
+            return _plain(_body(screen))
+
+    body = asyncio.run(scenario())
+    assert 'Notes' in body and 'project' in body
+
+
+def test_the_project_copy_of_the_notes_is_offered_and_applied(monkeypatch,
+                                                               tmp_path):
+    team = _noted(monkeypatch, tmp_path, pending=True)
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            screen = await _open_panel(app, pilot)
+            screen._open(next(e for e in screen._entries
+                              if e.agent_type == 'reviewer'))
+            await pilot.pause()
+            menu = _plain(_body(screen))
+            await pilot.press('down')
+            await pilot.press('enter')
+            await pilot.pause()
+            held = (team.agent_memory.directory('reviewer', 'project')
+                    / 'MEMORY.md')
+            return menu, held.read_text(encoding='utf-8'), screen._changes
+
+    menu, held, changes = asyncio.run(scenario())
+    assert 'project copy' in menu
+    assert 'from the project copy' in held
+    assert changes and 'notes' in changes[-1]
+
+
+def test_the_list_says_which_agents_have_newer_saved_notes(monkeypatch,
+                                                            tmp_path):
+    team = _noted(monkeypatch, tmp_path, pending=True)
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            screen = await _open_panel(app, pilot)
+            return _plain(_body(screen))
+
+    assert 'Newer notes are saved in this project for: reviewer' in (
+        asyncio.run(scenario()))

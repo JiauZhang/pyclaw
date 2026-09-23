@@ -137,6 +137,14 @@ def _parse_tools_field(raw: str) -> list[str] | None:
     return [t.strip() for t in raw.split(',') if t.strip()]
 
 
+MEMORY_SCOPES = ('user', 'project', 'local')
+
+
+def _memory_scope(raw) -> str | None:
+    value = str(raw or '').strip()
+    return value if value in MEMORY_SCOPES else None
+
+
 def _definition_from_md(text: str, all_tools: list):
     meta, body = _parse_frontmatter(text)
     name = meta.get('name')
@@ -152,7 +160,8 @@ def _definition_from_md(text: str, all_tools: list):
     return AgentDefinition(name, system_prompt=body, tools=tools,
                            model=meta.get('model') or None,
                            permission_mode=meta.get('permissionMode') or None,
-                           description=description)
+                           description=description,
+                           memory=_memory_scope(meta.get('memory')))
 
 
 def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None:
@@ -202,7 +211,8 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
             str(name), system_prompt=str(spec.get('prompt') or ''),
             tools=tools, model=spec.get('model') or None,
             permission_mode=spec.get('permissionMode') or None,
-            description=str(spec.get('description') or '')))
+            description=str(spec.get('description') or ''),
+            memory=_memory_scope(spec.get('memory'))))
     return defs
 
 
@@ -222,6 +232,8 @@ def render_agent_md(defn: AgentDefinition, all_tools: list) -> str:
         lines.append(f'model: {defn.model}')
     if defn.permission_mode:
         lines.append(f'permissionMode: {defn.permission_mode}')
+    if defn.memory:
+        lines.append(f'memory: {defn.memory}')
     lines += ['---', '', defn.system_prompt.strip(), '']
     return '\n'.join(lines)
 

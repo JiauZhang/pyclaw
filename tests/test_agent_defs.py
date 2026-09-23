@@ -379,3 +379,33 @@ def test_agents_given_on_the_command_line_shadow_a_file_of_the_same_name(tmp_pat
             if d.agent_type == 'reviewer'] == ['from the flag']
 
 
+
+
+def test_an_agent_can_be_given_a_memory_scope():
+    defs = mod.parse_agents_json(
+        '{"reviewer": {"description": "reads diffs", "prompt": "be harsh",'
+        ' "memory": "project"}}', ALL_TOOLS)
+    assert defs[0].memory == 'project'
+
+
+def test_a_memory_scope_that_is_not_one_of_the_three_is_dropped():
+    defs = mod.parse_agents_json(
+        '{"reviewer": {"description": "d", "prompt": "p", '
+        '"memory": "galaxy"}}', ALL_TOOLS)
+    assert defs[0].memory is None
+
+
+def test_the_frontmatter_of_an_agent_file_carries_its_scope():
+    defn = mod._definition_from_md(
+        '---\nname: reviewer\ndescription: reads diffs\nmemory: user\n---\n\n'
+        + 'be harsh ' * 10, ALL_TOOLS)
+    assert defn.memory == 'user'
+
+
+def test_a_written_agent_keeps_its_scope_on_the_way_out():
+    defn = AgentDefinition('reviewer', system_prompt='p' * 30,
+                           tools=list(ALL_TOOLS), description='d' * 20,
+                           memory='local')
+    text = mod.render_agent_md(defn, ALL_TOOLS)
+    assert 'memory: local' in text
+    assert mod._definition_from_md(text, ALL_TOOLS).memory == 'local'

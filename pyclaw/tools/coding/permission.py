@@ -228,6 +228,7 @@ class PermissionController:
         self.request = request
         self.permission_hooks = None
         self.config_changed = None
+        self.agent_memory = None
 
     def move_to(self, cwd):
         self.cwd = Path(cwd).resolve()
@@ -355,6 +356,10 @@ class PermissionController:
         if mode is PermissionMode.bypass_permissions:
             return 'allow'
         if tool_name in AUTO_TOOLS:
+            return 'allow'
+        if (self.agent_memory is not None and target is not None
+                and not tool_name == BASH_TOOL
+                and self.agent_memory.contains(Path(target))):
             return 'allow'
         if tool_name == BASH_TOOL:
             return self._decide_bash(tool_input, mode)
