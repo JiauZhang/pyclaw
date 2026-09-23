@@ -69,3 +69,100 @@ def test_render_output_prints_the_requested_format(capsys):
     assert capsys.readouterr().out == "ok\n"
     __main__.render_output("json", payload)
     assert json.loads(capsys.readouterr().out) == payload
+
+SCHEMA = {'type': 'object', 'properties': {'name': {'type': 'string'}},
+          'required': ['name']}
+
+
+class _ShapeTeam:
+    provider = "p"
+    model = "m"
+    thinking = False
+    name = "t"
+    provided_tools = []
+
+    def __init__(self):
+        self.structured_output = None
+        self.installed = []
+
+    def set_output_schema(self, schema):
+        self.installed.append(schema)
+        if schema.get('type') == 'not-a-type':
+            return "'not-a-type' is not recognized"
+        return ''
+
+    def tool_schemas(self):
+        return []
+
+    def transcript(self):
+        return []
+
+
+def test_print_mode_installs_the_shape_before_asking(monkeypatch):
+    team = _ShapeTeam()
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
+    monkeypatch.setattr(__main__, "Session", _FakeSession)
+    out = asyncio.run(__main__.prompt_once("p", "m", "hi",
+                                           json_schema=SCHEMA))
+    assert team.installed == [SCHEMA]
+    assert out["structured_output"] is None
+
+
+def test_a_shape_that_is_not_a_shape_stops_the_run(monkeypatch):
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
+    monkeypatch.setattr(__main__, "Session", _FakeSession)
+    try:
+        asyncio.run(__main__.prompt_once("p", "m", "hi",
+                                         json_schema={'type': 'not-a-type'}))
+    except ValueError as exc:
+        assert 'not-a-type' in str(exc)
+    else:
+        raise AssertionError('the run went ahead with a broken schema')
+
+
+def test_the_payload_is_what_print_mode_hands_over(capsys, monkeypatch):
+    class _AnsweringSession(_FakeSession):
+        async def chat(self, message, on_event=None):
+            self.team.structured_output = {'name': 'round'}
+            return "\n\nprose\n"
+
+    team = _ShapeTeam()
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
+    monkeypatch.setattr(__main__, "Session", _AnsweringSession)
+    out = asyncio.run(__main__.prompt_once("p", "m", "hi",
+                                           json_schema=SCHEMA))
+    assert out["structured_output"] == {'name': 'round'}
+    __main__.render_output("text", out)
+    assert json.loads(capsys.readouterr().out) == {'name': 'round'}
+    __main__.render_output("json", out)
+    assert json.loads(capsys.readouterr().out)["structured_output"] == \
+        {'name': 'round'}
+
+
+def test_print_mode_refuses_a_shape_that_is_not_json(capsys):
+    args = __main__._build_parser().parse_args(['-p', 'hi', '--json-schema',
+                                                '{oops'])
+    try:
+        __main__._json_schema(args)
+    except SystemExit:
+        assert 'not valid JSON' in capsys.readouterr().out
+    else:
+        raise AssertionError('a broken schema was accepted')
+
+
+def test_a_shape_needs_a_prompt_to_shape(capsys):
+    args = __main__._build_parser().parse_args(['--json-schema', '{}'])
+    try:
+        __main__._json_schema(args)
+    except SystemExit:
+        assert '--json-schema needs --print' in capsys.readouterr().out
+    else:
+        raise AssertionError('the shape reached an interactive run')
+
+
+def test_the_shape_arrives_as_the_text_the_flag_carried():
+    args = __main__._build_parser().parse_args(['-p', 'hi', '--json-schema',
+                                                '{"type":"object"}'])
+    assert __main__._json_schema(args) == {'type': 'object'}
+    assert __main__._json_schema(
+        __main__._build_parser().parse_args(['-p', 'hi'])) is None

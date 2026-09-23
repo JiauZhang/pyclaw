@@ -112,19 +112,27 @@ def _cli_resume(args) -> bool:
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
                       resume=False, resume_from=None, allow=None, ask=None,
-                      deny=None, use_team=False, agents=None) -> dict:
+                      deny=None, use_team=False, agents=None,
+                      json_schema=None) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
                       allow=allow, ask=ask, deny=deny, use_team=use_team,
                       agents_json=agents)
+    if json_schema is not None:
+        problem = team.set_output_schema(json_schema)
+        if problem:
+            raise ValueError(problem)
     session = Session(team, session_id=session_id, resume_from=resume_from)
     try:
         if resume:
             session.restore_transcript()
         text = await session.chat(prompt, on_event=on_event)
-        return {"text": text, "mode": session.mode,
-                "permission_mode": session.permission_mode,
-                "messages": len(team.transcript()),
-                "usage": session.usage.to_dict()}
+        out = {"text": text, "mode": session.mode,
+               "permission_mode": session.permission_mode,
+               "messages": len(team.transcript()),
+               "usage": session.usage.to_dict()}
+        if json_schema is not None:
+            out["structured_output"] = team.structured_output
+        return out
     finally:
         await session.close()
 
@@ -132,8 +140,25 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
 def render_output(output_fmt: str, out: dict):
     if output_fmt == "json":
         print(json.dumps(out, ensure_ascii=False, indent=2))
+    elif out.get("structured_output") is not None:
+        print(json.dumps(out["structured_output"], ensure_ascii=False))
     else:
         print(out["text"])
+
+
+def _json_schema(args):
+    raw = getattr(args, "json_schema", None)
+    if raw is None:
+        return None
+    if getattr(args, "print", None) is None:
+        print("--json-schema needs --print: it shapes the answer of a "
+              "non-interactive run.")
+        raise SystemExit(1)
+    try:
+        return json.loads(raw)
+    except ValueError:
+        print(f"--json-schema is not valid JSON: {raw[:80]}")
+        raise SystemExit(1)
 
 
 async def run_headless(args):
@@ -145,12 +170,17 @@ async def run_headless(args):
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
     session_id, resume_from = _cli_session(args)
-    out = await prompt_once(provider, model, args.print,
-                            permission_mode=args.permission_mode,
-                            session_id=session_id, resume=_cli_resume(args),
-                            resume_from=resume_from,
-                            allow=args.allow, ask=args.ask, deny=args.deny,
-                            use_team=args.use_team, agents=args.agents)
+    try:
+        out = await prompt_once(provider, model, args.print,
+                                permission_mode=args.permission_mode,
+                                session_id=session_id, resume=_cli_resume(args),
+                                resume_from=resume_from,
+                                allow=args.allow, ask=args.ask, deny=args.deny,
+                                use_team=args.use_team, agents=args.agents,
+                                json_schema=_json_schema(args))
+    except ValueError as exc:
+        print(f"--json-schema: {exc}")
+        sys.exit(1)
     render_output(args.output, out)
 
 
@@ -241,6 +271,10 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Print mode: run one prompt non-interactively and print the result")
     parser.add_argument("--output", type=str, default="text", choices=["text", "json"],
                         help="Output format for print mode")
+    parser.add_argument("--json-schema", type=str, default=None, metavar="SCHEMA",
+                        help="JSON Schema the answer has to match (needs --print). "
+                             "The run ends by calling the structured_output tool "
+                             "with a payload validated against it.")
     parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
     parser.add_argument("--permission-mode", type=str, default=None,
