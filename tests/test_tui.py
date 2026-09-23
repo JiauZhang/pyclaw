@@ -84,6 +84,7 @@ class _FakeTeam:
         self.agents = {"lead@t": _A()}
         self.tasks = None
         self.children = {}
+        self.background = {}
         self.lead = self.agents["lead@t"]
         self._messages = []
         self.tool_context = ToolContext(cwd=Path.cwd())

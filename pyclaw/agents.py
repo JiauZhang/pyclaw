@@ -536,6 +536,13 @@ class Session:
                          'label': f'@{agent.name}',
                          'detail': 'working' if agent.busy else 'idle',
                          'stoppable': True})
+        for agent_id in self._team.background:
+            agent = self._team.agents.get(agent_id)
+            if agent is None:
+                continue
+            rows.append({'kind': 'sub-agent', 'id': str(agent.name),
+                         'label': f'@{agent.name}',
+                         'detail': 'in the background', 'stoppable': True})
         for shell in background.snapshot():
             rows.append({'kind': 'shell', 'id': shell['id'],
                          'label': shell['command'],

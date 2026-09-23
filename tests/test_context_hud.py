@@ -286,3 +286,25 @@ def test_a_task_row_that_already_went_away_is_reported(monkeypatch):
                                            'label': '@ghost'})
 
     assert 'gone' in asyncio.run(main())
+
+
+def test_a_background_sub_agent_is_a_stoppable_row():
+    async def slow(messages, tools=None, *, stream_cb=None):
+        await asyncio.sleep(5)
+        return 'not yet'
+
+    async def main():
+        team = Team('hud', client_factory=lambda inst, model=None: MockClient(
+            handler=slow))
+        await team.spawn_background_subagent('look into it', team.lead)
+        session = agents.Session(team, session_id='hud')
+        rows = session.task_rows()
+        text = await session.stop_task(rows[0])
+        await asyncio.sleep(0)
+        return rows, text, team.background
+
+    rows, text, left = asyncio.run(main())
+    assert rows[0]['kind'] == 'sub-agent'
+    assert rows[0]['stoppable'] is True
+    assert 'Stopped' in text
+    assert left == {}
