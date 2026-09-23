@@ -5053,3 +5053,38 @@ def test_the_session_can_answer_a_model_question():
             return await asked
 
     assert 'Which shape?: round' in asyncio.run(scenario())
+
+
+def test_a_teammate_that_left_the_roster_keeps_its_row_for_a_while():
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._refresh_agents()
+            team = app._team
+            team.worker.is_running = False
+            team.agents.pop('worker@t')
+            await app._refresh_agents()
+            return ([str(a.name) for a in app._teammates()],
+                    _plain(app._tree_markup(True, False)))
+
+    names, text = asyncio.run(scenario())
+    assert names == ['worker']
+    assert '@worker' in text and 'Stopped' in text
+
+
+def test_a_lingering_row_leaves_when_the_grace_window_ends(monkeypatch):
+    monkeypatch.setattr(tui, 'FINISHED_LINGER_SECONDS', 0)
+
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            team = app._team
+            team.worker.is_running = False
+            team.agents.pop('worker@t')
+            await app._refresh_agents()
+            await app._refresh_agents()
+            return [str(a.name) for a in app._teammates()]
+
+    assert asyncio.run(scenario()) == []

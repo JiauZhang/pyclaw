@@ -8,18 +8,21 @@ from pyclaw.tui.formatting import (_format_count, _summarize, _visible_len,
 from pyclaw.tui.readout import _agent_tokens
 from pyclaw.tui.theme import (COLLAPSE_HINT, IDLE_TEXT, ROW_ACTIVITY,
                               ROW_CONTINUATION, ROW_NARROW, ROW_PREFIX,
-                              ROW_STATS_GAP, SELECT_HINT, STOPPING_TEXT,
-                              TREE_BRANCH, TREE_INDENT, TREE_LAST, TREE_LEAD,
-                              TREE_POINTER, VIEW_HINT,
+                              ROW_STATS_GAP, SELECT_HINT, STOPPED_TEXT,
+                              STOPPING_TEXT, TREE_BRANCH, TREE_INDENT,
+                              TREE_LAST, TREE_LEAD, TREE_POINTER, VIEW_HINT,
                               WAITING_PERMISSION_TEXT)
 from pyclaw.tui.toolcard import _tool_uses, recent_rollup
 
 
 def status_text(state: dict, *, running: bool, all_idle: bool,
                 highlighted: bool, now: float, stopping: bool = False,
-                awaiting: bool = False, work: str = '') -> str:
+                awaiting: bool = False, work: str = '',
+                stopped: bool = False) -> str:
     if stopping:
         return STOPPING_TEXT
+    if stopped:
+        return STOPPED_TEXT
     if awaiting:
         return WAITING_PERMISSION_TEXT
     if state.get('error'):
@@ -82,7 +85,8 @@ def teammate_row(agent, state: dict, *, running: bool, color: str,
                  chosen: bool, last: bool, all_idle: bool, now: float,
                  columns: int, foregrounded: bool = False,
                  stopping: bool = False, awaiting: bool = False,
-                 queued: int = 0, work: str = '') -> str:
+                 queued: int = 0, work: str = '',
+                 stopped: bool = False) -> str:
     name = str(getattr(agent, 'name', ''))
     highlighted = chosen or foregrounded
     glyph = (TREE_LAST if last else TREE_BRANCH)[1 if highlighted else 0]
@@ -92,7 +96,8 @@ def teammate_row(agent, state: dict, *, running: bool, color: str,
         pointer=pointer,
         status=status_text(state, running=running, all_idle=all_idle,
                            highlighted=highlighted, now=now,
-                           stopping=stopping, awaiting=awaiting, work=work),
+                           stopping=stopping, awaiting=awaiting, work=work,
+                           stopped=stopped),
         stats=(f" \u00b7 {_tool_uses(state['tools'])}"
                f" \u00b7 {_format_count(_agent_tokens(agent))} tokens"
                + (f" \u00b7 {queued} queued" if queued else '')),

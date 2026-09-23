@@ -43,7 +43,7 @@ from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
                                 TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
-from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK, BULLET, DONE_TEXT, IDLE_TEXT, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_GLYPH, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT, TEAMMATE_VIEW_HINT)
+from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK, BULLET, DONE_TEXT, EXPAND_HINT, FINISHED_LINGER_SECONDS, IDLE_TEXT, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OPTION_PAGE_SIZE, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_GLYPH, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL, STOPPED_TEXT, TEAMMATE_VIEW_HINT)
 from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds,
                                  _hidden_card, _last_assistant_key, _read_key,
                                  _tool_label, _tool_use_args, _tool_uses,
@@ -263,6 +263,9 @@ class PyClawApp(App[None]):
         self._interrupted_call = False
         self._subagents: dict[str, dict] = {}
         self._agent_state: dict[str, dict] = {}
+        self._known_teammates: dict[str, object] = {}
+        self._lingering: dict[str, tuple] = {}
+        self._linger_task: asyncio.Task | None = None
         self._task_seen: dict[str, float] = {}
         self._expanded_view = 'none'
         self._view_selection = 'none'
@@ -379,7 +382,7 @@ class PyClawApp(App[None]):
             cwd=cwd, feeds=feeds, brand=self.brand)
         return text, shown
 
-    def _teammates(self) -> list:
+    def _alive_teammates(self) -> list:
         team = self._team
         if team is None:
             return []
@@ -389,6 +392,14 @@ class PyClawApp(App[None]):
             if agent is lead or getattr(agent, '_internal', False):
                 continue
             if _agent_alive(agent):
+                found.append(agent)
+        return found
+
+    def _teammates(self) -> list:
+        found = self._alive_teammates()
+        alive = {str(getattr(a, 'name', '')) for a in found}
+        for name, (agent, _) in self._lingering.items():
+            if name not in alive:
                 found.append(agent)
         found.sort(key=lambda a: str(getattr(a, 'name', '')))
         return found
@@ -475,6 +486,7 @@ class PyClawApp(App[None]):
                     chosen=chosen, last=last, all_idle=all_idle, now=now,
                     columns=columns, foregrounded=self._viewing == name,
                     stopping=bool(self._state(name).get('stopping')),
+                    stopped=name in self._lingering,
                     awaiting=name in awaiting,
                     queued=len(agent.inbox.unread()),
                     work=work.get(name, '')))
@@ -484,11 +496,40 @@ class PyClawApp(App[None]):
                 lines.append(hide_row(selected == len(teammates)))
         return '\n'.join(lines)
 
+    def _note_lingering(self):
+        alive = {str(getattr(agent, 'name', '')): agent
+                 for agent in self._alive_teammates()}
+        now = time.monotonic()
+        for name, agent in self._known_teammates.items():
+            if name not in alive and name not in self._lingering:
+                self._lingering[name] = (agent, now + FINISHED_LINGER_SECONDS)
+        self._known_teammates = alive
+        for name in [name for name, (_, deadline) in self._lingering.items()
+                     if now >= deadline]:
+            self._lingering.pop(name, None)
+            self._agent_state.pop(name, None)
+
+    def _schedule_linger(self):
+        if not self._lingering or self._linger_task is not None:
+            return
+        self._linger_task = asyncio.create_task(self._expire_lingering())
+
+    async def _expire_lingering(self):
+        try:
+            while self._lingering:
+                deadline = min(end for _, end in self._lingering.values())
+                await asyncio.sleep(max(0.1, deadline - time.monotonic()))
+                await self._refresh_agents()
+        finally:
+            self._linger_task = None
+
     async def _refresh_agents(self):
+        self._note_lingering()
+        self._schedule_linger()
         known = {str(getattr(a, 'name', ''))
                  for a in getattr(self._team, 'agents', {}).values()}
         for name in list(self._agent_state):
-            if name not in known:
+            if name not in known and name not in self._lingering:
                 self._agent_state.pop(name, None)
         for name in list(self._spawns):
             if name not in known:

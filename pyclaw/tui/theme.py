@@ -59,6 +59,7 @@ INTERRUPTED_TEXT = "Stopped \u00b7 tell PyClaw what to do instead"
 
 
 OPTION_PAGE_SIZE = 5
+FINISHED_LINGER_SECONDS = 30
 ACCEPT_FEEDBACK_HINT = "and tell PyClaw what to do next"
 REJECT_FEEDBACK_HINT = "and tell PyClaw what to do differently"
 RULE_FEEDBACK_HINT = "a command prefix, like npm run:*"
