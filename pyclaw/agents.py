@@ -11,6 +11,7 @@ from typing import AsyncIterator, Callable, Optional
 from conippets import jsonl
 
 from chatchat.team import Team
+from chatchat.core.cron_schedule import CronStore
 from chatchat.hooks.events import (
     AGENT_PROGRESS,
     AGENT_TEXT,
@@ -347,6 +348,7 @@ def build_team(
         skills=registry,
         team_store=str(pyclaw_home() / 'teams'),
         agent_memory=_agent_memory(cwd),
+        cron=CronStore(Path(cwd) / '.pyclaw'),
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
@@ -453,7 +455,6 @@ class Session:
         self._tools = entity.provided_tools
         self.mode = getattr(entity, '_pyclaw_mode', 'agent')
         self.name = entity.name
-        self.deliver = None
         self.conv_session_id = session_id or entity.name
         self.resume_from = resume_from
         self._conv_reply = ""
@@ -705,14 +706,6 @@ class Session:
     @property
     def usage(self):
         return self._team.usage()
-
-    def schedule_delivery(self, text: str, when: str):
-        if self.deliver is None:
-            return 'Delivery is not available for this session.'
-        from .task import schedule_delivery
-        job = schedule_delivery(text, when, self.deliver)
-        at = job['next'].strftime('%Y-%m-%d %H:%M:%S') if job.get('next') else 'later'
-        return f"Delivery {job['id']} queued for {at}: {text}"
 
     def _member_names(self) -> set:
         return {agent.name for agent in self._team.agents.values()}

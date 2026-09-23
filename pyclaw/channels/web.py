@@ -216,7 +216,6 @@ class WebChannelAdapter(ChannelAdapter):
             session.conv_session_id = session_id
             message = data.get("text", "")
             append_conv(session_id, "user", message)
-            session.deliver = lambda text: self.send_response(client_id, text, message_type="message")
 
             slash_reply = await handle_slash(message, session, session_id)
             if slash_reply is not None:

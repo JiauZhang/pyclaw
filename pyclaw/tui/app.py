@@ -5,6 +5,8 @@ import dataclasses
 import logging
 import random
 import time
+from datetime import datetime
+
 from rich.markup import escape
 from rich.text import Text
 from textual.app import App, ComposeResult
@@ -266,6 +268,8 @@ class PyClawApp(App[None]):
         self._known_teammates: dict[str, object] = {}
         self._lingering: dict[str, tuple] = {}
         self._linger_task: asyncio.Task | None = None
+        self._cron_task: asyncio.Task | None = None
+        self._cron_lock = None
         self._task_seen: dict[str, float] = {}
         self._expanded_view = 'none'
         self._view_selection = 'none'
@@ -314,6 +318,7 @@ class PyClawApp(App[None]):
                                 resume_from=self._resume_from)
         self._session.attach_approval(self._ask_permission)
         self._session.attach_question(self._ask_questions)
+        self._start_cron()
         self._unreg = register_runtime_handler(self._on_event)
         if self._hook_events:
             self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
@@ -336,9 +341,16 @@ class PyClawApp(App[None]):
         await self._refresh_git()
         self._render_status()
         self._render_tasks()
+        await self._note_missed_prompts()
         await self._refresh_agents()
 
     async def on_unmount(self):
+        if self._cron_task is not None:
+            self._cron_task.cancel()
+            self._cron_task = None
+        if self._cron_lock is not None:
+            self._cron_lock.release()
+            self._cron_lock = None
         if self._unreg_hooks is not None:
             self._unreg_hooks()
             self._unreg_hooks = None
@@ -1560,6 +1572,47 @@ class PyClawApp(App[None]):
         except asyncio.CancelledError:
             self._withdraw_approval(approval)
             raise
+
+    def _missed_prompts(self, now=None) -> list:
+        from chatchat.core.cron_schedule import find_missed
+
+        store = getattr(self._team, 'cron', None)
+        if store is None:
+            return []
+        return find_missed(store.durable(), now or datetime.now())
+
+    async def _note_missed_prompts(self):
+        missed = self._missed_prompts()
+        if not missed:
+            return
+        await self._append_note(
+            f'{len(missed)} scheduled prompt(s) came due while PyClaw was '
+            'not running: '
+            + ', '.join(str(task['prompt'])[:40] for task in missed))
+
+    def _start_cron(self):
+        from chatchat.core.cron_schedule import SchedulerLock
+
+        from pyclaw.cron import run
+        store = getattr(self._team, 'cron', None)
+        if store is None:
+            return
+        self._cron_lock = SchedulerLock(store.directory,
+                                        str(self._session.conv_session_id))
+        self._cron_lock.acquire()
+        self._cron_task = asyncio.create_task(
+            run(store, self._cron_lock, self._deliver_cron))
+
+    async def _deliver_cron(self, task: dict):
+        prompt = str(task.get('prompt') or '')
+        if not prompt:
+            return
+        agent = (self._team.get_by_name(task['agent'])
+                 if task.get('agent') else None)
+        if agent is not None:
+            agent.submit(prompt)
+            return
+        await self._pending_inputs.put(prompt)
 
     async def _ask_questions(self, agent, questions) -> list[str]:
         name = getattr(agent, 'name', agent)

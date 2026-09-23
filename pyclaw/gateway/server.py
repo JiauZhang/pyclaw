@@ -449,10 +449,6 @@ class GatewayServer:
 
                 self.runtime.get_or_create_session(session_id)
                 session = await self._get_session(session_id)
-                session.deliver = lambda text: _adapter.send_message(
-                    msg.sender_id, OutboundMessage(text=text),
-                )
-
                 slash_reply = await handle_slash(msg.text, session, session_id)
                 if slash_reply is not None:
                     if isinstance(slash_reply, tuple):

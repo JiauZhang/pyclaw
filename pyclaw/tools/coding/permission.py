@@ -18,7 +18,8 @@ BASH_TOOL = 'Bash'
 
 AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop',
                         'use_skill', 'team_create', 'team_delete',
-                        'structured_output'})
+                        'structured_output', 'ask_user',
+                        'cron_create', 'cron_list', 'cron_delete'})
 
 REJECT_MESSAGE = (
     "The user refused this tool call, so nothing ran; a refused edit left the "
