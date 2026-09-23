@@ -33,6 +33,7 @@ from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.widgets import (_AgentGroupBlock, _TextBlock,
                                 _ToolBlock)
 from chatchat.core.tasks import TaskList
+from chatchat.core.thinking import Thinking
 from fakes import Usage
 from markup import plain
 
@@ -56,7 +57,7 @@ class _NullHooks:
 class _FakeTeam:
     provider = "p"
     model = "m"
-    thinking = False
+    thinking = Thinking('off')
     name = "t"
     compact_threshold = 0
     auto_compact = False

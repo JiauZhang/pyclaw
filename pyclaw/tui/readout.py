@@ -146,7 +146,7 @@ def context_note(session) -> str:
 
 
 def thinking_label(session) -> str:
-    return f"[dim]thinking {'on' if session.thinking else 'off'}[/]"
+    return f"[dim]{session.thinking.label()}[/]"
 
 
 def mode_pill(session, *, background: bool) -> str:

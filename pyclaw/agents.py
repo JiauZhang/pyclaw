@@ -12,6 +12,7 @@ from conippets import jsonl
 
 from chatchat.team import Team
 from chatchat.core.cron_schedule import CronStore
+from chatchat.core.thinking import Thinking
 from chatchat.hooks.events import (
     AGENT_PROGRESS,
     AGENT_TEXT,
@@ -291,6 +292,14 @@ def _dispatch_event(on_event, ev):
         on_event(ev)
 
 
+def thinking_from_config() -> Thinking:
+    from . import config
+    setting = config.load().get('thinking') or {}
+    return Thinking(mode=str(setting.get('mode') or 'on'),
+                    budget=int(setting.get('budget') or 0),
+                    effort=str(setting.get('effort') or ''))
+
+
 def _agent_memory(cwd: str):
     from chatchat.core.agent_memory import AgentMemory
     workspace = Path(cwd) / '.pyclaw'
@@ -307,7 +316,7 @@ def build_team(
     instruction: Optional[str] = None,
     tools: Optional[list] = None,
     skills: Optional[list] = None,
-    thinking: bool = True,
+    thinking: Optional[Thinking] = None,
     http_options: Optional[dict] = None,
     cwd: Optional[str] = None,
     permission_mode: str = 'default',
@@ -340,7 +349,7 @@ def build_team(
         tools=resolved,
         tool_context=ToolContext(cwd=Path(cwd).resolve()),
         lead_instruction=inst,
-        thinking=bool(thinking),
+        thinking=thinking or thinking_from_config(),
         model_timeout=model_timeout,
         http_options=http_options or {},
         mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
@@ -451,7 +460,6 @@ class Session:
         self._team: Team = entity
         self._provider = entity.provider
         self._model = entity.model
-        self._thinking = entity.thinking
         self._tools = entity.provided_tools
         self.mode = getattr(entity, '_pyclaw_mode', 'agent')
         self.name = entity.name
@@ -475,8 +483,8 @@ class Session:
         return self._model
 
     @property
-    def thinking(self) -> bool:
-        return self._thinking
+    def thinking(self) -> Thinking:
+        return self._team.thinking
 
     @property
     def available_tools(self) -> list:
@@ -610,9 +618,8 @@ class Session:
              for agent in self._team.agents.values() if not agent._internal),
             key=lambda row: str(row[0]))
 
-    def set_thinking(self, on: bool):
-        self._thinking = bool(on)
-        self._team.set_thinking(self._thinking)
+    def set_thinking(self, thinking: Thinking):
+        self._team.set_thinking(thinking)
 
     def set_model(self, model: str) -> str:
         self._model = model

@@ -1,5 +1,6 @@
 import asyncio
 import json
+from chatchat.core.thinking import Thinking
 
 
 from pyclaw import __main__
@@ -9,7 +10,7 @@ def _fake_team():
     class T:
         provider = "p"
         model = "m"
-        thinking = False
+        thinking = Thinking('off')
         name = "t"
         provided_tools = []
 
@@ -33,7 +34,7 @@ class _FakeSession:
     permission_mode = "default"
     provider = "p"
     model = "m"
-    thinking = False
+    thinking = Thinking('off')
     usage = _U()
 
     def __init__(self, team, session_id=None, resume_from=None):
@@ -77,7 +78,7 @@ SCHEMA = {'type': 'object', 'properties': {'name': {'type': 'string'}},
 class _ShapeTeam:
     provider = "p"
     model = "m"
-    thinking = False
+    thinking = Thinking('off')
     name = "t"
     provided_tools = []
 
