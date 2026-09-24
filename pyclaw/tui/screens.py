@@ -13,7 +13,7 @@ from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _hang, _plural, _summarize, thinking_map
 from pyclaw.tui.theme import (ASTERISK, BULLET_PREFIX, POINTER, RESULT_HANG,
                               RESULT_PREFIX)
-from pyclaw.tui.widgets import (_AgentGroupBlock, _GroupBlock, _JumpToBottom,
+from pyclaw.tui.components import (_AgentGroupBlock, _GroupBlock, _JumpToBottom,
                                 _LogoBlock, _PagerScroll, _TextBlock,
                                 _ToolBlock, _UserBlock)
 

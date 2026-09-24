@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyclaw.tui.widgets import _JumpToBottom, _half_page
+from pyclaw.tui.components import _JumpToBottom, _half_page
 
 
 class ScrollFollowMixin:

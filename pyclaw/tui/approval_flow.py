@@ -8,7 +8,7 @@ from textual.widgets import Input
 from pyclaw.tools.coding import next_mode
 from pyclaw.tools.coding.permission import PermissionChoice
 from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
-from pyclaw.tui.widgets import _ToolBlock
+from pyclaw.tui.components import _ToolBlock
 
 logger = logging.getLogger(__name__)
 

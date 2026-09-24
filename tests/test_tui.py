@@ -33,7 +33,7 @@ from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import (hide_row, leader_row, status_text,
                                teammate_row)
 from pyclaw.tui.screens import HistorySearchScreen
-from pyclaw.tui.widgets import (_AgentGroupBlock, _TextBlock,
+from pyclaw.tui.components import (_AgentGroupBlock, _TextBlock,
                                 _ToolBlock)
 from chatchat.core.tasks import TaskList
 from chatchat.core.thinking import Thinking
@@ -2411,7 +2411,7 @@ def test_follow_pauses_and_jump_to_bottom_resumes():
 
 
 def test_spin_tick_is_safe_after_conv_removed():
-    from pyclaw.tui.widgets import _Conv
+    from pyclaw.tui.components import _Conv
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

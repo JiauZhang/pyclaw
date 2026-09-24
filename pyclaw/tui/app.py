@@ -37,7 +37,7 @@ from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
 from pyclaw.tui.theme import (FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT,
                               OVERLAY_GATED_ACTIONS, POINTER, SPINNER_FRAMES,
                               SPINNER_INTERVAL)
-from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
+from pyclaw.tui.components import (_AgentGroupBlock, _AgentPane, _Conv,
                                 _GroupBlock, _LogoBlock, _PagerScroll,
                                 _PromptInput, _ToolBlock)
 

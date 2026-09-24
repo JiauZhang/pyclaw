@@ -17,7 +17,7 @@ from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
 from pyclaw.tui.theme import (AGENT_COLORS, AGENT_TEAMMATES_HINT, ASTERISK,
                               IDLE_TEXT)
 from pyclaw.tui.collapse import recent_rollup
-from pyclaw.tui.widgets import _AgentPane
+from pyclaw.tui.components import _AgentPane
 
 logger = logging.getLogger(__name__)
 

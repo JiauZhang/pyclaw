@@ -5,7 +5,7 @@ from textual.widgets import Static
 
 from pyclaw.tui.formatting import _content_text, _plural
 from pyclaw.tui.theme import BULLET
-from pyclaw.tui.widgets import _TextBlock, _UserBlock
+from pyclaw.tui.components import _TextBlock, _UserBlock
 
 
 class TranscriptMixin:

@@ -12,7 +12,7 @@ from pyclaw.tui.collapse import recent_rollup
 from pyclaw.tui.toolcard import _tool_uses, agent_group_label
 from pyclaw.tui.toolui import (collapse_kinds, hidden_card, read_key,
                                tool_args, tool_label)
-from pyclaw.tui.widgets import (_AgentGroupBlock, _Conv, _GroupBlock,
+from pyclaw.tui.components import (_AgentGroupBlock, _Conv, _GroupBlock,
                                 _ToolBlock, teammate_name)
 
 logger = logging.getLogger(__name__)
