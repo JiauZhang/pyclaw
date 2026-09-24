@@ -720,3 +720,103 @@ def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch,
 
     assert '1 error recorded' in out
     assert 'provider went away' in out
+
+
+def _clipboard(sequence: str) -> str:
+    import base64
+
+    payload = sequence.split(';c;')[1].rstrip('\x07')
+    return base64.b64decode(payload).decode()
+
+
+def _turn_session():
+    session = _fake_session(messages=[
+        {'role': 'user', 'content': 'fix the parser please'},
+        {'role': 'assistant', 'content': 'First reply\n\n```python\ndef f():\n    return 1\n```'},
+        {'role': 'user', 'content': [{'type': 'tool_result',
+                                      'tool_use_id': 't1', 'content': 'ok'}]},
+        {'role': 'assistant', 'content': 'Second reply with 中文'}])
+    return session
+
+
+def test_export_writes_the_conversation_as_markdown(tmp_path):
+    import os
+
+    session = _turn_session()
+    os.chdir(tmp_path)
+    out = asyncio.run(_call('/export', session))
+
+    written = sorted(tmp_path.glob('*.md'))
+    assert len(written) == 1 and out.endswith(written[0].name)
+    body = written[0].read_text(encoding='utf-8')
+    assert written[0].name.endswith('.md')
+    assert 'fix the parser please' in body
+    assert 'Second reply with 中文' in body
+    assert body.index('fix the parser') < body.index('First reply')
+
+
+def test_export_takes_a_name_when_given_one(tmp_path):
+    import os
+
+    session = _turn_session()
+    os.chdir(tmp_path)
+    asyncio.run(_call('/export notes.md', session))
+
+    assert (tmp_path / 'notes.md').exists()
+
+
+def test_copy_reports_the_answer_and_the_fallback_file(tmp_path, monkeypatch):
+    session = _turn_session()
+    sent = []
+    monkeypatch.setattr('pyclaw.notify.set_title', lambda write, title: None)
+    out = plain(asyncio.run(_call('/copy', session, terminal=sent.append)))
+
+    assert 'Copied' in out and 'Second reply' not in out
+    assert any('\033]52;' in row for row in sent)
+
+
+def test_copy_can_reach_an_older_answer_and_a_code_block(tmp_path, monkeypatch):
+    session = _turn_session()
+    sent = []
+    plain(asyncio.run(_call('/copy 2', session, terminal=sent.append)))
+    assert 'First reply' in _clipboard(sent[-1])
+    sent.clear()
+    out = plain(asyncio.run(_call('/copy 2:1', session, terminal=sent.append)))
+    assert 'code block' in out or 'python' in out
+    assert 'def f():' in _clipboard(sent[-1])
+    sent.clear()
+    missing = plain(asyncio.run(_call('/copy 1:3', session,
+                                      terminal=sent.append)))
+    assert 'No code block' in missing and sent == []
+
+
+def test_copy_says_so_when_there_is_nothing_to_copy(monkeypatch):
+    out = plain(asyncio.run(_call('/copy', _fake_session(),
+                                  terminal=lambda s: None)))
+    assert 'Nothing to copy' in out
+
+
+def test_the_copy_targets_are_the_reply_and_its_code_blocks():
+    from pyclaw.export import copy_targets
+
+    session = _turn_session()
+    targets = copy_targets(session.transcript())
+    assert [target[0] for target in targets] == ['whole reply']
+    assert targets[0][1] == 'Second reply with 中文'
+    older = copy_targets(session.transcript(), which=2)
+    assert [label for label, _ in older] == ['whole reply', 'python']
+    assert older[1][1] == 'def f():\n    return 1'
+
+
+def test_the_export_names_itself_after_the_first_prompt(tmp_path):
+    from datetime import datetime
+
+    from pyclaw.export import export_text, filename_for
+
+    session = _turn_session()
+    body = export_text(session.transcript(), session_id='abc123')
+    assert '# PyClaw session abc123' in body
+    assert '**you**' in body and '**pyclaw**' in body
+    name = filename_for(session.transcript(),
+                        when=datetime(2026, 5, 4, 9, 30, 12))
+    assert name == '2026-05-04-093012-fix-the-parser-please.md'

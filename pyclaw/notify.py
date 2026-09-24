@@ -69,6 +69,13 @@ def notify(write, *, title: str, body: str, backend: str = 'auto',
     return sequence
 
 
+def clipboard(text: str) -> str:
+    import base64
+
+    payload = base64.b64encode(str(text).encode('utf-8')).decode('ascii')
+    return f'\033]52;c;{payload}\007'
+
+
 def set_title(write, title: str) -> str:
     sequence = title_escape(title)
     write(sequence)

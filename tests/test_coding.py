@@ -11,7 +11,7 @@ from chatchat.core.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import agents as agents_mod
-from pyclaw.agents import build_team
+from pyclaw.agents import Session, build_team
 from pyclaw.tools.coding import (CODING_TOOLS, PermissionController,
                                  background, next_mode, parse_mode,
                                  permission as perm, shell)
@@ -1657,3 +1657,52 @@ def test_loading_the_defs_seeds_an_agents_notes_from_the_project(tmp_path):
         return held.read_text(encoding='utf-8') if held.exists() else ''
 
     assert 'seeded note' in asyncio.run(main())
+
+
+def _git(directory, *args):
+    import subprocess
+
+    return subprocess.run(('git', *args), cwd=str(directory),
+                          capture_output=True, text=True)
+
+
+def test_the_diff_shows_the_working_tree_of_a_repository(tmp_path):
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        session = Session(team, session_id='diff1')
+        _git(tmp_path, 'init', '-q')
+        _git(tmp_path, 'config', 'user.email', 't@example.com')
+        _git(tmp_path, 'config', 'user.name', 't')
+        (tmp_path / 'a.py').write_text('one\n', encoding='utf-8')
+        _git(tmp_path, 'add', 'a.py')
+        _git(tmp_path, 'commit', '-qm', 'start')
+        (tmp_path / 'a.py').write_text('one\ntwo\n', encoding='utf-8')
+        view = session.diff()
+        await team.end_session('done')
+        return view
+
+    view = asyncio.run(main())
+    assert view['kind'] == 'git'
+    assert '+two' in view['text']
+    assert view['files'] == ['a.py']
+
+
+def test_outside_a_repository_the_diff_lists_what_this_session_touched(
+        tmp_path):
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path),
+                          permission_mode="acceptEdits")
+        session = Session(team, session_id='diff2')
+        (tmp_path / 'notes.md').write_text('first\nsecond\n', encoding='utf-8')
+        team.file_history.snapshot(1)
+        await team.execute_tool(
+            'Edit', {'file_path': 'notes.md', 'old_string': 'second',
+                     'new_string': 'second\nthird'}, team.lead)
+        view = session.diff()
+        await team.end_session('done')
+        return view
+
+    view = asyncio.run(main())
+    assert view['kind'] == 'session'
+    assert view['files'] == ['notes.md']
+    assert '+1 -0' in view['text']

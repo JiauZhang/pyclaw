@@ -4785,6 +4785,48 @@ def _task_body(app) -> str:
     return _plain(str(app.screen.query_one('#tk-body', Static).content))
 
 
+def test_the_diff_command_opens_a_pane_of_the_working_changes(tmp_path):
+    from pyclaw.tui.screens import DiffScreen
+
+    async def scenario():
+        team = _FakeTeam()
+        team.diff = lambda: {'kind': 'git', 'files': ['a.py'],
+                             'text': '--- a/a.py\n+++ b/a.py\n'
+                                      '@@ -1 +1 @@\n-one\n+two'}
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._session.diff = team.diff
+            await _submit_and_wait(pilot, '/diff', 2)
+            body = ''
+            for _ in range(3):
+                await pilot.pause()
+            if isinstance(app.screen, DiffScreen):
+                body = _plain(str(app.screen.query_one("#diff-body", Static).content))
+            return app.screen, body
+
+    screen, body = asyncio.run(scenario())
+    assert isinstance(screen, DiffScreen)
+    assert '+two' in body and '-one' in body
+
+
+def test_the_diff_command_says_so_when_nothing_has_changed(tmp_path):
+    async def scenario():
+        team = _FakeTeam()
+        team.diff = lambda: {'kind': 'session', 'files': [],
+                             'text': 'Nothing has been changed in this session.'}
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._session.diff = team.diff
+            await _submit_and_wait(pilot, '/diff', 3)
+            return _plain(app)
+
+    assert 'Nothing has been changed' in asyncio.run(scenario())
+
+
 def test_the_task_panel_lists_live_work_and_stops_the_selected_row():
     async def scenario():
         async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:

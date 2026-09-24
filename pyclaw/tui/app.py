@@ -41,7 +41,7 @@ from pyclaw.tui.readout import (HUD_TICK_SECONDS, _agent_tokens, context_meter,
 from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row
 from pyclaw.tui.plan import (next_task_line, plan_lines,
                               recent_completions)
-from pyclaw.tui.screens import (HelpScreen, HistorySearchScreen,
+from pyclaw.tui.screens import (DiffScreen, HelpScreen, HistorySearchScreen,
                                 PermissionsScreen, RewindScreen, TasksScreen,
                                 TranscriptScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
@@ -1364,6 +1364,15 @@ class PyClawApp(App[None]):
                 return
             self.push_screen(RewindScreen(self))
             return
+        if text == '/diff':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            view = self._session.diff()
+            if not view['files']:
+                await self._append_block(escape(view['text']))
+                return
+            self.push_screen(DiffScreen(view))
+            return
         if text in ('/tasks', '/bashes'):
             self.query_one("#input", Input).value = ""
             await self._append_user(text)
@@ -1402,7 +1411,8 @@ class PyClawApp(App[None]):
         if text.startswith("/"):
             from pyclaw.slash import handle_slash
 
-            reply = await handle_slash(text, self._session)
+            reply = await handle_slash(text, self._session,
+                                       terminal=self._terminal)
             await self._append_user(text)
             follow = None
             if isinstance(reply, tuple):

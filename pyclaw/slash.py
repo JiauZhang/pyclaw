@@ -8,6 +8,8 @@ COMMANDS = [
     {'name': 'rewind', 'desc': 'Put the files and conversation back to an '
                                'earlier turn',
      'hint': '[n] [code|conversation]'},
+    {'name': 'diff', 'desc': 'Show what has changed in the working tree',
+     'hint': ''},
     {'name': 'tasks', 'aliases': ('bashes',),
      'desc': 'List what is running in the background', 'hint': ''},
     {'name': 'skills', 'desc': 'List the skills PyClaw can load on demand',
@@ -37,6 +39,10 @@ COMMANDS = [
      'hint': '[days]'},
     {'name': 'statusline', 'desc': "Set up PyClaw's status line",
      'hint': '[instructions]'},
+    {'name': 'export', 'desc': 'Write this conversation out as a markdown '
+                               'file', 'hint': '[name.md]'},
+    {'name': 'copy', 'desc': 'Put an answer, or one of its code blocks, on '
+                             'the clipboard', 'hint': '[n[:m]]'},
 ]
 
 
@@ -389,6 +395,62 @@ def _usage_lines(session, arg: str) -> str:
         f'configured rates'])
 
 
+def _export(session, arg: str, session_key: str) -> str:
+    import os
+
+    from pyclaw.export import write
+
+    transcript = session.transcript()
+    if not transcript:
+        return 'Nothing to export yet.'
+    path = write(transcript, session_id=str(session_key or session.name),
+                 name=os.path.expanduser(arg) if arg else '')
+    return f'Exported {len(transcript)} messages to {path}'
+
+
+def _copy(session, arg: str, terminal=None) -> str:
+    from pyclaw.export import copy_targets, replies
+    from pyclaw.notify import clipboard
+
+    found = replies(session.transcript())
+    if not found:
+        return 'Nothing to copy yet.'
+    which, _, block = str(arg or '').partition(':')
+    try:
+        picked = int(which) if which else 1
+        wanted = int(block) if block else 0
+    except ValueError:
+        return 'copy takes n, or n:block, both counted from 1'
+    if not 1 <= picked <= len(found):
+        return f'There are {len(found)} answers to copy, not number {picked}.'
+    targets = copy_targets(session.transcript(), which=picked, block=wanted)
+    if not targets:
+        return f'No code block {wanted} in that answer.'
+    label, text = targets[0]
+    lines = text.count('\n') + 1
+    if terminal is not None:
+        terminal(clipboard(text))
+    written = _copy_to_file(text, label)
+    where = f'\nAlso written to {written}' if written else ''
+    return (f'Copied the {label} to the clipboard ({len(text)} characters, '
+            f'{lines} lines){where}')
+
+
+def _copy_to_file(text: str, label: str):
+    import tempfile
+    from pathlib import Path
+
+    name = 'response.md' if label == 'whole reply' else f'code-{label}'
+    directory = Path(tempfile.gettempdir()) / 'pyclaw'
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        target = directory / name
+        target.write_text(text, encoding='utf-8')
+    except OSError:
+        return None
+    return target
+
+
 def _stats_lines(arg: str) -> str:
     from pyclaw.events import read_errors
     from pyclaw.usage_history import by_day, read_days
@@ -557,7 +619,8 @@ def _handle_statusline(arg: str) -> tuple:
             f'"statusline-setup" and the prompt "{prompt}"')
 
 
-async def handle_slash(text: str, session, session_key: str = '') -> str | None | tuple:
+async def handle_slash(text: str, session, session_key: str = '',
+                       terminal=None) -> str | None | tuple:
     text = text.strip()
     if not text.startswith('/'):
         return None
@@ -626,6 +689,10 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return _handle_cost(session, arg)
     if cmd == 'usage':
         return _usage_lines(session, arg)
+    if cmd == 'export':
+        return _export(session, arg, session_key)
+    if cmd == 'copy':
+        return _copy(session, arg, terminal=terminal)
     if cmd == 'stats':
         return _stats_lines(arg)
     if cmd == 'context':
