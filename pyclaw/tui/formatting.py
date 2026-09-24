@@ -191,3 +191,13 @@ def thinking_map(messages) -> dict:
         if text:
             pairs[text] = message['thinking']
     return pairs
+
+
+MAX_LOG_PAYLOAD = 1000
+
+def _log_data(data) -> str:
+    try:
+        text = repr(data)
+    except Exception:
+        return "<unrepresentable>"
+    return text if len(text) <= MAX_LOG_PAYLOAD else text[:MAX_LOG_PAYLOAD] + "\u2026"

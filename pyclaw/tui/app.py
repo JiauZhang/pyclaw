@@ -26,38 +26,31 @@ from pyclaw.tools.coding.permission import PermissionChoice
 
 from pyclaw import events, notify
 from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
-from pyclaw.tui.formatting import _content_text, _plural, _summarize, duration
+from pyclaw.tui.formatting import (_content_text, _log_data, _plural,
+                                   _summarize, duration)
 from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
 from pyclaw.tui.agent_view import RosterMixin
 from pyclaw.tui.tool_trace import ToolTraceMixin
 from pyclaw.tui.status_line import StatusMixin
 from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
-from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
-from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL)
+from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS,
+                              INTERRUPTED_TEXT, NON_MODAL_OVERLAYS,
+                              OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES,
+                              RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL)
 from pyclaw.tui.toolcard import _agent_progress_rows, _collapsible_kinds
-from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv, _GroupBlock, _JumpToBottom, _LogoBlock, _PagerScroll, _PromptInput, _TextBlock, _ToolBlock, _UserBlock, _half_page)
+from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
+                                _GroupBlock, _JumpToBottom, _LogoBlock,
+                                _PagerScroll, _PromptInput, _TextBlock,
+                                _ToolBlock, _UserBlock, _half_page)
 
 logger = logging.getLogger(__name__)
 
-MAX_LOG_PAYLOAD = 1000
 
-def _log_data(data) -> str:
-    try:
-        text = repr(data)
-    except Exception:
-        return "<unrepresentable>"
-    return text if len(text) <= MAX_LOG_PAYLOAD else text[:MAX_LOG_PAYLOAD] + "\u2026"
-
-def _agent_alive(agent) -> bool:
-    flag = getattr(agent, 'is_running', None)
-    if flag is None:
-        return True
-    return bool(flag)
 
 class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
-              TaskPanelMixin, App[None]):
+                TaskPanelMixin, App[None]):
     TITLE = "PyClaw"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
