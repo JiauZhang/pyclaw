@@ -24,7 +24,7 @@ dependencies = [
     "conippets>=0.1.16",
     "chatool>=0.0.2",
     "imchat>=0.0.1",
-    "textual>=8.0",
+    "textual~=8.2.8",
 ]
 
 [project.scripts]
