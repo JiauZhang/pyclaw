@@ -10,7 +10,8 @@ from pyclaw.tools.coding import background
 from pyclaw.tui.formatting import _format_count, _summarize, duration
 from pyclaw.tui.plan import plan_lines, recent_completions
 from pyclaw.tui.theme import RESULT_GLYPH
-from pyclaw.tui.toolcard import _tool_uses, recent_rollup
+from pyclaw.tui.collapse import recent_rollup
+from pyclaw.tui.toolcard import _tool_uses
 
 logger = logging.getLogger(__name__)
 

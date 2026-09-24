@@ -3,36 +3,10 @@ from __future__ import annotations
 from rich.markup import escape
 
 from pyclaw.tui.formatting import (_format_count, _single_line, _summarize)
-from pyclaw.tui.theme import (EXPAND_HINT, GROUP_PARTS, INITIALIZING_TEXT,
-                              MAX_USE_ARG_CHARS, ROLLUP_KINDS, TREE_BRANCH,
-                              TREE_INDENT, TREE_LAST)
+from pyclaw.tui.theme import (EXPAND_HINT, INITIALIZING_TEXT,
+                              MAX_USE_ARG_CHARS, TREE_BRANCH, TREE_INDENT,
+                              TREE_LAST)
 from pyclaw.tui.toolui import tool_args, tool_label
-
-
-def group_text(counts: dict, *, active: bool, markup: bool = True) -> str:
-    chunks = []
-    for kind, active_verb, done_verb, noun, plural in GROUP_PARTS:
-        count = counts.get(kind, 0)
-        if not count:
-            continue
-        verb = active_verb if active else done_verb
-        verb = verb[0].upper() + verb[1:] if not chunks else \
-            verb[0].lower() + verb[1:]
-        shown = f"[bold]{count}[/]" if markup else str(count)
-        chunks.append(f"{verb} {shown} {noun if count == 1 else plural}")
-    return ", ".join(chunks)
-
-
-def recent_rollup(recent: list) -> str:
-    counts = {}
-    for kinds in reversed(recent):
-        if not kinds or not kinds <= ROLLUP_KINDS:
-            break
-        for kind in kinds:
-            counts[kind] = counts.get(kind, 0) + 1
-    if sum(counts.values()) < 2:
-        return ''
-    return group_text(counts, active=True, markup=False)
 
 
 def _last_assistant_key(messages) -> tuple:

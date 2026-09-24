@@ -9,13 +9,14 @@ from pyclaw import banner
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _edit_summary, _plural, _user_markup
 from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
-                              DONE_COLOR, EXPAND_HINT, GROUP_PARTS,
+                              DONE_COLOR, EXPAND_HINT,
                               INITIALIZING_TEXT,
                               INTERRUPTED_TEXT,
                               RESULT_HANG, RESULT_PREFIX, TREE_INDENT,
                               WAITING_PERMISSION_TEXT)
+from pyclaw.tui.collapse import Group, group_text
 from pyclaw.tui.toolcard import (_more_tool_uses, agent_group_header,
-                                 agent_group_row, group_text)
+                                 agent_group_row)
 from pyclaw.tui.toolui import result_summary, tool_args, tool_label
 
 
@@ -140,22 +141,22 @@ class _GroupBlock(Static):
 
     def __init__(self, **kw):
         super().__init__(markup=True, **kw)
-        self.counts = {kind: 0 for kind, *_ in GROUP_PARTS}
-        self.entries = []
+        self._group = Group()
         self.active = True
         self._frame = BULLET
-        self._read_keys = set()
         self._draw()
 
     def add(self, kinds, key, uid):
-        self.entries.append((kinds, key, uid))
-        for kind in kinds:
-            if kind == 'read':
-                if key in self._read_keys:
-                    continue
-                self._read_keys.add(key)
-            self.counts[kind] = self.counts.get(kind, 0) + 1
+        self._group.add(kinds, key, uid)
         self._draw()
+
+    @property
+    def counts(self):
+        return self._group.counts
+
+    @property
+    def entries(self):
+        return self._group.entries
 
     def tick(self, char: str):
         self._frame = char

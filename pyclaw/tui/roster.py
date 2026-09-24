@@ -12,7 +12,8 @@ from pyclaw.tui.theme import (COLLAPSE_HINT, IDLE_TEXT, ROW_ACTIVITY,
                               STOPPING_TEXT, TREE_BRANCH, TREE_INDENT,
                               TREE_LAST, TREE_LEAD, TREE_POINTER, VIEW_HINT,
                               WAITING_PERMISSION_TEXT)
-from pyclaw.tui.toolcard import _tool_uses, recent_rollup
+from pyclaw.tui.collapse import recent_rollup
+from pyclaw.tui.toolcard import _tool_uses
 
 
 def status_text(state: dict, *, running: bool, all_idle: bool,

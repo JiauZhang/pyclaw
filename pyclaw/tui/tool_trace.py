@@ -8,7 +8,8 @@ from textual.widgets import Static
 from pyclaw.tui.formatting import _format_count, duration
 from pyclaw.tui.readout import _agent_tokens
 from pyclaw.tui.theme import DONE_TEXT, RECENT_ACTIVITIES, STOPPED_TEXT
-from pyclaw.tui.toolcard import _tool_uses, agent_group_label, recent_rollup
+from pyclaw.tui.collapse import recent_rollup
+from pyclaw.tui.toolcard import _tool_uses, agent_group_label
 from pyclaw.tui.toolui import (collapse_kinds, hidden_card, read_key,
                                tool_args, tool_label)
 from pyclaw.tui.widgets import (_AgentGroupBlock, _Conv, _GroupBlock,
