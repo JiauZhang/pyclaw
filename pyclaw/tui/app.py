@@ -5,7 +5,6 @@ import dataclasses
 import logging
 import random
 import time
-from datetime import datetime
 
 from rich.markup import escape
 from textual.app import App, ComposeResult
@@ -19,32 +18,35 @@ from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.agents import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
 
-from pyclaw import events, notify
+from pyclaw import events
 from pyclaw.tui.approval import _Approval
 from pyclaw.tui.approval_flow import ApprovalFlowMixin
-from pyclaw.tui.formatting import (_content_text, _log_data, _plural,
-                                   duration)
+from pyclaw.tui.formatting import _log_data
 from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
 from pyclaw.tui.agent_view import RosterMixin
+from pyclaw.tui.delivery import DeliveryMixin
 from pyclaw.tui.event_flow import EventRouterMixin
+from pyclaw.tui.notify import NotifyMixin
+from pyclaw.tui.scroll_follow import ScrollFollowMixin
 from pyclaw.tui.tool_trace import ToolTraceMixin
 from pyclaw.tui.status_line import StatusMixin
 from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
+from pyclaw.tui.transcript import TranscriptMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
-from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS,
-                              INTERRUPTED_TEXT, OVERLAY_GATED_ACTIONS,
-                              POINTER, SPINNER_FRAMES, SPINNER_INTERVAL)
+from pyclaw.tui.theme import (FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT,
+                              OVERLAY_GATED_ACTIONS, POINTER, SPINNER_FRAMES,
+                              SPINNER_INTERVAL)
 from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
-                                _GroupBlock, _JumpToBottom, _LogoBlock,
-                                _PagerScroll, _PromptInput, _TextBlock,
-                                _ToolBlock, _UserBlock, _half_page)
+                                _GroupBlock, _LogoBlock, _PagerScroll,
+                                _PromptInput, _ToolBlock)
 
 logger = logging.getLogger(__name__)
 
 class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
                 TaskPanelMixin, EventRouterMixin, ApprovalFlowMixin,
-                App[None]):
+                TranscriptMixin, ScrollFollowMixin, DeliveryMixin,
+                NotifyMixin, App[None]):
     TITLE = "PyClaw"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
@@ -421,46 +423,6 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
         finally:
             self._linger_task = None
 
-    async def _append_widget(self, widget):
-        await self._conv().mount(widget)
-        await self._after_mount()
-        return widget
-
-    async def _append_user(self, text: str):
-        return await self._append_widget(
-            _UserBlock(text, color_for=self._agent_color))
-
-    async def _append_error(self, text: str):
-        return await self._append_block(
-            f"[#FF6B80]{BULLET}[/] [#FF6B80]{escape(str(text))}[/]")
-
-    def _follow_scroll(self):
-        if self._follow:
-            self._conv().scroll_end(animate=False)
-
-    def _set_follow(self, follow: bool):
-        if follow == self._follow:
-            return
-        self._follow = follow
-        if follow:
-            self._new_messages = 0
-        self.call_later(self._refresh_follow_hint)
-
-    async def _refresh_follow_hint(self):
-        inp = self.query_one("#input", Input)
-        if self._follow or not self._new_messages or self._viewing is not None:
-            if self._hint is not None:
-                self._hint.remove()
-                self._hint = None
-            return
-        text = f"[#B1B9F9]\u2193 Scroll to latest \u00b7 {self._new_messages} new[/]"
-        if self._hint is None:
-            self._hint = _JumpToBottom(text)
-            await self.screen.mount(self._hint,
-                                    before=self.query_one("#prompt"))
-        else:
-            self._hint.update(text)
-
     async def _after_mount(self):
         if self._follow:
             self._follow_scroll()
@@ -468,161 +430,7 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
             self._new_messages += 1
         await self._refresh_follow_hint()
 
-    async def action_jump_to_bottom(self):
-        self._follow = True
-        self._new_messages = 0
-        self._conv().scroll_end(animate=False)
-        await self._refresh_follow_hint()
-
-    async def action_conv_page_up(self):
-        conv = self._conv()
-        conv.scroll_relative(y=-_half_page(conv), animate=False)
-
-    async def action_conv_page_down(self):
-        conv = self._conv()
-        conv.scroll_relative(y=_half_page(conv), animate=False)
-
-    async def action_conv_scroll_top(self):
-        self._conv().scroll_home(animate=False)
-
-    async def _append_block(self, text: str):
-        block = Static(text, markup=True)
-        conv = self._conv()
-        await conv.mount(block)
-        await self._after_mount()
-        return block
-
-    async def _frozen(self):
-        self._live = None
-        self._live_text = ""
-
-    async def _start_live(self):
-        self._live = _TextBlock()
-        await self._conv().mount(self._live)
-        self._live_text = ""
-        await self._after_mount()
-
-    def _update_live(self):
-        if self._live is not None:
-            self._live.set_body(self._live_text)
-            self._follow_scroll()
-
     _SPIN = "".join(SPINNER_FRAMES)
-
-    async def _replay_transcript(self):
-        self._live = None
-        self._live_text = ""
-        self._tools = {}
-        self._tool_meta = {}
-        self._spawns = {}
-        self._teammate_spawns = set()
-        self._group = None
-        self._agent_group = None
-        self._solo_spawn = None
-        self._work_block = None
-        self._turn_start = 0
-        self._conv().remove_children()
-        await self._render_history()
-
-    async def _append_note(self, text: str):
-        await self._append_block(escape(text))
-
-    async def _apply_rewind(self, mark: int, *, code: bool,
-                            conversation: bool):
-        result = self._session.rewind(mark, code=code,
-                                      conversation=conversation)
-        if conversation:
-            await self._replay_transcript()
-        moved = []
-        if code:
-            moved.append(f"{_plural(len(result['files']), 'file')} put back")
-        if conversation:
-            moved.append(f"{_plural(result['messages'], 'message')} dropped")
-        await self._append_block(escape(
-            f"Rewound to that turn{' · ' + ', '.join(moved) if moved else ''}"))
-
-    async def _render_history(self):
-        for message in self._session.transcript():
-            role = message.get("role")
-            if role == "user":
-                text = _content_text(message.get("content"))
-                if text:
-                    await self._append_user(text)
-                continue
-            if role != "assistant":
-                continue
-            content = message.get("content")
-            if isinstance(content, list):
-                for block in content:
-                    if isinstance(block, dict) \
-                            and block.get("type") == "tool_use":
-                        await self._mount_tool(block.get("name", "tool"),
-                                               block.get("input", ""),
-                                               block.get("id", ""))
-            text = _content_text(content)
-            if text:
-                text_block = _TextBlock()
-                await self._conv().mount(text_block)
-                text_block.set_body(text)
-                await self._after_mount()
-
-        self._reset_tool_group()
-        self._sync_tool_states()
-
-    async def _finish_work(self):
-        self._discard_think()
-        elapsed = self._elapsed_seconds()
-        text = (f"[#9A9A9A]{ASTERISK} {self._turn_past} for "
-                f"{duration(elapsed)}[/]")
-        if self._work_block is None or self._work_block.parent is None:
-            self._work_block = await self._append_block(text)
-        else:
-            self._work_block.update(text)
-        self._set_title(False)
-        self._note_finished()
-        await self._refresh_git()
-        self._render_readouts()
-
-    def _missed_prompts(self, now=None) -> list:
-        from chatchat.core.cron_schedule import find_missed
-
-        store = getattr(self._team, 'cron', None)
-        if store is None:
-            return []
-        return find_missed(store.durable(), now or datetime.now())
-
-    async def _note_missed_prompts(self):
-        missed = self._missed_prompts()
-        if not missed:
-            return
-        await self._append_note(
-            f'{len(missed)} scheduled prompt(s) came due while PyClaw was '
-            'not running: '
-            + ', '.join(str(task['prompt'])[:40] for task in missed))
-
-    def _start_cron(self):
-        from chatchat.core.cron_schedule import SchedulerLock
-
-        from pyclaw.cron import run
-        store = getattr(self._team, 'cron', None)
-        if store is None:
-            return
-        self._cron_lock = SchedulerLock(store.directory,
-                                        str(self._session.conv_session_id))
-        self._cron_lock.acquire()
-        self._cron_task = asyncio.create_task(
-            run(store, self._cron_lock, self._deliver_cron))
-
-    async def _deliver_cron(self, task: dict):
-        prompt = str(task.get('prompt') or '')
-        if not prompt:
-            return
-        agent = (self._team.get_by_name(task['agent'])
-                 if task.get('agent') else None)
-        if agent is not None:
-            agent.submit(prompt)
-            return
-        await self._pending_inputs.put(prompt)
 
     async def action_escape(self):
         if self._suggest_items:
@@ -664,30 +472,6 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
         if not rejected:
             await self._append_block(
                 f"[#9A9A9A]{INTERRUPTED_TEXT}[/]")
-
-    def _terminal(self, sequence: str) -> None:
-        driver = self._driver
-        if driver is not None and not self.is_headless:
-            driver.write(sequence)
-
-    def _title(self, working: bool) -> str:
-        brand = self.brand if isinstance(self.brand, str) else 'PyClaw'
-        return f'{brand} \u00b7 working' if working else brand
-
-    def _set_title(self, working: bool) -> None:
-        notify.set_title(self._terminal, self._title(working))
-
-    def _note_finished(self) -> None:
-        idle = time.monotonic() - self._last_interaction
-        if idle < self._notify_after:
-            return
-        body = notify.message(self._live_text, len(self._tools))
-        self._last_notified = time.monotonic()
-        notify.notify(self._terminal, title=self._title(False), body=body,
-                      backend=self._notify_backend)
-
-    async def on_key(self, event) -> None:
-        self._last_interaction = time.monotonic()
 
     def _begin_turn(self):
         self._set_title(True)
