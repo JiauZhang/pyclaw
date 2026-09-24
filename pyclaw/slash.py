@@ -390,6 +390,7 @@ def _usage_lines(session, arg: str) -> str:
 
 
 def _stats_lines(arg: str) -> str:
+    from pyclaw.events import read_errors
     from pyclaw.usage_history import by_day, read_days
 
     days = int(arg) if str(arg or '').strip().isdigit() else 7
@@ -402,6 +403,11 @@ def _stats_lines(arg: str) -> str:
                      f'{seen["output"]} \u00b7 {seen["tool_calls"]} tool '
                      f'calls \u00b7 {seen["api_ms"] / 1000:.1f}s with the '
                      f'model')
+    errors = read_errors(days=days)
+    if errors:
+        lines.append(f'{_count(len(errors), "error")} recorded: '
+                     + '; '.join(str(row.get('text') or '')[:60]
+                                 for row in errors[-3:]))
     return '\n'.join(lines)
 
 

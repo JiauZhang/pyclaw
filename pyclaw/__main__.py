@@ -122,10 +122,20 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
         if problem:
             raise ValueError(problem)
     session = Session(team, session_id=session_id, resume_from=resume_from)
+    from chatchat.hooks.events import register_runtime_handler
+
+    from .events import open_stream
+
+    stream = open_stream(session=str(session.conv_session_id))
+    unregister = register_runtime_handler(stream)
     try:
         if resume:
             session.restore_transcript()
-        text = await session.chat(prompt, on_event=on_event)
+        try:
+            text = await session.chat(prompt, on_event=on_event)
+        except Exception as exc:
+            stream.note_error(f'{type(exc).__name__}: {exc}')
+            raise
         session.record_turn()
         out = {"text": text, "mode": session.mode,
                "permission_mode": session.permission_mode,
@@ -135,6 +145,8 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
             out["structured_output"] = team.structured_output
         return out
     finally:
+        unregister()
+        stream.close()
         await session.close()
 
 

@@ -30,6 +30,7 @@ class _U:
 
 class _FakeSession:
     name = "t"
+    conv_session_id = "hl"
     mode = "team"
     permission_mode = "default"
     provider = "p"
@@ -187,3 +188,27 @@ def test_a_print_run_records_what_the_turn_used(monkeypatch):
     asyncio.run(__main__.prompt_once("p", "m", "hi"))
 
     assert recorded == ["t"]
+
+
+def test_a_print_run_records_its_events_locally(monkeypatch, tmp_path):
+    from chatchat.hooks.events import AGENT_TEXT, emit
+
+    from pyclaw import events
+
+    home = tmp_path / 'events'
+    monkeypatch.setattr(events, '_directory', lambda: home)
+
+    class _EmittingSession(_FakeSession):
+        async def chat(self, message, on_event=None):
+            emit(AGENT_TEXT, agent='lead', delta='hello')
+            return "\n\nhello\n"
+
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
+    monkeypatch.setattr(__main__, "Session", _EmittingSession)
+    asyncio.run(__main__.prompt_once("p", "m", "hi"))
+
+    rows = [json.loads(line)
+            for path in home.glob('*.jsonl')
+            for line in path.read_text(encoding='utf-8').splitlines()]
+    assert [row['kind'] for row in rows] == ['text']
+    assert rows[0]['text'] == 'hello' and rows[0]['agent'] == 'lead'

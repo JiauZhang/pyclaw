@@ -698,3 +698,25 @@ def test_stats_lists_the_days_newest_first(monkeypatch, tmp_path):
     assert lines[1].startswith(today.isoformat())
     assert today.isoformat() in out and (today - timedelta(days=1)).isoformat() in out
     assert out.index('900') < out.index('200')
+
+
+def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch,
+                                                            tmp_path):
+    from datetime import date, datetime
+
+    from pyclaw import events
+
+    today = date.today()
+    _history(monkeypatch, tmp_path, [_row(today.isoformat())])
+    home = tmp_path / 'events'
+    home.mkdir(exist_ok=True)
+    monkeypatch.setattr(events, '_directory', lambda: home)
+    sink = events.open_stream(at=datetime(today.year, today.month, today.day,
+                                          9, 0), session='s1')
+    sink.note_error('the provider went away')
+    sink.close()
+
+    out = plain(asyncio.run(_call('/stats', _fake_session())))
+
+    assert '1 error recorded' in out
+    assert 'provider went away' in out

@@ -26,6 +26,7 @@ from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import background, next_mode
 from pyclaw.tools.coding.permission import PermissionChoice
 
+from pyclaw import events
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.agentview import agent_view_markup
 from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
@@ -282,6 +283,8 @@ class PyClawApp(App[None]):
         self._teammate_spawns: set[str] = set()
         self._hook_events = hook_events
         self._unreg_hooks = None
+        self._unreg_events = None
+        self._events = None
         self._agent_colors: dict[str, str] = {}
         self._suggest_items: list[dict] = []
         self._suggest_selected = 0
@@ -320,6 +323,9 @@ class PyClawApp(App[None]):
         self._session.attach_question(self._ask_questions)
         self._start_cron()
         self._unreg = register_runtime_handler(self._on_event)
+        self._events = events.open_stream(
+            session=str(self._session.conv_session_id))
+        self._unreg_events = register_runtime_handler(self._events)
         if self._hook_events:
             self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
         self._tasks_pane = Static("", markup=True)
@@ -351,6 +357,12 @@ class PyClawApp(App[None]):
         if self._cron_lock is not None:
             self._cron_lock.release()
             self._cron_lock = None
+        if self._unreg_events is not None:
+            self._unreg_events()
+            self._unreg_events = None
+        if self._events is not None:
+            self._events.close()
+            self._events = None
         if self._unreg_hooks is not None:
             self._unreg_hooks()
             self._unreg_hooks = None
@@ -367,6 +379,14 @@ class PyClawApp(App[None]):
         if self._session is not None:
             await self._session.close()
             self._session = None
+
+    def _handle_exception(self, error: Exception) -> None:
+        if self._events is not None:
+            self._events.note_error(
+                f'{type(error).__name__}: {error}')
+        logger.error('the app stopped on an unhandled error',
+                   exc_info=error)
+        super()._handle_exception(error)
 
     def _conv(self) -> _Conv:
         return self.query_one("#conv", _Conv)
@@ -1765,6 +1785,8 @@ class PyClawApp(App[None]):
             out = await self._session.chat(text)
         except Exception as exc:
             logger.exception("chat failed for prompt %r", _log_data(text))
+            if self._events is not None:
+                self._events.note_error(str(exc))
             await self._append_error(str(exc))
             return
         await self._wait_session_idle()

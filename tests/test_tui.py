@@ -2364,7 +2364,7 @@ def test_runtime_sink_released_on_unmount():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             await pilot.pause()
-            assert len(events._runtime_sinks) == len(baseline) + 1
+            assert len(events._runtime_sinks) == len(baseline) + 2
     asyncio.run(scenario())
     assert events._runtime_sinks == baseline
 
@@ -5119,3 +5119,60 @@ def test_a_lingering_row_leaves_when_the_grace_window_ends(monkeypatch):
             return [str(a.name) for a in app._teammates()]
 
     assert asyncio.run(scenario()) == []
+
+
+def test_the_run_writes_what_happened_into_a_local_event_stream(tmp_path,
+                                                                monkeypatch):
+    import json
+
+    from pyclaw import events
+
+    home = tmp_path / 'events'
+    monkeypatch.setattr(events, '_directory', lambda: home)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _submit_and_wait(pilot, "hello there", 6)
+            return app._events
+
+    stream = asyncio.run(scenario())
+    rows = [json.loads(line)
+            for path in sorted(home.glob('*.jsonl'))
+            for line in path.read_text(encoding='utf-8').splitlines()]
+    assert [row['kind'] for row in rows[:1]] == ['tool_call']
+    assert 'text' in [row['kind'] for row in rows]
+    assert stream.turn_facts()['turns'] >= 1
+
+
+def test_a_crash_is_written_down_before_the_app_goes(tmp_path, monkeypatch):
+    import json
+
+    from textual.app import App
+
+    from pyclaw import events
+
+    home = tmp_path / 'events'
+    monkeypatch.setattr(events, '_directory', lambda: home)
+    handed_over = []
+    monkeypatch.setattr(App, '_handle_exception',
+                        lambda self, error: handed_over.append(str(error)))
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            try:
+                raise RuntimeError('the terminal died')
+            except RuntimeError as error:
+                app._handle_exception(error)
+            await pilot.pause()
+
+    asyncio.run(scenario())
+    written = [json.loads(line)
+               for path in home.glob('*.jsonl')
+               for line in path.read_text(encoding='utf-8').splitlines()]
+    assert [row['text'] for row in written if row['kind'] == 'error'] == [
+        'RuntimeError: the terminal died']
+    assert handed_over == ['the terminal died']
