@@ -770,7 +770,7 @@ def test_build_team_wires_bash_through_permission_hook():
     async def main():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              deny=["Bash(curl:*)"])
+                              disallowed_tools=["Bash(curl:*)"])
             names = [t["name"] for t in team.tool_schemas(team.tool_context)]
             blocked = await team.execute_tool(
                 "Bash", {"command": "curl http://example.com"}, team.lead)
@@ -881,7 +881,7 @@ def test_build_team_removes_bash_when_denied_by_bare_name():
     async def main():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              deny=["Bash"])
+                              disallowed_tools=["Bash"])
             return [t["name"] for t in team.tool_schemas(team.tool_context)]
 
     assert "Bash" not in asyncio.run(main())

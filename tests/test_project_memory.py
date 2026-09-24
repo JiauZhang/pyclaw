@@ -66,3 +66,41 @@ def test_build_team_registers_instruction_files(tmp_path):
     (tmp_path / 'AGENTS.md').write_text('rules', encoding='utf-8')
     files = _team(tmp_path).instruction_files
     assert any(item['content'] == 'rules' for item in files)
+
+
+def _rule(directory, name, frontmatter, body):
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f'{name}.md').write_text(
+        f'---\n{frontmatter}\n---\n{body}', encoding='utf-8')
+
+
+def test_a_rule_that_names_no_paths_joins_the_standing_instructions(tmp_path):
+    _rule(tmp_path / '.pyclaw' / 'rules', 'style', 'paths: ',
+          'Always two spaces.\n')
+    files = load_instruction_files(str(tmp_path))
+    assert [item['load_reason'] for item in files] == ['rules_dir']
+    assert files[0]['content'] == 'Always two spaces.'
+    assert 'Always two spaces.' in load_project_memory(str(tmp_path))
+
+
+def test_a_rule_that_names_paths_stays_out_of_the_standing_ones(tmp_path):
+    _rule(tmp_path / '.pyclaw' / 'rules', 'python', 'paths: src/*.py',
+          'Annotate every argument.\n')
+    assert 'Annotate' not in load_project_memory(str(tmp_path))
+
+
+def test_reading_a_covered_file_brings_its_rule_into_the_turn(tmp_path):
+    (tmp_path / 'src').mkdir()
+    (tmp_path / 'src' / 'a.py').write_text('x = 1\n', encoding='utf-8')
+    _rule(tmp_path / '.pyclaw' / 'rules', 'python', 'paths: src/*.py',
+          'Annotate every argument.\n')
+
+    async def main():
+        team = build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
+        out = await team.execute_tool('Read', {'file_path': 'src/a.py'},
+                                      team.lead, 't1')
+        await team.end_session('done')
+        return out
+
+    out = asyncio.run(main())
+    assert 'Annotate every argument.' in out.additional_context

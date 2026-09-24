@@ -321,20 +321,27 @@ def build_team(
     http_options: Optional[dict] = None,
     cwd: Optional[str] = None,
     permission_mode: str = 'default',
-    allow: Optional[list] = None,
+    allowed_tools: Optional[list] = None,
     ask: Optional[list] = None,
-    deny: Optional[list] = None,
+    disallowed_tools: Optional[list] = None,
+    base_tools: Optional[list] = None,
     agents_json: Optional[str] = None,
     use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
+    from .agent_memory import (load_instruction_files, load_project_memory,
+                               rule_set)
     registry = _resolve_skills(skills, cwd)
     coding_tools = list(CODING_TOOLS)
     coding_names = {t.name for t in coding_tools}
     candidates = coding_tools + [t for t in _resolve_tools(tools)
                                  if t.name not in coding_names]
-    gate = PermissionController(mode=permission_mode, cwd=cwd, allow=allow or (),
-                                ask=ask or (), deny=deny or (),
+    refused = list(disallowed_tools or [])
+    if base_tools is not None:
+        refused += [t.name for t in candidates if t.name not in base_tools]
+    gate = PermissionController(mode=permission_mode, cwd=cwd,
+                                allow=allowed_tools or (),
+                                ask=ask or (), deny=refused,
                                 tools=candidates)
     resolved = [t for t in candidates if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
@@ -359,6 +366,7 @@ def build_team(
         team_store=str(pyclaw_home() / 'teams'),
         agent_memory=_agent_memory(cwd),
         cron=CronStore(Path(cwd) / '.pyclaw'),
+        rules=rule_set(cwd),
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
@@ -373,7 +381,6 @@ def build_team(
     team._cwd_changed = _follow_worktree
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
-    from .agent_memory import load_instruction_files, load_project_memory
     team.set_instruction_files(load_instruction_files(cwd))
     memory = load_project_memory(cwd)
     if memory:
@@ -769,6 +776,7 @@ class Session:
         self.resume_from = None
         self._team.lead.messages = []
         self._team.reset_usage()
+        self._team.reset_rules()
         self._team.begin_new_session('clear')
 
     def resume_session(self, session_id: str) -> int:
@@ -776,6 +784,7 @@ class Session:
         if not messages:
             return 0
         self._team.restore(messages)
+        self._team.reset_rules()
         self._team.begin_new_session('resume')
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None

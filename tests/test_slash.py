@@ -154,6 +154,22 @@ def test_memory_command_points_at_agents_md(tmp_path):
     assert "PYCLAW.md" not in out
 
 
+def test_memory_lists_the_rules_that_wait_for_a_matching_file(tmp_path):
+    class _S:
+        cwd = str(tmp_path)
+
+    rules = tmp_path / ".pyclaw" / "rules"
+    rules.mkdir(parents=True)
+    (rules / "python.md").write_text("---\npaths: src/*.py\n---\n"
+                                     "Annotate every argument.\n",
+                                     encoding="utf-8")
+    (rules / "style.md").write_text("---\npaths: \n---\nTwo spaces.\n",
+                                    encoding="utf-8")
+    out = asyncio.run(_call("/memory", _S()))
+    assert "rule for src/*.py" in out
+    assert "style.md" not in out
+
+
 def test_plan_with_description_queues_the_goal():
     class _S:
         permission_mode = "default"

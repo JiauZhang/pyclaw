@@ -50,12 +50,12 @@ def test_apply_overrides_all():
 def test_session_parsers_carry_the_flags_that_steer_a_run():
     for argv, team in ((["-p", "hi"], False), (["tui"], True)):
         args = __main__._build_parser().parse_args(
-            argv + ["--allow", "Bash(git push:*)",
-                    "--deny", "Bash(curl:*)",
+            argv + ["--allowed-tools", "Bash(git push:*)",
+                    "--disallowed-tools", "Bash(curl:*)",
                     "--ask", "Bash(docker:*)"]
             + (["--use-team"] if team else []))
-        assert args.allow == ["Bash(git push:*)"]
-        assert args.deny == ["Bash(curl:*)"]
+        assert args.allowed_tools == ["Bash(git push:*)"]
+        assert args.disallowed_tools == ["Bash(curl:*)"]
         assert args.ask == ["Bash(docker:*)"]
         assert args.use_team is team
         assert __main__._build_parser().parse_args(argv).use_team is False

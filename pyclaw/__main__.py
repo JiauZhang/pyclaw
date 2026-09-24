@@ -6,6 +6,7 @@ from pyclaw.agents import build_team, Session
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
+from pyclaw.tools.coding.permission import split_rules
 from chatchat.cli.config import parse_config, cli_config
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -111,11 +112,14 @@ def _cli_resume(args) -> bool:
 
 async def prompt_once(provider, model, prompt, *, on_event=None,
                       permission_mode='default', session_id=None,
-                      resume=False, resume_from=None, allow=None, ask=None,
-                      deny=None, use_team=False, agents=None,
+                      resume=False, resume_from=None, allowed_tools=None,
+                      ask=None, disallowed_tools=None, base_tools=None,
+                      use_team=False, agents=None,
                       json_schema=None) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
-                      allow=allow, ask=ask, deny=deny, use_team=use_team,
+                      allowed_tools=allowed_tools, ask=ask,
+                      disallowed_tools=disallowed_tools,
+                      base_tools=base_tools, use_team=use_team,
                       agents_json=agents)
     if json_schema is not None:
         problem = team.set_output_schema(json_schema)
@@ -188,7 +192,10 @@ async def run_headless(args):
                                 permission_mode=args.permission_mode,
                                 session_id=session_id, resume=_cli_resume(args),
                                 resume_from=resume_from,
-                                allow=args.allow, ask=args.ask, deny=args.deny,
+                                allowed_tools=args.allowed_tools,
+                                ask=args.ask,
+                                disallowed_tools=args.disallowed_tools,
+                                base_tools=args.tools,
                                 use_team=args.use_team, agents=args.agents,
                                 json_schema=_json_schema(args))
     except ValueError as exc:
@@ -216,7 +223,8 @@ def run_tui(args):
                        or config.get("includeHookEvents"))
     PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
-        allow=args.allow, ask=args.ask, deny=args.deny,
+        allowed_tools=args.allowed_tools, ask=args.ask,
+        disallowed_tools=args.disallowed_tools, base_tools=args.tools,
         use_team=args.use_team, agents_json=args.agents),
         session_id=session_id,
         resume=_cli_resume(args),
@@ -252,18 +260,38 @@ def stop_server_cmd(args):
     print(f"Stopped {scope}: PIDs {', '.join(str(p) for p in killed)}")
 
 
+class _RuleList(argparse.Action):
+    """Accepts several rules per value, comma separated, and accumulates across
+    repeated flags."""
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        got = list(getattr(namespace, self.dest, None) or [])
+        for text in (values if isinstance(values, list) else [values]):
+            got.extend(split_rules(str(text)))
+        setattr(namespace, self.dest, got)
+
+
 def _add_session_args(target):
     target.add_argument("-c", "--continue", dest="continue_session",
                         action="store_true",
                         help="Resume the most recent session in this directory")
     target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID",
                         help="Resume a specific session by id")
-    for flag, help_text in (
-            ("--allow", "Permission rule to allow, e.g. 'Bash(git push:*)'"),
-            ("--deny", "Permission rule to deny, e.g. 'Bash(curl:*)'"),
-            ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'")):
-        target.add_argument(flag, action="append", default=None, metavar="RULE",
-                            help=help_text)
+    for flag, help_text, default in (
+            ("--allowed-tools",
+             "Rule allowing a tool, e.g. 'Bash(git push:*)'. Several per "
+             "value, comma separated.", []),
+            ("--disallowed-tools",
+             "Rule refusing a tool, e.g. 'Bash(curl:*)'. Wins over "
+             "--allowed-tools.", []),
+            ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'",
+             [])):
+        target.add_argument(flag, action=_RuleList, nargs="+", default=default,
+                            metavar="RULE", help=help_text)
+    target.add_argument("--tools", action=_RuleList, nargs="+", default=None,
+                        metavar="NAME",
+                        help="The only tools this run has. Every other one is "
+                             "refused, not just hidden.")
     target.add_argument("--include-hook-events", action="store_true",
                         default=False,
                         help="Show each hook run as its own line")

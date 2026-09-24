@@ -650,12 +650,15 @@ async def handle_slash(text: str, session, session_key: str = '',
             return 'Compaction is not available for this session.'
         return await compactor()
     if cmd == 'memory':
-        from pyclaw.agent_memory import load_project_memory, _user_memory_file
+        from pyclaw.agent_memory import (load_project_memory, rule_set,
+                                         _user_memory_file)
         cwd = getattr(session, 'cwd', None) or '.'
         lines = [f'user: {_user_memory_file()}',
                  f'project: {Path(cwd) / "AGENTS.md"}']
         memory = load_project_memory(cwd)
         lines.append('loaded: yes' if memory else 'loaded: nothing found')
+        for rule in rule_set(cwd).all():
+            lines.append(f'rule for {", ".join(rule.globs)}: {rule.path}')
         return '\n'.join(lines)
     if cmd == 'clear':
         await session.end_session('clear')

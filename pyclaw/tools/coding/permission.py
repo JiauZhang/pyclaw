@@ -105,6 +105,24 @@ def _command_of(tool_input) -> str:
     return ''
 
 
+def split_rules(text: str) -> list[str]:
+    """One command-line value can carry several rules; commas inside the
+    parentheses of a rule argument belong to that rule."""
+    out, depth, current = [], 0, ''
+    for char in str(text):
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth = max(0, depth - 1)
+        if char == ',' and depth == 0:
+            out.append(current)
+            current = ''
+        else:
+            current += char
+    out.append(current)
+    return [item.strip() for item in out if item.strip()]
+
+
 def _rule_matches(rules, tool_name: str, tool_input=None,
                   env_all: bool = False, cwd=None, target=None) -> bool:
     if not rules:

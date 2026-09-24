@@ -8,6 +8,16 @@ def _user_memory_file() -> Path:
     return Path(__pyclaw_home__) / 'AGENTS.md'
 
 
+def rule_set(cwd: str):
+    from chatchat.core.rules import RuleSet
+    from pyclaw import pyclaw_home
+    return RuleSet.discover(cwd=Path(cwd), home=pyclaw_home(),
+                            subdir='.pyclaw')
+
+
+SCOPES = {'user': 'User', 'project': 'Project'}
+
+
 def load_instruction_files(cwd: str) -> list[dict]:
     files: list[dict] = []
     user = _user_memory_file()
@@ -31,6 +41,12 @@ def load_instruction_files(cwd: str) -> list[dict]:
         files.append({'path': str(candidate), 'content': content,
                       'memory_type': 'Project',
                       'load_reason': 'session_start'})
+    for rule in rule_set(cwd).always():
+        if not rule.content:
+            continue
+        files.append({'path': str(rule.path), 'content': rule.content,
+                      'memory_type': SCOPES[rule.scope],
+                      'load_reason': 'rules_dir'})
     return files
 
 
