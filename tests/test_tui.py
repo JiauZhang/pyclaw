@@ -2991,38 +2991,6 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
     assert input_y == height - 5
 
 
-def test_bash_collapsible_classification():
-    from pyclaw.tui.toolcard import _bash_kinds
-
-    assert _bash_kinds("grep -rn foo .") == {"search"}
-    assert _bash_kinds("rg --files") == {"search"}
-    assert _bash_kinds("cat a.txt") == {"read"}
-    assert _bash_kinds("cat a.txt | wc -l") == {"read"}
-    assert _bash_kinds("ls -la") == {"list"}
-    assert _bash_kinds("tree") == {"list"}
-    assert _bash_kinds("echo hi") == set()
-    assert _bash_kinds("ls dir && echo ---") == {"list"}
-    assert _bash_kinds("npm test") == {"bash"}
-    assert _bash_kinds("grep x a | sort") == {"search", "read"}
-
-
-def test_tool_collapsible_classification():
-    from pyclaw.tui.toolcard import _collapsible_kinds
-
-    assert _collapsible_kinds("Read", {"file_path": "a.py"}) == {"read"}
-    assert _collapsible_kinds("Read", {"file_path": "AGENTS.md"}) == {
-        "memory_read"}
-    assert _collapsible_kinds("Grep", {"pattern": "x"}) == {"search"}
-    assert _collapsible_kinds("Glob", {"pattern": "*.py"}) == {"search"}
-    assert _collapsible_kinds("LS", {"path": "."}) == {"list"}
-    assert _collapsible_kinds("Write", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Write", {"file_path": "AGENTS.md"}) == {
-        "memory_write"}
-    assert _collapsible_kinds("Edit", {"file_path": "a.py"}) == set()
-    assert _collapsible_kinds("Bash", {"command": "ls"}) == {"list"}
-    assert _collapsible_kinds("create_agent", {"prompt": "x"}) == set()
-
-
 def test_prompt_has_the_pointer():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

@@ -99,17 +99,7 @@ MAX_USE_ARG_CHARS = 80
 
 DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
                  "Glob": "Search", "LS": "List"}
-PATH_TOOLS = ("Read", "Write", "Edit", "MultiEdit", "LS")
-SEARCH_TOOLS = ("Grep", "Glob")
 
-
-BASH_SEARCH_COMMANDS = frozenset({'find', 'grep', 'rg', 'ag', 'ack', 'locate',
-                                  'which', 'whereis'})
-BASH_READ_COMMANDS = frozenset({'cat', 'head', 'tail', 'less', 'more', 'wc',
-                                'stat', 'file', 'strings', 'jq', 'awk', 'cut',
-                                'sort', 'uniq', 'tr'})
-BASH_LIST_COMMANDS = frozenset({'ls', 'tree', 'du'})
-BASH_NEUTRAL_COMMANDS = frozenset({'echo', 'printf', 'true', 'false', ':'})
 MEMORY_FILE_NAME = 'AGENTS.md'
 
 

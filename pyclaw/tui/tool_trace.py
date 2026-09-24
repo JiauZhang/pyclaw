@@ -8,9 +8,9 @@ from textual.widgets import Static
 from pyclaw.tui.formatting import _format_count, duration
 from pyclaw.tui.readout import _agent_tokens
 from pyclaw.tui.theme import DONE_TEXT, RECENT_ACTIVITIES, STOPPED_TEXT
-from pyclaw.tui.toolcard import (_collapsible_kinds, _hidden_card, _read_key,
-                                 _tool_label, _tool_use_args, _tool_uses,
-                                 agent_group_label, recent_rollup)
+from pyclaw.tui.toolcard import _tool_uses, agent_group_label, recent_rollup
+from pyclaw.tui.toolui import (collapse_kinds, hidden_card, read_key,
+                               tool_args, tool_label)
 from pyclaw.tui.widgets import (_AgentGroupBlock, _Conv, _GroupBlock,
                                 _ToolBlock, teammate_name)
 
@@ -21,9 +21,9 @@ class ToolTraceMixin:
     def _note_tool(self, name: str, data: dict):
         state = self._state(name)
         tool = str(data.get('tool', 'tool'))
-        args = _tool_use_args(tool, data.get('input', ''), self._cwd())
-        state['last_tool'] = f"{_tool_label(tool, data.get('input'))}: {args}"
-        recent = state['recent'] + [_collapsible_kinds(tool, data.get('input'))]
+        args = tool_args(tool, data.get('input', ''), self._cwd())
+        state['last_tool'] = f"{tool_label(tool, data.get('input'))}: {args}"
+        recent = state['recent'] + [collapse_kinds(tool, data.get('input'))]
         state['recent'] = recent[-RECENT_ACTIVITIES:]
     def _spawn_block(self, name: str):
         uid = self._spawns.get(name)
@@ -144,18 +144,18 @@ class ToolTraceMixin:
             return await self._mount_spawn(uid, raw_input)
         block = _ToolBlock(name, raw_input, cwd=self._cwd())
         self._tools[uid] = block
-        if _hidden_card(name, raw_input):
+        if hidden_card(name, raw_input):
             self._reset_tool_group()
             block.display = False
             await self._conv().mount(block)
             return
-        kinds = _collapsible_kinds(name, raw_input)
+        kinds = collapse_kinds(name, raw_input)
         if kinds:
             if self._group is None:
                 self._group = _GroupBlock()
                 self._group._frame = self._spin_char()
                 await self._conv().mount(self._group)
-            self._group.add(kinds, _read_key(name, raw_input), uid)
+            self._group.add(kinds, read_key(name, raw_input), uid)
             self._discard_think()
             await self._after_mount()
             return

@@ -4,6 +4,8 @@ import difflib
 
 from chatchat.tool import ToolResult, tool
 
+from pyclaw.tui.toolui import build_tool_ui, is_memory_path, path_args, register
+
 from .paths import relative, resolve
 
 
@@ -170,3 +172,18 @@ def _replace(context, file_path: str, pairs) -> str:
         text=(f'Saved {rel}.\n\n'
               + _diff(rel, text, working)),
         meta={'path': rel, 'num_added': added, 'num_removed': removed})
+
+
+def _write_args(name, tool_input, cwd):
+    return path_args(tool_input, cwd)
+
+
+def _write_kinds(name, tool_input):
+    data = tool_input if isinstance(tool_input, dict) else {}
+    raw = data.get('file_path') or data.get('path') or ''
+    return {'memory_write'} if is_memory_path(raw) else set()
+
+
+register('Write', build_tool_ui(args=_write_args, kinds=_write_kinds))
+register('Edit', build_tool_ui(args=_write_args, kinds=_write_kinds))
+register('MultiEdit', build_tool_ui(args=_write_args, kinds=_write_kinds))

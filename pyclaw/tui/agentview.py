@@ -6,7 +6,7 @@ from pyclaw.tui.formatting import _summarize, _teammate_blocks, _user_markup
 from pyclaw.tui.theme import (BULLET, BULLET_PREFIX, POINTER, PREVIEW_CHARS,
                               PREVIEW_LINES, RESULT_PREFIX,
                               TEAMMATE_VIEW_HINT)
-from pyclaw.tui.toolcard import _tool_label, _tool_use_args
+from pyclaw.tui.toolui import tool_args, tool_label
 
 
 def agent_prompt(agent) -> str:
@@ -22,8 +22,8 @@ def agent_prompt(agent) -> str:
 def tool_line(block: dict, cwd: str) -> str:
     name = str(block.get('name', 'tool'))
     tool_input = block.get('input', '')
-    args = _tool_use_args(name, tool_input, cwd)
-    label = escape(_tool_label(name, tool_input))
+    args = tool_args(name, tool_input, cwd)
+    label = escape(tool_label(name, tool_input))
     return f"{BULLET} [bold]{label}[/]({escape(args)})"
 
 
@@ -87,7 +87,7 @@ def agent_preview(agent, *, cwd: str) -> list[str]:
                 continue
             if block.get('type') == 'tool_use':
                 name = str(block.get('name', 'tool'))
-                args = _tool_use_args(name, block.get('input'), cwd)
+                args = tool_args(name, block.get('input'), cwd)
                 lines.append(_summarize(args or f"Using {name}",
                                         PREVIEW_CHARS))
             elif block.get('type') == 'text':

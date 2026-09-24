@@ -12,7 +12,7 @@ from pyclaw.tools.coding.permission import BASH_TOOL, PermissionChoice
 from pyclaw.tui.theme import (ACCEPT_FEEDBACK_HINT, ANSWER_HINT, BULLET,
                               OPTION_PAGE_SIZE, POINTER,
                               REJECT_FEEDBACK_HINT, RULE_FEEDBACK_HINT)
-from pyclaw.tui.toolcard import _display_name, _tool_use_args
+from pyclaw.tui.toolui import tool_args, tool_label
 
 
 NO_ANSWER = 'no answer'
@@ -130,9 +130,9 @@ class _PermissionPrompt(Vertical):
         title = "[bold]Tool use[/bold]"
         if self._agent:
             title += f" [dim]\u00b7 @{escape(self._agent)}[/]"
-        args = _tool_use_args(self._tool, self._input, self._cwd)
+        args = tool_args(self._tool, self._input, self._cwd)
         lines = [f"[#B1B9F9]{BULLET}[/] {title}",
-                 f"  {escape(_display_name(self._tool))}({escape(args)})"]
+                 f"  {escape(tool_label(self._tool, {}))}({escape(args)})"]
         intent = ''
         if isinstance(self._input, dict):
             intent = str(self._input.get('description') or '').strip()

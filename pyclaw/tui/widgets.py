@@ -14,9 +14,9 @@ from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
                               INTERRUPTED_TEXT,
                               RESULT_HANG, RESULT_PREFIX, TREE_INDENT,
                               WAITING_PERMISSION_TEXT)
-from pyclaw.tui.toolcard import (_more_tool_uses, _result_summary, _tool_label,
-                                 _tool_use_args, agent_group_header,
+from pyclaw.tui.toolcard import (_more_tool_uses, agent_group_header,
                                  agent_group_row, group_text)
+from pyclaw.tui.toolui import result_summary, tool_args, tool_label
 
 
 class _Conv(VerticalScroll):
@@ -453,8 +453,8 @@ class _ToolBlock(Static):
         return (self._meta or {}).get('agent_summary')
 
     def _head(self) -> str:
-        name = escape(_tool_label(self._name, self._input))
-        args = escape(_tool_use_args(self._name, self._input, self._cwd))
+        name = escape(tool_label(self._name, self._input))
+        args = escape(tool_args(self._name, self._input, self._cwd))
         color = "#FF6B80" if self._failed else (
             "#4EBA65" if self._done else self.app.brand)
         marker = BULLET if (self._done or self._failed) else self._frame
@@ -494,7 +494,7 @@ class _ToolBlock(Static):
             return
         summary = self._meta_summary()
         if summary is None:
-            summary = _result_summary(self._name, self._output,
+            summary = result_summary(self._name, self._output,
                                       self._width())
         if self._meta_summary() is not None:
             self.remove_class("diff")

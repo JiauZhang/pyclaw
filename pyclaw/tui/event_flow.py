@@ -13,7 +13,8 @@ from chatchat.hooks.events import (AGENT_PROGRESS, AGENT_REASON_START,
 from pyclaw.agents import append_conv
 from pyclaw.tui.formatting import _content_text, _log_data, _summarize
 from pyclaw.tui.theme import RECENT_ACTIVITIES, RESULT_PREFIX
-from pyclaw.tui.toolcard import _agent_progress_rows, _collapsible_kinds
+from pyclaw.tui.toolcard import _agent_progress_rows
+from pyclaw.tui.toolui import collapse_kinds
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +161,7 @@ class EventRouterMixin:
                     if isinstance(b, dict) and b.get('type') == 'tool_use':
                         tool = str(b.get('name', 'tool'))
                         st['tool_names'][b.get('id', '')] = tool
-                        recent = st['recent'] + [_collapsible_kinds(
+                        recent = st['recent'] + [collapse_kinds(
                             tool, b.get('input'))]
                         st['recent'] = recent[-RECENT_ACTIVITIES:]
             block = self._spawn_block(name)
