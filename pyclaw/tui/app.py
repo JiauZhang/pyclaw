@@ -21,21 +21,22 @@ from chatchat.hooks.events import (AGENT_PROGRESS, AGENT_REASON_START,
 from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.agents import Session, append_conv
 from pyclaw.spinner_verbs import SPINNER_VERBS
-from pyclaw.tools.coding import background, next_mode
+from pyclaw.tools.coding import next_mode
 from pyclaw.tools.coding.permission import PermissionChoice
 
 from pyclaw import events, notify
 from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
-from pyclaw.tui.formatting import (_content_text, _format_count, _plural, _summarize, duration)
+from pyclaw.tui.formatting import _content_text, _plural, _summarize, duration
 from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
 from pyclaw.tui.agent_view import RosterMixin
 from pyclaw.tui.tool_trace import ToolTraceMixin
 from pyclaw.tui.status_line import StatusMixin
+from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
-from pyclaw.tui.plan import plan_lines, recent_completions
+from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
-from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_GLYPH, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL)
-from pyclaw.tui.toolcard import (_agent_progress_rows, _collapsible_kinds, _tool_uses, recent_rollup)
+from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT, NON_MODAL_OVERLAYS, OVERLAY_GATED_ACTIONS, POINTER, RECENT_ACTIVITIES, RESULT_PREFIX, SPINNER_FRAMES, SPINNER_INTERVAL)
+from pyclaw.tui.toolcard import _agent_progress_rows, _collapsible_kinds
 from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv, _GroupBlock, _JumpToBottom, _LogoBlock, _PagerScroll, _PromptInput, _TextBlock, _ToolBlock, _UserBlock, _half_page)
 
 logger = logging.getLogger(__name__)
@@ -55,8 +56,8 @@ def _agent_alive(agent) -> bool:
         return True
     return bool(flag)
 
-class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin,
-              PromptMixin, App[None]):
+class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
+              TaskPanelMixin, App[None]):
     TITLE = "PyClaw"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
@@ -626,15 +627,6 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin,
         self._conv().remove_children()
         await self._render_history()
 
-    def _task_rows(self) -> list:
-        return self._session.task_rows()
-
-    async def _stop_task_row(self, row: dict) -> str:
-        note = await self._session.stop_task(row)
-        logger.info("stopped background task %s: %s", row.get('id'), note)
-        await self._refresh_agents()
-        return note
-
     async def _append_note(self, text: str):
         await self._append_block(escape(text))
 
@@ -1033,104 +1025,6 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin,
                 and len(self._team.transcript()) > self._turn_start:
             await self._append_block(escape(out))
         self._render_status()
-
-    def _tasks_hint(self) -> str:
-        if not self._teammates():
-            return ''
-        if self._expanded_view == 'none':
-            action = 'shows the task list'
-        elif self._expanded_view == 'tasks':
-            action = 'shows the teammate tree'
-        else:
-            action = 'hides them'
-        return f"[dim]ctrl+t {action}[/]"
-
-    def _render_tasks(self):
-        if self._team is None:
-            return
-        lines = plan_lines(self._plan(), columns=self.screen.size.width
-                           or self.size.width,
-                           rows=self.screen.size.height or self.size.height,
-                           brand=self.brand,
-                           colors={str(getattr(a, 'name', '')):
-                                   self._agent_color(str(getattr(a, 'name', '')))
-                                   for a in self._teammates()},
-                           activity=self._plan_activity(),
-                           alive={str(getattr(a, 'name', ''))
-                                  for a in self._teammates()},
-                           recent=recent_completions(self._plan(),
-                                                     self._task_seen,
-                                                     time.monotonic()))
-        if lines:
-            lines += ['']
-        lines += ["[bold]Agents[/bold]"]
-
-        def walk(agent_id, prefix, is_last):
-            a = self._team.agents.get(agent_id)
-            if a is None:
-                return
-            st = self._agent_state.get(a.name, {})
-            marker = "\u2514\u2500" if is_last else "\u251c\u2500"
-            status = ("working\u2026" if st.get("think")
-                      else ("busy" if st.get("busy") else "idle"))
-            lines.append(f"{prefix}{marker} {escape(a.name)} \u00b7 "
-                         f"{_tool_uses(st.get('tools', 0))} ({status})")
-            kids = sorted(self._team.children.get(agent_id, ()))
-            sub = prefix + ("   " if is_last else "\u2502  ")
-            for i, k in enumerate(kids):
-                walk(k, sub, i == len(kids) - 1)
-
-        walk(self._team.lead.agent_id, "", True)
-        if self._subagents:
-            lines.append("")
-            lines.append("[bold]Sub-agents[/bold]")
-            subs = list(self._subagents.items())
-            for i, (name, st) in enumerate(subs):
-                is_last = i == len(subs) - 1
-                tc = "\u2514\u2500" if is_last else "\u251c\u2500"
-                tokens = (f" \u00b7 {_format_count(st['tokens'])} tokens"
-                          if st['tokens'] is not None else "")
-                status = ("Done" if st['done']
-                          else (recent_rollup(st['recent'])
-                                or st['last_tool'] or "Initializing\u2026"))
-                stat_pre = "   " if is_last else "\u2502  "
-                label = escape(str(st['type'])) or "Agent"
-                lines.append(f"{tc} [bold]{label}[/] \u00b7 "
-                             f"{_tool_uses(st['tools'])}{tokens}")
-                lines.append(f"{stat_pre}{RESULT_GLYPH}  {escape(status)}")
-        shells = background.snapshot()
-        if shells:
-            lines.append("")
-            lines.append(f"[bold]Background shells[/bold] {len(shells)}")
-            for row in shells:
-                state = (f"exited {row['exit']}" if row['exit'] is not None
-                         else f"running {duration(row['seconds'])}")
-                lines.append(f"  {escape(str(row['id']))} \u00b7 "
-                             f"{escape(_summarize(row['command'], 60))} "
-                             f"\u00b7 {state}")
-        lines.append("")
-        lines.append(f"[bold]Tools[/bold] {len(self._session.available_tools)}")
-        lines += [f"  {escape(str(t['name']))}"
-                  for t in self._team.tool_schemas(self._team.tool_context)[:40]]
-        self._tasks_pane.update("\n".join(lines))
-
-    async def action_toggle_tasks(self):
-        teammates = bool(self._teammates())
-        view = self._expanded_view
-        if teammates:
-            order = {'none': 'tasks', 'tasks': 'teammates'}
-            nxt = order.get(view, 'none')
-        else:
-            nxt = 'none' if view == 'tasks' else 'tasks'
-        self._expanded_view = nxt
-        if nxt != 'teammates':
-            self._view_selection = 'none'
-            self._selected_index = -1
-        pane = self.query_one("#tasks", VerticalScroll)
-        pane.display = nxt == 'tasks'
-        if nxt == 'tasks':
-            self._render_tasks()
-        await self._refresh_agents()
 
     def action_redraw(self):
         self.refresh()
