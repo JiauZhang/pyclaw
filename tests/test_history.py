@@ -6,11 +6,13 @@ from chatchat.client import MockClient
 from chatchat.team import Team
 
 from pyclaw import __main__, agents
+from pyclaw import session_store
+from pyclaw.session_store import load_entries, load_transcript, save_transcript, transcript_path
 
 
 @pytest.fixture(autouse=True)
 def _logs_under_tmp(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
 
 async def _answer(messages, tools=None, *, stream_cb=None):
@@ -26,42 +28,42 @@ def _session(handler, session_id):
 def test_transcript_roundtrip():
     messages = [{"role": "user", "content": "hi"},
                 {"role": "assistant", "content": "ok"}]
-    agents.save_transcript("s1", messages)
-    assert agents.load_transcript("s1") == messages
-    assert agents.load_transcript("missing") == []
+    session_store.save_transcript("s1", messages)
+    assert session_store.load_transcript("s1") == messages
+    assert session_store.load_transcript("missing") == []
 
 
 def test_transcript_skips_broken_lines():
-    path = agents.transcript_path("s1")
+    path = session_store.transcript_path("s1")
     path.write_text('{"role": "user", "content": "a"}\nnot json\n\n',
                     encoding="utf-8")
-    assert agents.load_transcript("s1") == [{"role": "user", "content": "a"}]
+    assert session_store.load_transcript("s1") == [{"role": "user", "content": "a"}]
 
 
 def test_transcript_appends_and_chains_uuids():
     first = [{"role": "user", "content": "a"},
              {"role": "assistant", "content": "b"}]
-    agents.save_transcript("s1", first)
-    path = agents.transcript_path("s1")
+    session_store.save_transcript("s1", first)
+    path = session_store.transcript_path("s1")
     size_after_first = path.stat().st_size
 
-    agents.save_transcript("s1", first + [{"role": "user", "content": "c"}])
-    entries = agents.load_entries("s1")
+    session_store.save_transcript("s1", first + [{"role": "user", "content": "c"}])
+    entries = session_store.load_entries("s1")
     assert [e["content"] for e in entries] == ["a", "b", "c"]
     assert entries[0]["parentUuid"] is None
     assert entries[1]["parentUuid"] == entries[0]["uuid"]
     assert entries[2]["parentUuid"] == entries[1]["uuid"]
     assert path.stat().st_size > size_after_first
 
-    agents.save_transcript("s1", first + [{"role": "user", "content": "c"}])
-    assert len(agents.load_entries("s1")) == 3
+    session_store.save_transcript("s1", first + [{"role": "user", "content": "c"}])
+    assert len(session_store.load_entries("s1")) == 3
 
 
 def test_transcript_rewrites_when_history_is_compacted():
-    agents.save_transcript("s1", [{"role": "user", "content": "a"},
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"},
                                   {"role": "assistant", "content": "b"}])
-    agents.save_transcript("s1", [{"role": "user", "content": "summary"}])
-    entries = agents.load_entries("s1")
+    session_store.save_transcript("s1", [{"role": "user", "content": "summary"}])
+    entries = session_store.load_entries("s1")
     assert [e["content"] for e in entries] == ["summary"]
     assert entries[0]["parentUuid"] is None
 
@@ -135,11 +137,11 @@ def test_clear_rotates_session_id_and_keeps_the_old_transcript():
         session = _session(_answer, "s1")
         await session.chat("hi")
         session.save_transcript()
-        assert agents.transcript_path("s1").exists()
+        assert session_store.transcript_path("s1").exists()
 
         session.reset()
         assert session.conv_session_id != "s1"
-        assert agents.transcript_path("s1").exists()
+        assert session_store.transcript_path("s1").exists()
         assert session.transcript() == []
 
     asyncio.run(main())
@@ -147,7 +149,7 @@ def test_clear_rotates_session_id_and_keeps_the_old_transcript():
 
 def test_slash_resume_lists_and_loads_a_saved_session():
     from pyclaw import slash
-    agents.save_transcript("old", [{"role": "user", "content": "hi"},
+    session_store.save_transcript("old", [{"role": "user", "content": "hi"},
                                    {"role": "assistant", "content": "ok"}])
 
     async def main():

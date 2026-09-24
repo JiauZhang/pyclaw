@@ -10,7 +10,7 @@ from pyclaw.agent_defs import (BUILT_IN, AgentEntry, agent_count, discover,
                                list_order, load_agent_defs, model_display,
                                relative_path, remove_agent, tool_buckets,
                                validate, validate_type, write_agent)
-from pyclaw.agents import build_team
+from pyclaw.team_builder import build_team
 from pyclaw.tools.coding import CODING_TOOLS
 
 

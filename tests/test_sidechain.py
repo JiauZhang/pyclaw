@@ -5,7 +5,8 @@ from chatchat.client import MockClient
 from chatchat.team import Team
 
 from pyclaw import pyclaw_home
-from pyclaw.agents import Session, _logs_dir
+from pyclaw.agents import Session
+from pyclaw.session_store import _logs_dir
 
 
 def test_pyclaw_home_expands_a_leading_tilde(tmp_path, monkeypatch):

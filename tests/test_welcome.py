@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.content import Content
 
-from pyclaw import agents, welcome
+from pyclaw import agents, session_store, welcome
 
 
 def _markup_is_valid(lines):
@@ -19,8 +19,8 @@ def _dir_with(tmp_path, name, *files):
 
 
 def _saved_sessions(monkeypatch, sessions, transcripts):
-    monkeypatch.setattr(agents, "list_sessions", lambda: sessions)
-    monkeypatch.setattr(agents, "load_entries",
+    monkeypatch.setattr(session_store, "list_sessions", lambda: sessions)
+    monkeypatch.setattr(session_store, "load_entries",
                         lambda sid: transcripts.get(sid, []))
 
 

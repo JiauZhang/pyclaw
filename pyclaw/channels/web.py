@@ -6,7 +6,7 @@ from datetime import datetime
 
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
-from ..agents import append_conv, record_meta, session_logger
+from ..session_store import append_conv, record_meta, session_logger
 
 logger = logging.getLogger(__name__)
 

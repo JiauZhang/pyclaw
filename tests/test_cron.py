@@ -105,7 +105,7 @@ def test_the_loop_keeps_ticking_until_it_is_cancelled(tmp_path, monkeypatch):
 
 
 def test_a_built_team_schedules_into_its_own_project(tmp_path):
-    from pyclaw.agents import build_team
+    from pyclaw.team_builder import build_team
 
     async def main():
         return build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))

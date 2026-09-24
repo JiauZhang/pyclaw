@@ -6,13 +6,17 @@ import pytest
 
 from conippets import jsonl
 
-from pyclaw import agents
+from pyclaw import session_store
+from pyclaw.agents import Session as RealSession
+from pyclaw.session_store import (_session_dir, append_conv,
+                                  close_session_logger, record_meta,
+                                  resolve_session_id, session_logger)
 from pyclaw.gateway.server import run_im_interaction
 
 
 @pytest.fixture(autouse=True)
 def _logs_under_tmp(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
 
 def _read(path: Path):
@@ -24,13 +28,13 @@ def _read_json(path: Path) -> dict:
 
 
 def test_session_dir_under_logs(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path / "logs")
-    assert agents._session_dir("s1") == tmp_path / "logs" / "s1"
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path / "logs")
+    assert _session_dir("s1") == tmp_path / "logs" / "s1"
 
 
 def test_append_conv_writes_to_session_messages(tmp_path):
-    agents.append_conv("s1", "user", "hi")
-    agents.append_conv("s1", "tool", "ran", topic="tool:end", name="search")
+    session_store.append_conv("s1", "user", "hi")
+    session_store.append_conv("s1", "tool", "ran", topic="tool:end", name="search")
     data = _read(tmp_path / "s1" / "messages.jsonl")
     assert "session" not in data[0]
     assert data[0]["role"] == "user"
@@ -39,15 +43,15 @@ def test_append_conv_writes_to_session_messages(tmp_path):
 
 
 def test_append_conv_keeps_sessions_separate(tmp_path):
-    agents.append_conv("s1", "user", "first")
-    agents.append_conv("s2", "user", "second")
+    session_store.append_conv("s1", "user", "first")
+    session_store.append_conv("s2", "user", "second")
     assert len(_read(tmp_path / "s1" / "messages.jsonl")) == 1
     assert len(_read(tmp_path / "s2" / "messages.jsonl")) == 1
 
 
 def test_record_meta_creates_and_updates(tmp_path):
-    agents.record_meta("s1", {"provider": "tencent", "model": "hunyuan-lite"})
-    agents.record_meta("s1", {"message_count": 3})
+    session_store.record_meta("s1", {"provider": "tencent", "model": "hunyuan-lite"})
+    session_store.record_meta("s1", {"message_count": 3})
     meta = _read_json(tmp_path / "s1" / "meta.json")
     assert meta["session_id"] == "s1"
     assert meta["provider"] == "tencent"
@@ -57,7 +61,7 @@ def test_record_meta_creates_and_updates(tmp_path):
 
 
 def test_session_logger_writes_run_log(tmp_path):
-    log = agents.session_logger("s1")
+    log = session_store.session_logger("s1")
     log.info("agent started")
     log.error("boom")
     text = (tmp_path / "s1" / "run.log").read_text(encoding="utf-8")
@@ -66,17 +70,17 @@ def test_session_logger_writes_run_log(tmp_path):
 
 
 def test_session_logger_is_stable():
-    a = agents.session_logger("s1")
-    b = agents.session_logger("s1")
+    a = session_store.session_logger("s1")
+    b = session_store.session_logger("s1")
     assert a is b
 
 
 def test_close_session_logger_removes_and_closes(tmp_path):
-    log = agents.session_logger("s1")
+    log = session_store.session_logger("s1")
     assert log.handlers
-    agents.close_session_logger("s1")
+    session_store.close_session_logger("s1")
     assert log.handlers == []
-    rebuilt = agents.session_logger("s1")
+    rebuilt = session_store.session_logger("s1")
     assert rebuilt.handlers
     assert rebuilt is log
 
@@ -97,7 +101,7 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
             self._conv_reply = ""
 
         def _flush_conv(self):
-            agents.Session._flush_conv(self)
+            RealSession._flush_conv(self)
 
         async def chat(self, message, on_event=None):
             self._conv_reply = "final answer"
@@ -124,16 +128,16 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
 
 def test_resolve_session_id_distinct_keys_distinct_ids():
     ids = {
-        agents.resolve_session_id(["wechat", "u1"]),
-        agents.resolve_session_id(["qq", "u1"]),
-        agents.resolve_session_id(["wechat", "u2"]),
+        session_store.resolve_session_id(["wechat", "u1"]),
+        session_store.resolve_session_id(["qq", "u1"]),
+        session_store.resolve_session_id(["wechat", "u2"]),
     }
     assert len(ids) == 3
 
 
 def test_resolve_session_id_persists(tmp_path):
-    first = agents.resolve_session_id(["wechat", "u1"])
+    first = session_store.resolve_session_id(["wechat", "u1"])
     index = json.loads((tmp_path / "session_index.json").read_text(encoding="utf-8"))
     assert list(index.values()) == [first]
-    again = agents.resolve_session_id(["wechat", "u1"])
+    again = session_store.resolve_session_id(["wechat", "u1"])
     assert first == again

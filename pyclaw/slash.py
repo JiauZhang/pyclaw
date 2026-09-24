@@ -214,7 +214,7 @@ def _handle_agents(session) -> str:
 
 
 def _handle_resume(session, arg: str) -> str:
-    from pyclaw.agents import list_sessions
+    from pyclaw.session_store import list_sessions
     if not arg:
         sessions = list_sessions()
         if not sessions:

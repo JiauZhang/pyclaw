@@ -6,12 +6,13 @@ from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TEXT,
                                    AGENT_TOOL_CALL, AGENT_WARN, RuntimeEvent)
 
 from pyclaw import agents
+from pyclaw import session_store
 from pyclaw.gateway.server import _im_progress_text, run_im_interaction
 
 
 @pytest.fixture(autouse=True)
 def _logs(tmp_path, monkeypatch):
-    monkeypatch.setattr(agents, '_logs_dir', lambda: tmp_path)
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
 
 
 class _Adapter:

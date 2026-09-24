@@ -20,6 +20,8 @@ from chatchat.hooks.events import (
 )
 from chatchat.tool import ToolContext
 from pyclaw import agents, banner, config, statusline, welcome
+from pyclaw import session_store
+from pyclaw.session_store import save_transcript
 from pyclaw.tools.coding import background
 from pyclaw.tui import app as tui
 from pyclaw.tui import status_line
@@ -2201,7 +2203,7 @@ class _LogTeam(_FakeTeam):
 def test_turn_appends_conversation_log(tmp_path, monkeypatch):
     from conippets import jsonl
 
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
     async def scenario():
         async with PyClawApp(builder=lambda: _LogTeam()).run_test() as pilot:
@@ -2222,8 +2224,8 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
 
 def test_resume_renders_saved_history(tmp_path, monkeypatch):
 
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    agents.save_transcript("s1", [
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
+    session_store.save_transcript("s1", [
         {"role": "user", "content": "old question"},
         {"role": "assistant", "content": [
             {"type": "tool_use", "id": "t1", "name": "Read",
@@ -2250,8 +2252,8 @@ def test_resume_renders_saved_history(tmp_path, monkeypatch):
 
 def test_fresh_start_ignores_saved_history(tmp_path, monkeypatch):
 
-    monkeypatch.setattr(agents, "_logs_dir", lambda: tmp_path)
-    agents.save_transcript("s2", [{"role": "assistant", "content": "stale"}])
+    monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
+    session_store.save_transcript("s2", [{"role": "assistant", "content": "stale"}])
 
     async def scenario():
         async with PyClawApp(builder=_builder, session_id="s2",

@@ -16,7 +16,8 @@ __secret_file__ = str(pyclaw_home() / "chatchat.json")
 
 from .gateway import GatewayServer, GatewayConfig
 from .config import load
-from .agents import Session, build_team, IM_EXTRA
+from .agents import Session
+from .team_builder import IM_EXTRA, build_team
 from .channels import IMChannelAdapter
 
 from chatchat.hooks.events import clear_runtime_sinks

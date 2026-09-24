@@ -2,7 +2,8 @@ import argparse, asyncio, json, logging, os, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__, __pyclaw_home__
-from pyclaw.agents import build_team, Session
+from pyclaw.agents import Session
+from pyclaw.team_builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
@@ -94,7 +95,7 @@ async def start_server(args):
 
 
 def _cli_session(args):
-    from pyclaw.agents import resolve_session_id
+    from pyclaw.session_store import resolve_session_id
     key = ["cli", os.getcwd()]
     resume_id = getattr(args, "resume", None)
     if resume_id:

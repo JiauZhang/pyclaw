@@ -2,7 +2,7 @@ import asyncio
 
 from pyclaw.agent_memory import (load_instruction_files,
                                  load_project_memory)
-from pyclaw.agents import build_team
+from pyclaw.team_builder import build_team
 
 
 def _team(tmp_path):

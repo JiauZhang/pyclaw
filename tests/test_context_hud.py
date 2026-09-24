@@ -8,6 +8,7 @@ from chatchat.client import MockClient
 from chatchat.team import Team
 
 from pyclaw import agents, banner, config
+from pyclaw.team_builder import build_team
 from pyclaw.tui.readout import (CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS,
                                 context_meter, git_label, usage_hud,
                                 usage_meter)
@@ -53,7 +54,7 @@ def test_a_built_team_compacts_at_the_configured_window(monkeypatch):
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            return agents.build_team('agnes', 'agnes-2.5-flash', cwd=d)
+            return build_team('agnes', 'agnes-2.5-flash', cwd=d)
 
     team = asyncio.run(main())
     assert team.context_window == 128_000

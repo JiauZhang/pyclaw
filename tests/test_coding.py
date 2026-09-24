@@ -11,7 +11,8 @@ from chatchat.core.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import agents as agents_mod
-from pyclaw.agents import Session, build_team
+from pyclaw.agents import Session
+from pyclaw.team_builder import build_team
 from pyclaw.tools.coding import (CODING_TOOLS, PermissionController,
                                  background, next_mode, parse_mode,
                                  permission as perm, shell)
@@ -863,7 +864,8 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
         seen = []
 
         async def main():
-            from pyclaw.agents import Session, build_team
+            from pyclaw.agents import Session
+            from pyclaw.team_builder import build_team
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             team.hooks.on('PreToolUse', fn=lambda inp: seen.append(
                 inp.get('permission_mode', 'missing')) or True)

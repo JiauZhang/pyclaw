@@ -41,7 +41,7 @@ def context_percentages(used: int, size: int) -> tuple[int, int]:
 
 
 def build_payload(session) -> dict:
-    from pyclaw.agents import transcript_path
+    from pyclaw.session_store import transcript_path
     from pyclaw.version import __version__
     usage = session.usage
     window = session.context_window

@@ -1,6 +1,6 @@
 from chatchat.core.tasks import TaskList
 
-from pyclaw.agents import agent_instruction, team_instruction
+from pyclaw.team_builder import agent_instruction, team_instruction
 
 from pyclaw.tui.plan import (next_pending, next_task_line, plan_lines,
                              recent_completions)
