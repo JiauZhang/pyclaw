@@ -4127,7 +4127,7 @@ def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
                 raise ValueError("kaboom")
 
             app._render_tasks = boom
-            with caplog.at_level(logging.ERROR, logger="pyclaw.tui.app"):
+            with caplog.at_level(logging.ERROR, logger="pyclaw.tui"):
                 app._queue.put_nowait(RuntimeEvent(
                     AGENT_TEXT, agent="lead", data={"delta": "hi"}))
                 for _ in range(10):
@@ -4135,7 +4135,7 @@ def test_render_failure_is_logged_with_the_event_and_a_traceback(caplog):
                     await asyncio.sleep(0.02)
             assert app._render_tasks is boom
     asyncio.run(scenario())
-    records = [r for r in caplog.records if r.name == "pyclaw.tui.app"]
+    records = [r for r in caplog.records if r.name.startswith("pyclaw.tui")]
     assert any("render failed" in r.getMessage() for r in records)
     failed = [r for r in records if "render failed" in r.getMessage()]
     assert "agent.text" in failed[0].getMessage()
@@ -4149,12 +4149,12 @@ def test_every_runtime_event_is_logged_for_postmortem(caplog):
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            with caplog.at_level(logging.DEBUG, logger="pyclaw.tui.app"):
+            with caplog.at_level(logging.DEBUG, logger="pyclaw.tui"):
                 await app._handle(RuntimeEvent(
                     AGENT_TEXT, agent="worker", data={"delta": "hidden"}))
     asyncio.run(scenario())
     assert any("agent.text" in r.getMessage() and "worker" in r.getMessage()
-               for r in caplog.records if r.name == "pyclaw.tui.app")
+               for r in caplog.records if r.name.startswith("pyclaw.tui"))
 
 
 def test_subagent_spawn_and_finish_are_logged(caplog):
@@ -4163,7 +4163,7 @@ def test_subagent_spawn_and_finish_are_logged(caplog):
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            with caplog.at_level(logging.INFO, logger="pyclaw.tui.app"):
+            with caplog.at_level(logging.INFO, logger="pyclaw.tui"):
                 await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
                     "prompt": "go", "subagent_type": "Explore",
                     "tool_use_id": "a9", "started_at": 0.0}))
@@ -4171,7 +4171,7 @@ def test_subagent_spawn_and_finish_are_logged(caplog):
                 await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1",
                                                data={"done": True}))
     asyncio.run(scenario())
-    messages = [r.getMessage() for r in caplog.records if r.name == "pyclaw.tui.app"]
+    messages = [r.getMessage() for r in caplog.records if r.name.startswith("pyclaw.tui")]
     assert any("sub-agent sub-1 started" in m for m in messages)
     assert any("sub-agent sub-1 finished" in m for m in messages)
 
