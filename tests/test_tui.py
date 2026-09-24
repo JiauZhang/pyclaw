@@ -5146,6 +5146,67 @@ def test_the_run_writes_what_happened_into_a_local_event_stream(tmp_path,
     assert stream.turn_facts()['turns'] >= 1
 
 
+def test_the_terminal_title_marks_the_working_turn(monkeypatch):
+    sent = []
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            monkeypatch.setattr(type(app), '_terminal',
+                                lambda self, sequence: sent.append(sequence))
+            await _submit_and_wait(pilot, "hello there", 3)
+            return list(sent)
+
+    written = asyncio.run(scenario())
+    assert any('working' in row for row in written)
+    assert written[-1].endswith('\x07') and 'working' not in written[-1]
+
+
+def test_a_finished_turn_notifies_only_once_you_have_looked_away(monkeypatch):
+    import time
+
+    sent = []
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            monkeypatch.setattr(type(app), '_terminal',
+                                lambda self, sequence: sent.append(sequence))
+            app._notify_backend = 'iterm2'
+            app._notify_after = 0.0
+            await _submit_and_wait(pilot, "hello there", 4)
+            notified = [row for row in sent if ']9;' in row]
+            await pilot.press("x")
+            sent.clear()
+            app._notify_after = 3600.0
+            await _submit_and_wait(pilot, "again", 4)
+            return notified, [row for row in sent if ']9;' in row]
+
+    fired, later = asyncio.run(scenario())
+    assert len(fired) == 1
+    assert 'answer' in fired[0] or 'waiting' in fired[0]
+    assert later == []
+
+
+def test_a_disabled_backend_sends_nothing(monkeypatch):
+    sent = []
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            monkeypatch.setattr(type(app), '_terminal',
+                                lambda self, sequence: sent.append(sequence))
+            app._notify_backend = 'disabled'
+            app._notify_after = 0.0
+            await _submit_and_wait(pilot, "hello there", 4)
+            return [row for row in sent if ']9;' in row or row.endswith('\x07\x07')]
+
+    assert asyncio.run(scenario()) == []
+
+
 def test_a_crash_is_written_down_before_the_app_goes(tmp_path, monkeypatch):
     import json
 

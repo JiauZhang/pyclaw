@@ -22,6 +22,7 @@ def load() -> dict:
         "banner": {"style": "random", "from": "#0084E4", "to": "#F0CC00",
                    "angle": 60.0, "seed": None},
         "welcome": {"seen": 0, "lastVersion": ""},
+        "notifications": {"backend": "auto", "idleSeconds": 60},
         "pricing": {},
     }
     if __config_file__.exists():

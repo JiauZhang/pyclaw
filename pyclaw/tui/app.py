@@ -26,7 +26,7 @@ from pyclaw.slash import suggest as slash_suggest
 from pyclaw.tools.coding import background, next_mode
 from pyclaw.tools.coding.permission import PermissionChoice
 
-from pyclaw import events
+from pyclaw import events, notify
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.agentview import agent_view_markup
 from pyclaw.tui.approval import _Approval, _PermissionPrompt, _QuestionPrompt
@@ -268,6 +268,11 @@ class PyClawApp(App[None]):
         self._agent_state: dict[str, dict] = {}
         self._known_teammates: dict[str, object] = {}
         self._lingering: dict[str, tuple] = {}
+        setting = config.load().get('notifications') or {}
+        self._notify_backend = str(setting.get('backend') or 'auto')
+        self._notify_after = float(setting.get('idleSeconds', 60))
+        self._last_interaction = time.monotonic()
+        self._last_notified = 0.0
         self._linger_task: asyncio.Task | None = None
         self._cron_task: asyncio.Task | None = None
         self._cron_lock = None
@@ -1201,6 +1206,8 @@ class PyClawApp(App[None]):
             self._work_block = await self._append_block(text)
         else:
             self._work_block.update(text)
+        self._set_title(False)
+        self._note_finished()
         await self._refresh_git()
         self._render_readouts()
 
@@ -1748,7 +1755,32 @@ class PyClawApp(App[None]):
             await self._append_block(
                 f"[#9A9A9A]{INTERRUPTED_TEXT}[/]")
 
+    def _terminal(self, sequence: str) -> None:
+        driver = self._driver
+        if driver is not None and not self.is_headless:
+            driver.write(sequence)
+
+    def _title(self, working: bool) -> str:
+        brand = self.brand if isinstance(self.brand, str) else 'PyClaw'
+        return f'{brand} \u00b7 working' if working else brand
+
+    def _set_title(self, working: bool) -> None:
+        notify.set_title(self._terminal, self._title(working))
+
+    def _note_finished(self) -> None:
+        idle = time.monotonic() - self._last_interaction
+        if idle < self._notify_after:
+            return
+        body = notify.message(self._live_text, len(self._tools))
+        self._last_notified = time.monotonic()
+        notify.notify(self._terminal, title=self._title(False), body=body,
+                      backend=self._notify_backend)
+
+    async def on_key(self, event) -> None:
+        self._last_interaction = time.monotonic()
+
     def _begin_turn(self):
+        self._set_title(True)
         self._live = None
         self._live_text = ""
         self._turn_usage = _agent_tokens(self._team.lead)
