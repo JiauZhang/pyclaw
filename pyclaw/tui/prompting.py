@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+import logging
+
+from rich.markup import escape
+from textual.widgets import Input, Static
+
+from pyclaw.slash import handle_slash, suggest as slash_suggest
+from pyclaw.tui.agents_panel import AgentsScreen
+from pyclaw.tui.formatting import _direct_message
+from pyclaw.tui.screens import (DiffScreen, PermissionsScreen, RewindScreen,
+                                TasksScreen)
+from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
+                                _suggest_label)
+
+logger = logging.getLogger(__name__)
+
+
+class PromptMixin:
+    async def on_input_submitted(self, event: Input.Submitted):
+        text = event.value.strip()
+        self._history_index = None
+        if text and (not self._history or self._history[-1] != text):
+            self._history.append(text)
+        if self._view_selection == 'selecting-agent':
+            await self._confirm_selection()
+            return
+        if self._viewing is not None and text and not text.startswith('/'):
+            agent = self._agent_by_name(self._viewing)
+            if agent is not None:
+                self.query_one("#input", Input).value = ""
+                agent.submit(text)
+                await self._render_agent_view()
+                self._render_status()
+                return
+        direct = None if self._viewing is not None else _direct_message(text)
+        if direct is not None:
+            target = self._agent_by_name(direct[0])
+            if target is not None:
+                self.query_one("#input", Input).value = ""
+                await self._send_direct(target, direct[1])
+                return
+        if text == '/permissions':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            self.push_screen(PermissionsScreen(self._session))
+            return
+        if text == '/rewind':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            if self._processing:
+                await self._append_block(escape(
+                    'PyClaw is still working. Press esc to stop it first, '
+                    'then rewind.'))
+                return
+            if not self._session.turns():
+                await self._append_block(escape(
+                    'PyClaw has not recorded any turn to go back to.'))
+                return
+            self.push_screen(RewindScreen(self))
+            return
+        if text == '/diff':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            view = self._session.diff()
+            if not view['files']:
+                await self._append_block(escape(view['text']))
+                return
+            self.push_screen(DiffScreen(view))
+            return
+        if text in ('/tasks', '/bashes'):
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            if not self._task_rows():
+                await self._append_block(escape(
+                    'No background tasks are running.'))
+                return
+            self.push_screen(TasksScreen(self))
+            return
+        if text == '/agents':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            self.push_screen(AgentsScreen(self._session))
+            return
+        if self._suggest_items:
+            item = self._suggest_items[min(self._suggest_selected,
+                                           len(self._suggest_items) - 1)]
+            if self._typeahead == 'at':
+                inp = self.query_one("#input", Input)
+                inp.value = _apply_at(inp.value, item['name'],
+                                      item.get('dir', False))
+                inp.cursor_position = len(inp.value)
+                return
+            if item.get('hint'):
+                inp = self.query_one("#input", Input)
+                inp.value = f"/{item['name']} "
+                inp.cursor_position = len(inp.value)
+                self._suggest_items = []
+                self._show_suggest_widget(False)
+                return
+            if item['name'].startswith(text[1:].strip().lower()):
+                text = f"/{item['name']}"
+        self.query_one("#input", Input).value = ""
+        if not text:
+            return
+        if text.startswith("/"):
+            from pyclaw.slash import handle_slash
+
+            reply = await handle_slash(text, self._session,
+                                       terminal=self._terminal)
+            await self._append_user(text)
+            follow = None
+            if isinstance(reply, tuple):
+                reply, follow = reply
+            if reply:
+                await self._append_block(escape(reply))
+            self._render_status()
+            await self._render_queued()
+            if follow:
+                self._pending_inputs.put_nowait(follow)
+            return
+        self._pending_inputs.put_nowait(text)
+        self._render_status()
+        await self._render_queued()
+    def on_input_changed(self, event: Input.Changed) -> None:
+        value = event.value
+        self._render_status()
+        if value == '?':
+            self.query_one("#input", Input).value = ""
+            self.action_toggle_help()
+            return
+        items = []
+        kind = None
+        if value.startswith('/'):
+            items = slash_suggest(value)
+            kind = 'slash'
+        else:
+            token = _at_token(value[:event.input.cursor_position])
+            if token is not None:
+                items = _file_suggest(self._cwd(), token)
+                kind = 'at'
+        if not items or self._suggest_dismissed == value:
+            self._suggest_items = []
+            self._typeahead = None
+            self._show_suggest_widget(False)
+            return
+        self._suggest_dismissed = None
+        self._suggest_items = items
+        self._typeahead = kind
+        self._suggest_selected = 0
+        self._show_suggest_widget(True)
+    def _show_suggest_widget(self, show: bool):
+        if show:
+            self.register_overlay('autocomplete')
+        else:
+            self.unregister_overlay('autocomplete')
+        try:
+            self.query_one('#suggest', Static).display = show
+        except Exception:
+            pass
+        if show:
+            self._render_suggestions()
+    def _render_suggestions(self):
+        try:
+            widget = self.query_one('#suggest', Static)
+        except Exception:
+            return
+        items = self._suggest_items
+        start = max(0, min(self._suggest_selected - 2, len(items) - 6))
+        window = items[start:start + 6]
+        labels = [_suggest_label(i) for i in window]
+        width = max((len(l) for l in labels), default=0)
+        lines = []
+        for i, item in enumerate(window):
+            index = start + i
+            desc = item.get('desc', '')
+            row = escape(labels[i].ljust(width) + (f"  {desc}" if desc else ''))
+            lines.append(f"[#B1B9F9]{row}[/]" if index == self._suggest_selected
+                         else f"[dim]{row}[/]")
+        widget.update('\n'.join(lines))
+    def action_prompt_prev(self):
+        if self._suggest_items:
+            self.action_suggest_prev()
+            return
+        self._history_step(-1)
+    def action_prompt_next(self):
+        if self._suggest_items:
+            self.action_suggest_next()
+            return
+        self._history_step(1)
+    def _history_step(self, delta: int):
+        if not self._history:
+            return
+        inp = self.query_one("#input", Input)
+        if self._history_index is None:
+            if delta > 0:
+                return
+            self._draft = inp.value
+            self._history_index = len(self._history)
+        index = min(max(0, self._history_index + delta), len(self._history))
+        self._history_index = index
+        inp.value = (self._draft if index == len(self._history)
+                     else self._history[index])
+        inp.cursor_position = len(inp.value)
+    def action_suggest_next(self):
+        if self._suggest_items:
+            self._suggest_selected = ((self._suggest_selected + 1)
+                                      % len(self._suggest_items))
+            self._render_suggestions()
+    def action_suggest_prev(self):
+        if self._suggest_items:
+            self._suggest_selected = ((self._suggest_selected - 1)
+                                      % len(self._suggest_items))
+            self._render_suggestions()
+    def action_suggest_tab(self):
+        if not self._suggest_items:
+            return
+        item = self._suggest_items[self._suggest_selected]
+        inp = self.query_one("#input", Input)
+        if self._typeahead == 'at':
+            inp.value = _apply_at(inp.value, item['name'],
+                                  item.get('dir', False))
+            inp.cursor_position = len(inp.value)
+            return
+        inp.value = f"/{item['name']} "
+        inp.cursor_position = len(inp.value)
+    def action_suggest_dismiss(self):
+        self._suggest_dismissed = self.query_one("#input", Input).value
+        self._suggest_items = []
+        self._typeahead = None
+        self._show_suggest_widget(False)
