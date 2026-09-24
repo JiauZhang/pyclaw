@@ -608,3 +608,93 @@ def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
     out = asyncio.run(_call('/status', session, session_key='k1'))
 
     assert 'thinking adaptive' in out and 'effort medium' in out
+
+
+def _history(monkeypatch, tmp_path, rows):
+    import json
+    from datetime import date, timedelta
+
+    from pyclaw import usage_history
+
+    home = tmp_path / 'usage'
+    home.mkdir(exist_ok=True)
+    today = date.today()
+    monkeypatch.setattr(usage_history, '_directory', lambda: home)
+    for row in rows:
+        day = row['day']
+        path = home / f'{day}.jsonl'
+        with path.open('a', encoding='utf-8') as handle:
+            handle.write(json.dumps(row) + '\n')
+    return today
+
+
+def _row(day, **kw):
+    from chatchat.core.metrics import Metrics
+
+    base = {'at': f'{day}T09:00:00', 'day': day, 'session': 's1',
+            'provider': 'agnes', 'model': 'm', 'input': 1000, 'output': 200,
+            'cached': 400, 'turns': 1,
+            'metrics': Metrics().as_dict()}
+    if 'metrics' in kw:
+        base['metrics'] = {**base['metrics'], **kw.pop('metrics')}
+    row = {**base, **kw}
+    row['total'] = row['input'] + row['output']
+    return row
+
+
+def test_usage_reports_the_measured_numbers_for_one_day(monkeypatch, tmp_path):
+    from datetime import date
+
+    today = date.today().isoformat()
+    _history(monkeypatch, tmp_path,
+             [_row(today, metrics={'tool_calls': 3}),
+              _row(today, input=500, output=50,
+                   metrics={'tool_calls': 2, 'api_ms': 1500,
+                            'lines_added': 7, 'denials': 1})])
+
+    out = plain(asyncio.run(_call('/usage', _fake_session())))
+
+    assert '2 turns' in out
+    assert '1.8k' in out
+    assert '5 tool calls' in out
+    assert '1.5s' in out
+    assert '7 lines added' in out
+    assert '1 refused' in out
+
+
+def test_usage_can_widen_to_a_week(monkeypatch, tmp_path):
+    from datetime import date, timedelta
+
+    today = date.today()
+    old = (today - timedelta(days=5)).isoformat()
+    _history(monkeypatch, tmp_path, [_row(today.isoformat()), _row(old)])
+
+    day = plain(asyncio.run(_call('/usage today', _fake_session())))
+    week = plain(asyncio.run(_call('/usage week', _fake_session())))
+
+    assert 'input: 1000' in day
+    assert 'input: 2000' in week
+
+
+def test_usage_says_so_when_nothing_has_been_recorded(monkeypatch, tmp_path):
+    _history(monkeypatch, tmp_path, [])
+
+    out = plain(asyncio.run(_call('/usage', _fake_session())))
+
+    assert 'Nothing recorded yet' in out
+
+
+def test_stats_lists_the_days_newest_first(monkeypatch, tmp_path):
+    from datetime import date, timedelta
+
+    today = date.today()
+    _history(monkeypatch, tmp_path,
+             [_row((today - timedelta(days=1)).isoformat()),
+              _row(today.isoformat(), output=900)])
+
+    out = plain(asyncio.run(_call('/stats', _fake_session())))
+
+    lines = out.splitlines()
+    assert lines[1].startswith(today.isoformat())
+    assert today.isoformat() in out and (today - timedelta(days=1)).isoformat() in out
+    assert out.index('900') < out.index('200')

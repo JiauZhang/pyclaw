@@ -31,6 +31,10 @@ COMMANDS = [
      'hint': '[low|medium|high|auto]'},
     {'name': 'cost', 'desc': 'Show token usage and cost at your configured rates',
      'hint': ''},
+    {'name': 'usage', 'desc': 'What the recorded turns cost: today or week',
+     'hint': '[today|week]'},
+    {'name': 'stats', 'desc': 'Per-day totals of the recorded work',
+     'hint': '[days]'},
     {'name': 'statusline', 'desc': "Set up PyClaw's status line",
      'hint': '[instructions]'},
 ]
@@ -331,6 +335,76 @@ REASONING_HINT = ('thinking takes off, on, adaptive, or a number of tokens; '
                   'model')
 
 
+def _history_window(arg: str) -> tuple[int, str]:
+    if str(arg or '').strip().lower() in ('day', 'today'):
+        return 1, 'today'
+    if str(arg or '').strip().lower() in ('week',):
+        return 7, 'last 7 days'
+    if str(arg or '').strip().isdigit():
+        return int(arg), f'last {arg} days'
+    return 1, 'today'
+
+
+def _history_cost(rows: list, pricing) -> float | None:
+    from pyclaw.cost import usage_cost
+
+    total = 0.0
+    priced = False
+    for row in rows:
+        cost = usage_cost(row.get('model'), row, pricing)
+        if cost is not None:
+            total += cost
+            priced = True
+    return total if priced else None
+
+
+def _ms(ms: int) -> str:
+    return f'{int(ms) / 1000:.1f}s'
+
+
+def _usage_lines(session, arg: str) -> str:
+    from pyclaw.cost import format_cost
+    from pyclaw.tui.formatting import _format_count
+    from pyclaw.usage_history import read_days, totals
+
+    days, label = _history_window(arg)
+    rows = read_days(days)
+    if not rows:
+        return f'Usage \u00b7 {label}\nNothing recorded yet.'
+    seen = totals(rows)
+    return '\n'.join([
+        f'Usage \u00b7 {label}',
+        (f'tokens {_format_count(seen["total"])} \u00b7 input: '
+         f'{seen["input"]}  output: {seen["output"]}  cache read: '
+         f'{seen["cached"]}'),
+        (f'{_count(seen["turns"], "turn")} \u00b7 '
+         f'{_count(seen["tool_calls"], "tool call")} \u00b7 '
+         f'{_ms(seen["tool_ms"])} in tools \u00b7 '
+         f'{_ms(seen["api_ms"])} with the model'),
+        (f'{seen["lines_added"]} lines added \u00b7 '
+         f'{seen["lines_removed"]} lines removed \u00b7 '
+         f'{_count(seen["hooks"], "hook run")} \u00b7 '
+         f'{_count(seen["denials"], "refused call")}'),
+        f'cost: {format_cost(_history_cost(rows, _pricing()))} at your '
+        f'configured rates'])
+
+
+def _stats_lines(arg: str) -> str:
+    from pyclaw.usage_history import by_day, read_days
+
+    days = int(arg) if str(arg or '').strip().isdigit() else 7
+    rows = read_days(days)
+    if not rows:
+        return 'Stats\nNothing recorded yet.'
+    lines = [f'Stats \u00b7 last {days} days']
+    for day, seen in by_day(rows):
+        lines.append(f'{day} \u00b7 in {seen["input"]} \u00b7 out '
+                     f'{seen["output"]} \u00b7 {seen["tool_calls"]} tool '
+                     f'calls \u00b7 {seen["api_ms"] / 1000:.1f}s with the '
+                     f'model')
+    return '\n'.join(lines)
+
+
 def _reasoning(session, mode=None, budget=None, effort=None):
     from chatchat.core.thinking import Thinking
 
@@ -544,6 +618,10 @@ async def handle_slash(text: str, session, session_key: str = '') -> str | None 
         return await _handle_effort(session, arg)
     if cmd == 'cost':
         return _handle_cost(session, arg)
+    if cmd == 'usage':
+        return _usage_lines(session, arg)
+    if cmd == 'stats':
+        return _stats_lines(arg)
     if cmd == 'context':
         return _context(session, arg)
     if cmd == 'statusline':

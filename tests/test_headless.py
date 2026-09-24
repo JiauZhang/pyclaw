@@ -50,6 +50,9 @@ class _FakeSession:
     async def chat(self, message, on_event=None):
         return "\n\nhello\n"
 
+    def record_turn(self):
+        return {'at': '', 'day': '', 'metrics': {}}
+
     async def close(self):
         pass
 
@@ -167,3 +170,20 @@ def test_the_shape_arrives_as_the_text_the_flag_carried():
     assert __main__._json_schema(args) == {'type': 'object'}
     assert __main__._json_schema(
         __main__._build_parser().parse_args(['-p', 'hi'])) is None
+
+
+def test_a_print_run_records_what_the_turn_used(monkeypatch):
+    from pyclaw import usage_history
+
+    recorded = []
+
+    class _RecordingSession(_FakeSession):
+        def record_turn(self):
+            recorded.append(self.team.name)
+            return {'at': '', 'day': ''}
+
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
+    monkeypatch.setattr(__main__, "Session", _RecordingSession)
+    asyncio.run(__main__.prompt_once("p", "m", "hi"))
+
+    assert recorded == ["t"]

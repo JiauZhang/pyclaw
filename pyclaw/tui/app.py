@@ -1544,6 +1544,7 @@ class PyClawApp(App[None]):
                 self._begin_turn()
                 await self._mount_spinner()
                 await self._converse(text)
+                self._session.record_turn()
                 await self._settle_paint()
                 self._processing = None
                 self._render_status()

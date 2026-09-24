@@ -62,6 +62,11 @@ class _FakeTeam:
     compact_threshold = 0
     auto_compact = False
 
+    def total_metrics(self):
+        from chatchat.core.metrics import Metrics
+
+        return Metrics(tool_calls=1, api_ms=120, requests=1)
+
     def last_usage(self):
         class _U:
             prompt_tokens = 0
@@ -5054,6 +5059,31 @@ def test_the_session_can_answer_a_model_question():
             return await asked
 
     assert 'Which shape?: round' in asyncio.run(scenario())
+
+
+def test_a_finished_turn_is_written_into_the_usage_history(tmp_path,
+                                                           monkeypatch):
+    from pyclaw import usage_history
+
+    home = tmp_path / 'usage'
+    monkeypatch.setattr(usage_history, '_directory', lambda: home)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _submit_and_wait(pilot, "hello there")
+            return home.glob('*.jsonl')
+
+    asyncio.run(scenario())
+    rows = [line for path in list(home.glob('*.jsonl'))
+            for line in path.read_text(encoding='utf-8').splitlines()]
+    assert len(rows) == 1
+    import json
+
+    written = json.loads(rows[0])
+    assert written['metrics']['tool_calls'] == 1
+    assert written['input'] == 1901
 
 
 def test_a_teammate_that_left_the_roster_keeps_its_row_for_a_while():

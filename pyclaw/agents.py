@@ -12,6 +12,7 @@ from conippets import jsonl
 
 from chatchat.team import Team
 from chatchat.core.cron_schedule import CronStore
+from chatchat.core.metrics import Metrics
 from chatchat.core.thinking import Thinking
 from chatchat.hooks.events import (
     AGENT_PROGRESS,
@@ -467,6 +468,7 @@ class Session:
         self.resume_from = resume_from
         self._conv_reply = ""
         self._conv_thinking = ""
+        self._seen = self._seen_zero()
         self._unreg = None
         self._bind_gen = 0
         self._gate = getattr(entity, '_pyclaw_gate', None)
@@ -693,7 +695,37 @@ class Session:
     async def end_session(self, reason: str):
         await self._team.end_session(reason)
 
+    def _seen_zero(self) -> dict:
+        return {'input': 0, 'output': 0, 'cached': 0,
+                **{name: 0 for name in Metrics().as_dict()}}
+
+    def record_turn(self) -> dict:
+        from .usage_history import record, row
+
+        usage = self._team.usage()
+        details = getattr(usage, 'prompt_tokens_details', None) or {}
+        metrics = self._team.total_metrics().as_dict()
+        seen = self._seen
+        turn = datetime.datetime.now().astimezone()
+        entry = row(turn, str(self.conv_session_id or self.name),
+                    self._provider, self._model,
+                    input_tokens=usage.prompt_tokens - seen['input'],
+                    output_tokens=usage.completion_tokens - seen['output'],
+                    cached=(int(details.get('cached_tokens') or 0)
+                            - seen['cached']),
+                    turns=sum(1 for message in self._team.transcript()
+                              if message.get('role') == 'assistant'),
+                    metrics={name: value - seen[name]
+                             for name, value in metrics.items()})
+        self._seen = {'input': usage.prompt_tokens,
+                      'output': usage.completion_tokens,
+                      'cached': int(details.get('cached_tokens') or 0),
+                      **metrics}
+        record(entry)
+        return entry
+
     def reset(self):
+        self._seen = self._seen_zero()
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None
         self._team.lead.messages = []

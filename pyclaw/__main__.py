@@ -126,6 +126,7 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
         if resume:
             session.restore_transcript()
         text = await session.chat(prompt, on_event=on_event)
+        session.record_turn()
         out = {"text": text, "mode": session.mode,
                "permission_mode": session.permission_mode,
                "messages": len(team.transcript()),
