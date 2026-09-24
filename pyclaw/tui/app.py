@@ -33,9 +33,8 @@ from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
 from pyclaw.tui.theme import (ASTERISK, BULLET, FINISHED_LINGER_SECONDS,
-                              INTERRUPTED_TEXT, NON_MODAL_OVERLAYS,
-                              OVERLAY_GATED_ACTIONS, POINTER, SPINNER_FRAMES,
-                              SPINNER_INTERVAL)
+                              INTERRUPTED_TEXT, OVERLAY_GATED_ACTIONS,
+                              POINTER, SPINNER_FRAMES, SPINNER_INTERVAL)
 from pyclaw.tui.widgets import (_AgentGroupBlock, _AgentPane, _Conv,
                                 _GroupBlock, _JumpToBottom, _LogoBlock,
                                 _PagerScroll, _PromptInput, _TextBlock,
@@ -176,9 +175,18 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
     def unregister_overlay(self, name: str):
         self._overlays.discard(name)
 
+    def focused_overlay(self) -> str | None:
+        if len(self.screen_stack) > 1:
+            return type(self.screen_stack[-1]).__name__
+        for name in ('select', 'autocomplete'):
+            if name in self._overlays:
+                return name
+        return None
+
     @property
     def modal_overlay_active(self) -> bool:
-        return bool(self._overlays - NON_MODAL_OVERLAYS)
+        focus = self.focused_overlay()
+        return focus is not None and focus != 'autocomplete'
 
     def __init__(self, *, builder, session_id=None, resume=False,
                  resume_from=None, hook_events=False):

@@ -5248,3 +5248,44 @@ def test_a_crash_is_written_down_before_the_app_goes(tmp_path, monkeypatch):
     assert [row['text'] for row in written if row['kind'] == 'error'] == [
         'RuntimeError: the terminal died']
     assert handed_over == ['the terminal died']
+
+def test_the_overlay_focus_has_one_source_of_truth():
+    from pyclaw.tui.screens import HelpScreen
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            assert app.focused_overlay() is None
+            assert app.modal_overlay_active is False
+
+            app.register_overlay('autocomplete')
+            assert app.focused_overlay() == 'autocomplete'
+            assert app.modal_overlay_active is False
+            app.unregister_overlay('autocomplete')
+
+            app.register_overlay('select')
+            assert app.focused_overlay() == 'select'
+            assert app.modal_overlay_active is True
+            app.unregister_overlay('select')
+
+            app.push_screen(HelpScreen())
+            await pilot.pause()
+            assert app.focused_overlay() == 'HelpScreen'
+            assert app.modal_overlay_active is True
+
+    asyncio.run(scenario())
+
+
+def test_gated_actions_stop_while_a_modal_overlay_owns_focus():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            app.register_overlay('select')
+            await pilot.pause()
+            assert app.check_action('prompt_next', ()) is False
+            assert app.check_action('quit', ()) is True
+            app.unregister_overlay('select')
+            await pilot.pause()
+            assert app.check_action('prompt_next', ()) is True
+
+    asyncio.run(scenario())

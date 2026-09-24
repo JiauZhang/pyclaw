@@ -66,9 +66,6 @@ RULE_FEEDBACK_HINT = "a command prefix, like npm run:*"
 ANSWER_HINT = "answer in your own words"
 
 
-NON_MODAL_OVERLAYS = frozenset({'autocomplete'})
-
-
 OVERLAY_GATED_ACTIONS = frozenset({
     'suggest_tab', 'prompt_next', 'prompt_prev', 'agent_next', 'agent_prev',
     'stop_agent', 'cycle_permission', 'focus_next', 'focus_previous'})
