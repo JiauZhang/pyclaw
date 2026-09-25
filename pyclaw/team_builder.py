@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from chatchat.team import Team
+from chatchat.core.team import Team
 from chatchat.core.cron_schedule import CronStore
 from chatchat.core.thinking import Thinking
 from chatchat.tool import ToolContext

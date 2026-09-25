@@ -6,7 +6,7 @@ import tempfile
 import time
 
 from chatchat.client import MockClient
-from chatchat.team import Team
+from chatchat.core.team import Team
 
 from pyclaw import agents, banner, config
 from pyclaw.team_builder import build_team

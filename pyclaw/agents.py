@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
-from chatchat.team import Team
+from chatchat.core.team import Team
 from chatchat.core.metrics import Metrics
 from chatchat.core.thinking import Thinking
 from chatchat.hooks.events import (

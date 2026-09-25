@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from chatchat.client import MockClient
-from chatchat.team import Team
+from chatchat.core.team import Team
 
 from pyclaw.home import pyclaw_home
 from pyclaw.agents import Session

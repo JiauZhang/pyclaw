@@ -2,7 +2,7 @@
 import json
 from datetime import date, datetime, timedelta
 
-from chatchat.team import Team
+from chatchat.core.team import Team
 
 from pyclaw import usage_history as mod
 
