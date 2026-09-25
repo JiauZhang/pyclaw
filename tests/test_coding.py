@@ -1287,15 +1287,16 @@ def test_build_team_wires_task_notifications_to_lead():
             for _ in range(50):
                 msgs = [m for m in team.lead.messages
                         if isinstance(m, dict)
-                        and "<background_done>" in str(m.get("content"))]
+                        and "<task-notification>" in str(m.get("content"))]
                 if msgs:
                     return msgs
                 await asyncio.sleep(0.1)
             return []
 
     texts = asyncio.run(main())
-    assert texts and "<result>failed</result>" in texts[0]["content"]
-    assert "<task_ref>b" in texts[0]["content"]
+    assert texts and "<status>failed</status>" in texts[0]["content"]
+    assert "<task-id>b" in texts[0]["content"]
+    assert "<task-type>shell</task-type>" in texts[0]["content"]
 
 def test_team_tools_never_ask_the_human():
     """Agent/SendMessage/TaskStop orchestrate agents this one owns.

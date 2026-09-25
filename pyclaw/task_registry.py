@@ -11,6 +11,7 @@ import dataclasses
 import secrets
 import string
 import time
+from pathlib import Path
 
 PENDING = 'pending'
 RUNNING = 'running'
@@ -21,6 +22,7 @@ KILLED = 'killed'
 POLL_SECONDS = 1.0
 STOPPED_DISPLAY_SECONDS = 3
 PANEL_GRACE_SECONDS = 30
+REPORT_DELTA_CHARS = 800
 
 PREFIXES = {'shell': 'b', 'agent': 'a', 'teammate': 't'}
 
@@ -36,6 +38,10 @@ def is_terminal(status: str) -> bool:
     return status in (COMPLETED, FAILED, KILLED)
 
 
+STATUS_TEXT = {COMPLETED: 'completed successfully', FAILED: 'failed',
+               KILLED: 'was stopped'}
+
+
 @dataclasses.dataclass
 class Task:
     id: str
@@ -46,6 +52,7 @@ class Task:
     ended_at: float | None = None
     output: str = ''
     detail: str = ''
+    reported_chars: int = 0
     payload: dict = dataclasses.field(default_factory=dict)
 
     def seconds(self, now: float) -> int:
@@ -56,6 +63,23 @@ class Task:
         self.status = status
         self.ended_at = time.monotonic() if now is None else now
         return self
+
+    def output_delta(self) -> str:
+        """What the task produced since it was last reported."""
+        if not self.output:
+            return ''
+        try:
+            text = Path(self.output).read_text(encoding='utf-8',
+                                               errors='replace')
+        except OSError:
+            return ''
+        fresh = text[self.reported_chars:]
+        self.reported_chars = len(text)
+        fresh = fresh.strip()
+        if len(fresh) <= REPORT_DELTA_CHARS:
+            return fresh
+        return ('[... earlier output omitted ...]\n'
+                + fresh[-REPORT_DELTA_CHARS:])
 
     def lingers_until(self) -> float:
         if self.ended_at is None:
@@ -101,6 +125,29 @@ class TaskRegistry:
         for task in gone:
             self.forget(task.id)
         return gone
+
+
+def notification(task: Task, delta: str = '', tool_use_id: str = '') -> str:
+    """What the model is told when a task reaches a terminal state."""
+    lines = [f'<task-notification>',
+             f'<task-id>{task.id}</task-id>']
+    if tool_use_id:
+        lines.append(f'<tool-use-id>{tool_use_id}</tool-use-id>')
+    lines += [f'<task-type>{task.kind}</task-type>',
+              f'<output-file>{task.output}</output-file>',
+              f'<status>{task.status}</status>',
+              f'<summary>Task "{task.label}" '
+              f'{STATUS_TEXT.get(task.status, task.status)}</summary>',
+              '</task-notification>']
+    if delta:
+        lines += ['',
+                  f'Task {task.id} (type: {task.kind}) '
+                  f'(status: {task.status}) (description: {task.label})',
+                  f'Delta: {delta}']
+        if task.output:
+            lines.append('Read the output file to retrieve the result: '
+                         f'{task.output}')
+    return '\n'.join(lines)
 
 
 _registry = TaskRegistry()

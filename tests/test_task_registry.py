@@ -79,3 +79,63 @@ def test_tasks_of_one_kind_come_back_in_the_order_they_started():
 
     assert registry.of_kind('shell') == [later]
     assert registry.all() == [earlier, later]
+
+
+def test_a_finished_task_says_what_it_was_and_how_it_ended():
+    task = tr.Task(id='b9', kind='shell', label='npm test',
+                   output='/tmp/b9.output')
+    task.finish(tr.FAILED)
+
+    text = tr.notification(task)
+
+    assert '<task-notification>' in text
+    assert '<task-id>b9</task-id>' in text
+    assert '<task-type>shell</task-type>' in text
+    assert '<output-file>/tmp/b9.output</output-file>' in text
+    assert '<status>failed</status>' in text
+    assert '<summary>Task "npm test" failed</summary>' in text
+
+
+def test_a_stopped_task_reads_as_stopped():
+    task = tr.Task(id='b10', kind='shell', label='tail -f log')
+    task.finish(tr.KILLED)
+
+    assert 'was stopped' in tr.notification(task)
+
+
+def test_the_notification_names_the_tool_call_that_started_it():
+    task = tr.Task(id='a1', kind='agent', label='look into it')
+    task.finish(tr.COMPLETED)
+
+    assert '<tool-use-id>tu-7</tool-use-id>' in tr.notification(
+        task, tool_use_id='tu-7')
+    assert '<tool-use-id>' not in tr.notification(task)
+
+
+def test_the_delta_is_only_what_has_not_been_reported_yet(tmp_path):
+    log = tmp_path / 'b1.output'
+    log.write_text('line one\n')
+    task = tr.Task(id='b1', kind='shell', label='x', output=str(log))
+
+    assert task.output_delta() == 'line one'
+    assert task.output_delta() == ''
+    log.write_text('line one\nline two\n')
+    assert task.output_delta() == 'line two'
+
+
+def test_a_long_delta_keeps_its_tail(tmp_path):
+    log = tmp_path / 'b2.output'
+    log.write_text('x' * (tr.REPORT_DELTA_CHARS + 50) + 'the end\n')
+    task = tr.Task(id='b2', kind='shell', label='x', output=str(log))
+
+    delta = task.output_delta()
+
+    assert delta.endswith('the end')
+    assert delta.startswith('[... earlier output omitted ...]')
+    assert len(delta) < tr.REPORT_DELTA_CHARS + 60
+
+
+def test_a_task_without_an_output_file_has_no_delta():
+    task = tr.Task(id='a2', kind='agent', label='@worker')
+
+    assert task.output_delta() == ''

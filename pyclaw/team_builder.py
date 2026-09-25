@@ -11,7 +11,7 @@ from chatchat.core.cron_schedule import CronStore
 from chatchat.core.thinking import Thinking
 from chatchat.tool import ToolContext
 
-from . import pyclaw_home
+from . import pyclaw_home, task_registry
 from .plugins import discover_tools
 from .skills import discover_registry
 from .tools import tools as base_tools
@@ -208,15 +208,11 @@ def build_team(
     from .tools import background as _background
 
     def _notify_task_finished(task_id, command, code, killed):
-        status = ('killed' if killed
-                  else ('completed' if code == 0 else 'failed'))
-        team.lead.enqueue_attachment(
-            f'<background_done>\n<task_ref>{task_id}</task_ref>\n'
-            f'<command>{command}</command>\n'
-            f'<log_file>{_background._output_path(task_id)}</log_file>\n'
-            f'<result>{status}</result>\n'
-            f'<note>The background command returned {code}.</note>\n'
-            f'</background_done>')
+        record = _background.task(task_id)
+        if record is None:
+            return
+        team.lead.enqueue_attachment(task_registry.notification(
+            record, record.output_delta()))
 
     _background.set_notifier(_notify_task_finished)
 
