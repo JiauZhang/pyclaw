@@ -3,8 +3,8 @@ import asyncio
 from chatchat.core.agents import AgentDefinition
 
 from pyclaw.tui import PyClawApp
-from pyclaw.tui.agents_panel import (AGENT_STEPS, AgentsScreen, _CHECKED,
-                                      _UNCHECKED)
+from pyclaw.tui.agent_form import AGENT_STEPS, _CHECKED, _UNCHECKED
+from pyclaw.tui.agents_panel import AgentsScreen
 
 from test_tui import _FakeTeam, _flatten
 from markup import plain as _plain
