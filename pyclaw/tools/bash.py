@@ -14,6 +14,7 @@ from pyclaw.tui.toolui import build_tool_ui, register
 
 from pyclaw.permissions.bash_rules import base_command, split_commands
 from pyclaw.tools.background import adopt, kill_process, scratch_path
+from .names import BASH
 
 DEFAULT_TIMEOUT_MS = 120_000
 MAX_TIMEOUT_MS = 600_000
@@ -173,7 +174,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
 
 
 @tool(
-    name='Bash',
+    name=BASH,
     description='Runs a shell command in the workspace and returns stdout '
                 'and stderr combined. Prefer Read, Glob, Grep, Edit '
                 'and Write over cat, find, grep, sed and shell redirection. '
@@ -269,4 +270,4 @@ def _bash_kinds(name, tool_input):
     return bash_kinds(data.get('command'))
 
 
-register('Bash', build_tool_ui(args=_bash_args, kinds=_bash_kinds))
+register(BASH, build_tool_ui(args=_bash_args, kinds=_bash_kinds))

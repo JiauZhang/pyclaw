@@ -14,6 +14,7 @@ from pyclaw.tui.toolui import (collapse_kinds, hidden_card, read_key,
                                tool_args, tool_label)
 from pyclaw.tui.components import (_AgentGroupBlock, _Conv, _GroupBlock,
                                 _ToolBlock, teammate_name)
+from pyclaw.tools.names import AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +109,7 @@ class ToolTraceMixin:
                 'error': bool(state.get('error'))}
     async def _mount_spawn(self, uid: str, raw_input):
         self._close_read_group()
-        label, detail = agent_group_label('Agent', raw_input)
+        label, detail = agent_group_label(AGENT, raw_input)
         teammate = teammate_name(raw_input)
         if teammate:
             self._teammate_spawns.add(uid)
@@ -116,7 +117,7 @@ class ToolTraceMixin:
         if self._agent_group is None:
             if self._solo_spawn is None:
                 self._solo_spawn = uid
-                card = _ToolBlock('Agent', raw_input, cwd=self._cwd())
+                card = _ToolBlock(AGENT, raw_input, cwd=self._cwd())
                 self._tools[uid] = card
                 await self._conv().mount(card)
                 self._discard_think()
@@ -132,7 +133,7 @@ class ToolTraceMixin:
         group = _AgentGroupBlock(self._spawn_stats)
         group._frame = self._spin_char()
         if isinstance(card, _ToolBlock):
-            label, detail = agent_group_label('Agent', card._input)
+            label, detail = agent_group_label(AGENT, card._input)
             group.add(first_uid, label, detail,
                       agent=teammate_name(card._input))
             self._tools[first_uid] = group.member(first_uid)
@@ -141,7 +142,7 @@ class ToolTraceMixin:
         self._agent_group = group
     async def _mount_tool(self, name, raw_input, tool_use_id):
         uid = tool_use_id or name
-        if name == 'Agent':
+        if name == AGENT:
             return await self._mount_spawn(uid, raw_input)
         block = _ToolBlock(name, raw_input, cwd=self._cwd())
         self._tools[uid] = block

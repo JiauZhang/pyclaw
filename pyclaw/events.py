@@ -12,14 +12,15 @@ from chatchat.hooks.events import (AGENT_PROGRESS, AGENT_REASON_START,
                                    AGENT_WARN)
 
 from pyclaw.home import pyclaw_home
+from pyclaw.tools.names import BASH, EDIT, GLOB, GREP, READ, WRITE
 
 KINDS = {AGENT_TEXT: 'text', AGENT_REASON_START: 'reason',
          AGENT_TOOL_CALL: 'tool_call', AGENT_TOOL_RESULT: 'tool_result',
          AGENT_TURN_FINISHED: 'turn_finished', AGENT_PROGRESS: 'progress',
          AGENT_WARN: 'warn', AGENT_STATE: 'state'}
 
-TOOLS = {'Bash': 'command', 'Read': 'file_path', 'Write': 'file_path',
-         'Edit': 'file_path', 'Glob': 'pattern', 'Grep': 'pattern'}
+TOOLS = {BASH: 'command', READ: 'file_path', WRITE: 'file_path',
+         EDIT: 'file_path', GLOB: 'pattern', GREP: 'pattern'}
 
 
 def _directory() -> Path:

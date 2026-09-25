@@ -9,6 +9,7 @@ from chatchat.core.agents import AgentDefinition
 
 from pyclaw.config import __config_file__
 from pyclaw.home import pyclaw_home
+from pyclaw.tools.names import AGENT, BASH, EDIT, EXIT_PLAN_MODE, GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP, WRITE
 
 _FRONTMATTER = re.compile(r'^---\s*\n([\s\S]*?)\n---\s*\n?')
 
@@ -42,9 +43,9 @@ SCOPE_ORDER = (CLI, USER, PROJECT, BUILT_IN)
 READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI})
 _DISPLAY_DIRS = {USER: '~/.pyclaw/agents', PROJECT: '.pyclaw/agents'}
 
-_READ_ONLY = frozenset({'Glob', 'Grep', 'Read', 'TaskOutput', 'TaskStop'})
-_EDIT = frozenset({'Edit', 'Write'})
-_EXECUTION = frozenset({'Bash'})
+_READ_ONLY = frozenset({GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP})
+_EDIT = frozenset({EDIT, WRITE})
+_EXECUTION = frozenset({BASH})
 BUCKET_NAMES = ('Reading and search', 'Editing files', 'Running commands',
                 'Other tools')
 
@@ -322,7 +323,7 @@ def _statusline_prompt() -> str:
     )
 
 
-DENIED_FOR_READ_ONLY = ('Agent', 'Edit', 'Write', 'ExitPlanMode')
+DENIED_FOR_READ_ONLY = (AGENT, EDIT, WRITE, EXIT_PLAN_MODE)
 
 READ_ONLY_NOTE = """You only look. You cannot create, change, move or delete \
 anything, not even in a temporary directory, and no command you run may change \
@@ -355,7 +356,7 @@ def builtin_agent_defs(all_tools: list) -> list[AgentDefinition]:
         AgentDefinition(
             'statusline-setup',
             system_prompt=_statusline_prompt(),
-            tools=[by_name[n] for n in ('Read', 'Edit') if n in by_name],
+            tools=[by_name[n] for n in (READ, EDIT) if n in by_name],
             description="Sets up or edits PyClaw's status line setting."),
         AgentDefinition(
             'Explore',

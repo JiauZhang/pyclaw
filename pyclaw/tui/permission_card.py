@@ -8,7 +8,8 @@ from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Input, Static
 
-from pyclaw.permissions import BASH_TOOL, PermissionChoice
+from pyclaw.permissions import PermissionChoice
+from pyclaw.tools.names import BASH
 from pyclaw.tui import keys
 from pyclaw.tui.theme import (ACCEPT_FEEDBACK_HINT, BULLET, OPTION_PAGE_SIZE,
                               POINTER, REJECT_FEEDBACK_HINT,
@@ -87,7 +88,7 @@ class _PermissionPrompt(Vertical):
     def _options(self) -> list[_PermOption]:
         options = [_PermOption("approved", "Yes", "accept")]
         if self._rememberable:
-            if self._tool == BASH_TOOL and self._rule:
+            if self._tool == BASH and self._rule:
                 options.append(_PermOption(
                     "dont_ask",
                     f"Yes, and stop asking about: {self._rule}", "rule"))

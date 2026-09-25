@@ -9,7 +9,7 @@ from pyclaw.permissions.bash_rules import (is_dangerous_removal,
                                           is_workspace_edit_command,
                                           suggested_rule)
 from pyclaw.permissions.modes import PermissionMode, parse_mode
-from pyclaw.permissions.rules import (BASH_TOOL, _command_of,
+from pyclaw.permissions.rules import (BASH, _command_of,
                                      _local_settings_file,
                                      _path_rule,
                                      _read_rule_file, _rule_matches,
@@ -17,12 +17,17 @@ from pyclaw.permissions.rules import (BASH_TOOL, _command_of,
 from conippets import json
 
 from pyclaw.tools.paths import resolve
+from chatchat.core.structured import STRUCTURED_OUTPUT_TOOL
+from pyclaw.tools.names import (AGENT, ASK_USER_QUESTION, CRON_CREATE,
+                               CRON_DELETE, CRON_LIST, ENTER_PLAN_MODE,
+                               EXIT_PLAN_MODE, SEND_MESSAGE, SKILL,
+                               TASK_STOP, TEAM_CREATE, TEAM_DELETE)
 
-AUTO_TOOLS = frozenset({'Agent', 'SendMessage', 'TaskStop',
-                        'Skill', 'TeamCreate', 'TeamDelete',
-                        'StructuredOutput', 'AskUserQuestion',
-                        'EnterPlanMode', 'ExitPlanMode',
-                        'CronCreate', 'CronList', 'CronDelete'})
+AUTO_TOOLS = frozenset({AGENT, SEND_MESSAGE, TASK_STOP,
+                        SKILL, TEAM_CREATE, TEAM_DELETE,
+                        STRUCTURED_OUTPUT_TOOL, ASK_USER_QUESTION,
+                        ENTER_PLAN_MODE, EXIT_PLAN_MODE,
+                        CRON_CREATE, CRON_LIST, CRON_DELETE})
 
 REJECT_MESSAGE = (
     "The user refused this tool call, so nothing ran; a refused edit left the "
@@ -166,7 +171,7 @@ class PermissionController:
         return str(value) if value else None
 
     def suggested_rule(self, tool_name: str, tool_input) -> str | None:
-        if tool_name == BASH_TOOL:
+        if tool_name == BASH:
             return suggested_rule(_command_of(tool_input))
         return _path_rule(tool_name, self.path_of(tool_name, tool_input),
                           self.cwd)
@@ -174,7 +179,7 @@ class PermissionController:
     def remember_allow(self, tool_name: str, tool_input=None, rule=None):
         if rule is None:
             rule = self.suggested_rule(tool_name, tool_input)
-            if tool_name == BASH_TOOL:
+            if tool_name == BASH:
                 command = _command_of(tool_input)
                 if not command:
                     return None
@@ -191,7 +196,7 @@ class PermissionController:
         return target is None or resolve(self.cwd, target) is not None
 
     def _rememberable(self, tool_name: str, tool_input) -> bool:
-        if tool_name == BASH_TOOL:
+        if tool_name == BASH:
             return suggested_rule(_command_of(tool_input)) is not None
         return True
 
@@ -206,7 +211,7 @@ class PermissionController:
         command = _command_of(tool_input)
         if is_dangerous_removal(command):
             return 'ask'
-        if _rule_matches(self._allow, BASH_TOOL, tool_input):
+        if _rule_matches(self._allow, BASH, tool_input):
             return 'allow'
         if mode is PermissionMode.accept_edits \
                 and is_workspace_edit_command(command):
@@ -217,7 +222,7 @@ class PermissionController:
 
     def decide(self, tool_name: str, tool_input, mode=None) -> str:
         mode = self._effective_mode(mode)
-        env_all = tool_name == BASH_TOOL
+        env_all = tool_name == BASH
         target = self.path_of(tool_name, tool_input)
         if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd,
                          target):
@@ -230,10 +235,10 @@ class PermissionController:
         if tool_name in AUTO_TOOLS:
             return 'allow'
         if (self.agent_memory is not None and target is not None
-                and not tool_name == BASH_TOOL
+                and not tool_name == BASH
                 and self.agent_memory.contains(Path(target))):
             return 'allow'
-        if tool_name == BASH_TOOL:
+        if tool_name == BASH:
             return self._decide_bash(tool_input, mode)
         if _rule_matches(self._allow, tool_name, tool_input, cwd=self.cwd,
                          target=target):

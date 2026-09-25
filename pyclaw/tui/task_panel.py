@@ -14,6 +14,7 @@ from pyclaw.tui.plan import plan_lines, recent_completions
 from pyclaw.tui.theme import RESULT_GLYPH
 from pyclaw.tui.collapse import recent_rollup
 from pyclaw.tui.toolcard import _tool_uses
+from pyclaw.tools.names import AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,7 @@ def subagent_rows(subagents: dict) -> list[str]:
         status = ('Done' if state['done']
                   else (recent_rollup(state['recent']) or state['last_tool']
                         or 'Initializing…'))
-        label = escape(str(state['type'])) or 'Agent'
+        label = escape(str(state['type'])) or AGENT
         lines.append(f"{BRANCH_LAST if last else BRANCH_MIDDLE} "
                      f"[bold]{label}[/] · {_tool_uses(state['tools'])}{tokens}")
         lines.append(f"{branch}{RESULT_GLYPH}  {escape(status)}")

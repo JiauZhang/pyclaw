@@ -7,6 +7,7 @@ from pyclaw.tui.theme import (EXPAND_HINT, INITIALIZING_TEXT,
                               MAX_USE_ARG_CHARS, TREE_BRANCH, TREE_INDENT,
                               TREE_LAST)
 from pyclaw.tui.toolui import tool_args, tool_label
+from pyclaw.tools.names import AGENT
 
 
 def _last_assistant_key(messages) -> tuple:
@@ -63,7 +64,7 @@ def agent_group_label(name: str, tool_input) -> tuple[str, str]:
         label = f'@{teammate}'
         detail = str(data.get('subagent_type') or '')
     else:
-        label = tool_label(name, tool_input) if name == 'Agent' else name
+        label = tool_label(name, tool_input) if name == AGENT else name
         detail = str(data.get('prompt') or data.get('description') or '')
     return label, _summarize(detail, MAX_USE_ARG_CHARS)
 

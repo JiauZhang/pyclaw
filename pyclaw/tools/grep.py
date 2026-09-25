@@ -7,12 +7,13 @@ from pyclaw.tui.formatting import _plural
 from pyclaw.tui.toolui import build_tool_ui, register, search_args
 
 from .paths import relative, resolve, skipped, workspace
+from .names import GREP
 
 
 _GREP_MAX = 200
 
 @tool(
-    name='Grep',
+    name=GREP,
     description='Searches file contents by regex, reporting each match as '
                 'path:line: text. Patterns are Python re applied one line at a '
                 'time, so . never spans a newline. A trailing "[exceeded N '
@@ -90,6 +91,6 @@ def _grep_summary(name, output, width):
         return f"Found {_plural(len(hits), 'line')}"
     return f"Found {_plural(len(hits), 'file')}"
 
-register('Grep', build_tool_ui(args=_search_args,
+register(GREP, build_tool_ui(args=_search_args,
                                summary=_grep_summary,
                                kinds=_search_kinds))

@@ -16,6 +16,7 @@ from pyclaw.tui.formatting import _content_text, _log_data, _summarize
 from pyclaw.tui.theme import RECENT_ACTIVITIES, RESULT_PREFIX
 from pyclaw.tui.toolcard import _agent_progress_rows
 from pyclaw.tui.toolui import collapse_kinds
+from pyclaw.tools.names import AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +147,7 @@ class EventRouterMixin:
                         data.get('subagent_type') or '')
         st = self._subagents.get(name)
         if st is None:
-            st = {'type': data.get('subagent_type') or 'Agent', 'tools': 0,
+            st = {'type': data.get('subagent_type') or AGENT, 'tools': 0,
                   'tokens': None, 'last_tool': None, 'done': False,
                   'recent': [], 'tool_names': {}}
             self._subagents[name] = st

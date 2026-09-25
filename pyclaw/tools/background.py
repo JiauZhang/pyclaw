@@ -13,6 +13,7 @@ from pathlib import Path
 from chatchat.tool import ToolResult, tool
 
 from pyclaw import task_registry as tasks
+from .names import TASK_OUTPUT, TASK_STOP
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
@@ -173,7 +174,7 @@ atexit.register(cleanup_background_tasks)
 
 
 @tool(
-    name='TaskOutput',
+    name=TASK_OUTPUT,
     description='Reads a background task, returning a status header, the tail '
                 'of its combined stdout and stderr, and the exit code once it '
                 'has exited. Waits for the task by default, so a timeout '
@@ -231,7 +232,7 @@ def TaskOutput(context, task_id: str, block: bool = True,
 
 
 @tool(
-    name='TaskStop',
+    name=TASK_STOP,
     description='Stops a background task, killing its whole process tree, and '
                 'reports what was stopped. The output collected so far stays '
                 'readable with TaskOutput afterwards.',

@@ -7,13 +7,14 @@ from pyclaw.tui.toolui import (build_tool_ui, is_memory_path,
                                path_args, register)
 
 from .paths import relative, resolve
+from .names import READ
 
 
 _READ_LIMIT = 2000
 _TEXT_ERROR = "Invalid UTF-8"
 
 @tool(
-    name='Read',
+    name=READ,
     description='Reads a workspace file and returns its lines as text, each '
                 'preceded by its 1-based line number and a tab. That prefix is '
                 'not file content: never carry it into an Edit old_string. '
@@ -87,5 +88,5 @@ def _read_kinds(name, tool_input):
     return {'memory_read' if is_memory_path(_input_path(tool_input))
             else 'read'}
 
-register('Read', build_tool_ui(args=_read_args,
+register(READ, build_tool_ui(args=_read_args,
                                summary=_read_summary, kinds=_read_kinds))

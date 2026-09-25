@@ -5,10 +5,11 @@ from pyclaw.tui.formatting import _plural
 from pyclaw.tui.toolui import build_tool_ui, register, search_args
 
 from .paths import relative, resolve, skipped, workspace
+from .names import GLOB
 
 
 @tool(
-    name='Glob',
+    name=GLOB,
     description='Returns the workspace-relative paths of matching files, one '
                 'per line, sorted; directories are never listed. A bare '
                 'pattern matches one level only, so "*.py" finds the search '
@@ -57,6 +58,6 @@ def _glob_summary(name, output, width):
             .split("\n") if r.strip()]
     return f"Found {_plural(len(hits), 'file')}"
 
-register('Glob', build_tool_ui(args=_search_args,
+register(GLOB, build_tool_ui(args=_search_args,
                                summary=_glob_summary,
                                kinds=_search_kinds))

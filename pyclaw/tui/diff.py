@@ -5,10 +5,11 @@ import re
 from rich.markup import escape
 
 from pyclaw.tui.formatting import _edit_summary
+from pyclaw.tools.names import EDIT, WRITE
 
 
 _DIFF_HUNK_RE = re.compile(r'^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@')
-_DIFF_TOOLS = ('Edit', 'Write')
+_DIFF_TOOLS = (EDIT, WRITE)
 _DIFF_ADD = '#225C2B'
 _DIFF_RM = '#7A2936'
 _DIFF_ADD_WORD = '#38A660'

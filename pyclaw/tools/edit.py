@@ -7,6 +7,7 @@ from chatchat.tool import ToolResult, tool
 from pyclaw.tui.toolui import build_tool_ui, is_memory_path, path_args, register
 
 from pyclaw.tools.paths import relative, resolve
+from .names import EDIT, WRITE
 
 
 def _read_text(path) -> tuple[str | None, str | None]:
@@ -36,7 +37,7 @@ def _diff(rel: str, before: str, after: str) -> str:
 
 
 @tool(
-    name='Write',
+    name=WRITE,
     description='Creates a file or rewrites an existing one, returning the '
                 'path and, for an update, the unified diff. content becomes '
                 'the whole file: anything left out of it is lost, so read the '
@@ -82,7 +83,7 @@ def Write(context, file_path: str, content: str) -> str:
 
 
 @tool(
-    name='Edit',
+    name=EDIT,
     description='Replaces an exact string in one file and returns the unified '
                 'diff of the change. old_string must match the file byte for '
                 'byte, indentation included, and must occur exactly once '
@@ -150,5 +151,5 @@ def _write_kinds(name, tool_input):
     return {'memory_write'} if is_memory_path(raw) else set()
 
 
-register('Write', build_tool_ui(args=_write_args, kinds=_write_kinds))
-register('Edit', build_tool_ui(args=_write_args, kinds=_write_kinds))
+register(WRITE, build_tool_ui(args=_write_args, kinds=_write_kinds))
+register(EDIT, build_tool_ui(args=_write_args, kinds=_write_kinds))

@@ -9,8 +9,7 @@ from conippets import json
 from pyclaw.permissions.bash_rules import bash_rule_matches
 
 from pyclaw.home import pyclaw_home
-
-BASH_TOOL = 'Bash'
+from pyclaw.tools.names import BASH
 
 
 def _command_of(tool_input) -> str:
@@ -39,14 +38,14 @@ def _rule_matches(rules, tool_name: str, tool_input=None,
                   env_all: bool = False, cwd=None, target=None) -> bool:
     if not rules:
         return False
-    command = _command_of(tool_input) if tool_name == BASH_TOOL else ''
+    command = _command_of(tool_input) if tool_name == BASH else ''
     for rule in rules:
         name, _, arg = str(rule).partition('(')
         if name.strip() != tool_name:
             continue
         if not arg:
             return True
-        if tool_name == BASH_TOOL:
+        if tool_name == BASH:
             if command and bash_rule_matches(arg.rstrip(')'), command,
                                             env_all):
                 return True

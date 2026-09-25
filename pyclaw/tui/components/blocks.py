@@ -18,6 +18,7 @@ from pyclaw.tui.collapse import Group, group_text
 from pyclaw.tui.toolcard import (_more_tool_uses, agent_group_header,
                                  agent_group_row)
 from pyclaw.tui.toolui import result_summary, tool_args, tool_label
+from pyclaw.tools.names import AGENT
 
 
 def teammate_name(tool_input) -> str:
@@ -191,7 +192,7 @@ class _AgentGroupBlock(Static):
     def _draw(self):
         stats = [self._stats_for(member) for member in self.members]
         kinds = {member['label'] for member in self.members}
-        kind = kinds.pop() if len(kinds) == 1 and 'Agent' not in kinds else ''
+        kind = kinds.pop() if len(kinds) == 1 and AGENT not in kinds else ''
         closed = [bool(member['resolved'] or member['settled']
                        or (member['seen'] and not stat['running']))
                   for member, stat in zip(self.members, stats)]

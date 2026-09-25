@@ -20,6 +20,7 @@ from pyclaw.tui.collapse import Group, group_text
 from pyclaw.tui.toolcard import (_more_tool_uses, agent_group_header,
                                  agent_group_row)
 from pyclaw.tui.toolui import result_summary, tool_args, tool_label
+from pyclaw.tools.names import AGENT, GREP, READ, WRITE
 
 
 class _LogoBlock(Static):
@@ -110,7 +111,7 @@ class _ToolBlock(Static):
         self._draw()
 
     def _trail_rows(self, full: bool = False) -> list[str]:
-        if self._name != 'Agent':
+        if self._name != AGENT:
             return []
         if full:
             shown, hidden = self._progress, 0
@@ -143,12 +144,12 @@ class _ToolBlock(Static):
 
     def _meta_summary(self) -> str | None:
         m = self._meta or {}
-        if m.get('num_lines') and self._name == 'Read':
+        if m.get('num_lines') and self._name == READ:
             path = m.get('path', '')
             return (f"Read {_plural(m['num_lines'], 'line')}"
                     + (f" {escape(path)}" if path else ""))
         if m.get('num_files') is not None or m.get('num_lines') is not None:
-            if self._name == 'Grep':
+            if self._name == GREP:
                 hits = m.get('num_lines', 0)
                 files = m.get('num_files', 0)
                 return (f"Found {_plural(hits, 'line')} in "
@@ -160,7 +161,7 @@ class _ToolBlock(Static):
         if m.get('num_added', 0) or m.get('num_removed', 0):
             return _edit_summary(m.get('num_added', 0),
                                  m.get('num_removed', 0))
-        if self._name == 'Write' and m.get('mode'):
+        if self._name == WRITE and m.get('mode'):
             verb = 'Wrote' if m['mode'] == 'wrote' else 'Updated'
             if m.get('path'):
                 return f"{verb} {escape(m['path'])}"
@@ -177,7 +178,7 @@ class _ToolBlock(Static):
         return _content_width(self, len(RESULT_PREFIX))
 
     def _is_teammate_spawn(self) -> bool:
-        return self._name == 'Agent' and bool(teammate_name(self._input))
+        return self._name == AGENT and bool(teammate_name(self._input))
 
     def _agent_summary(self) -> str | None:
         return (self._meta or {}).get('agent_summary')
