@@ -24,7 +24,7 @@ PIPE_LAST = '   '
 PIPE_MIDDLE = '│  '
 
 
-def agent_tree(team, states: dict) -> list[str]:
+def agent_tree(team, states: dict, colors: dict) -> list[str]:
     lines = ['[bold]Agents[/bold]']
 
     def walk(agent_id, prefix, last):
@@ -34,8 +34,12 @@ def agent_tree(team, states: dict) -> list[str]:
         state = states.get(agent.name, {})
         status = ('working…' if state.get('think')
                   else ('busy' if state.get('busy') else 'idle'))
+        name = escape(agent.name)
+        color = colors.get(agent.name)
+        if color:
+            name = f'[{color}][bold]{name}[/][/]'
         lines.append(f"{prefix}{BRANCH_LAST if last else BRANCH_MIDDLE} "
-                     f"{escape(agent.name)} · "
+                     f"{name} · "
                      f"{_tool_uses(state.get('tools', 0))} ({status})")
         kids = sorted(team.children.get(agent_id, ()))
         branch = PIPE_LAST if last else PIPE_MIDDLE
@@ -192,12 +196,12 @@ class TaskPanelMixin:
             return
         names = [str(getattr(agent, 'name', ''))
                  for agent in self._teammates()]
+        colors = {name: self._agent_color(name) for name in names}
         plan = plan_lines(self._plan(),
                           columns=self.screen.size.width or self.size.width,
                           rows=self.screen.size.height or self.size.height,
                           brand=self.brand,
-                          colors={name: self._agent_color(name)
-                                  for name in names},
+                          colors=colors,
                           activity=self._plan_activity(),
                           alive=set(names),
                           recent=recent_completions(self._plan(),
@@ -205,7 +209,7 @@ class TaskPanelMixin:
                                                     time.monotonic()))
         self._tasks_pane.update(panel_text([
             plan,
-            agent_tree(self._team, self._agent_state),
+            agent_tree(self._team, self._agent_state, colors),
             subagent_rows(self._subagents),
             shell_rows(background.snapshot()),
             tool_rows(self._team.tool_schemas(self._team.tool_context))]))

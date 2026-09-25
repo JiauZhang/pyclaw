@@ -36,11 +36,26 @@ def test_the_tree_shows_the_lead_then_each_child_with_its_state():
     lead = _Agent('team-lead')
     worker = _Agent('worker', tools=3, think=True)
     lines = agent_tree(_Team(lead, worker),
-                       {'worker': worker._state})
+                       {'worker': worker._state}, {})
     assert 'team-lead' in lines[1]
     assert 'worker' in lines[2]
     assert 'working…' in lines[2]
     assert lines[0] == '[bold]Agents[/bold]'
+
+
+def test_the_tree_paints_an_agent_with_the_colour_it_was_given():
+    lead = _Agent('team-lead')
+    worker = _Agent('worker')
+    lines = agent_tree(_Team(lead, worker), {'worker': worker._state},
+                       {'worker': '#FF6B80'})
+    assert '[#FF6B80][bold]worker[/][/]' in lines[2]
+    assert '└─ worker ·' in plain(lines[2])
+
+
+def test_the_tree_leaves_an_agent_without_a_colour_plain():
+    lead = _Agent('team-lead')
+    lines = agent_tree(_Team(lead), {}, {})
+    assert lines[1] == '└─ team-lead · 0 tool calls (idle)'
 
 
 def test_a_finished_subagent_row_says_done_and_a_running_one_its_tool():
