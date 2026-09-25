@@ -258,6 +258,11 @@ def bash_kinds(command) -> set:
             kinds.add('list')
         else:
             return {'bash'}
+    # One command is one entry in the group: listing outranks searching, which
+    # outranks reading, however many stages the pipeline has.
+    for kind in ('list', 'search', 'read'):
+        if kind in kinds:
+            return {kind}
     return kinds
 
 

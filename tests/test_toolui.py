@@ -86,11 +86,13 @@ def test_collapse_kinds_come_from_each_tool():
     assert collapse_kinds('Bash', {'command': 'ls dir && echo ---'}) == \
         {'list'}
     assert collapse_kinds('Bash', {'command': 'grep x a | sort'}) == \
-        {'search', 'read'}
+        {'search'}
+    assert collapse_kinds('Bash', {'command': 'ls tests | head -3'}) == \
+        {'list'}
     assert collapse_kinds('Bash', {'command': 'cat a.py'}) == {'read'}
     assert collapse_kinds('Bash', {'command': 'rg x'}) == {'search'}
     assert collapse_kinds('Bash', {'command': 'rg x; cat a.py'}) == \
-        {'search', 'read'}
+        {'search'}
     assert collapse_kinds('Bash', {'command': 'rm -rf /'}) == {'bash'}
     assert collapse_kinds('Bash', {'command': 'echo hi'}) == set()
     assert collapse_kinds('Agent', {'prompt': 'x'}) == set()
