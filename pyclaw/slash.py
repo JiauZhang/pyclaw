@@ -26,9 +26,6 @@ COMMANDS = [
     {'name': 'agents', 'desc': 'List and manage the agent definitions PyClaw can delegate to', 'hint': ''},
     {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
     {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
-    {'name': 'thinking',
-     'desc': 'Show or set how much the model may reason: off, on, adaptive, '
-             'or a token budget', 'hint': '[off|on|adaptive|tokens]'},
     {'name': 'effort', 'desc': 'Show or set the reasoning effort',
      'hint': '[low|medium|high|auto]'},
     {'name': 'cost', 'desc': 'Show token usage and cost at your configured rates',
@@ -336,9 +333,8 @@ def _handle_tasks(session, arg: str) -> str:
     return '\n'.join(lines)
 
 
-REASONING_HINT = ('thinking takes off, on, adaptive, or a number of tokens; '
-                  'effort takes low, medium, high, or auto to leave it to the '
-                  'model')
+EFFORT_HINT = ('effort takes low, medium, high, or auto to leave it to the '
+               'model')
 
 
 def _history_window(arg: str) -> tuple[int, str]:
@@ -488,28 +484,7 @@ def _reasoning(session, mode=None, budget=None, effort=None):
     return setting
 
 
-async def _handle_thinking(session, arg: str) -> str:
-    from . import config
-
-    arg = arg.strip()
-    if not arg:
-        return session.thinking.label()
-    mode, budget = (None, int(arg)) if arg.isdigit() else (arg, None)
-    setting = _reasoning(session, mode=mode, budget=budget)
-    if setting is None:
-        return REASONING_HINT
-    saved = config.load()
-    saved['thinking'] = {'mode': session.thinking.mode,
-                         'budget': session.thinking.budget,
-                         'effort': session.thinking.effort}
-    config.save(saved)
-    await session.note_config_change('settings')
-    return f'Thinking: {session.thinking.label()}'
-
-
 async def _handle_effort(session, arg: str) -> str:
-    from . import config
-
     arg = arg.strip()
     if not arg:
         return (f'effort {session.thinking.effort}'
@@ -517,12 +492,8 @@ async def _handle_effort(session, arg: str) -> str:
                 'effort auto (the model decides)')
     setting = _reasoning(session, effort='' if arg == 'auto' else arg)
     if setting is None:
-        return REASONING_HINT
-    saved = config.load()
-    saved['thinking'] = {'mode': session.thinking.mode,
-                         'budget': session.thinking.budget,
-                         'effort': session.thinking.effort}
-    config.save(saved)
+        return EFFORT_HINT
+    session.remember_thinking()
     await session.note_config_change('settings')
     return f'Effort: {session.thinking.label()}'
 
@@ -684,8 +655,6 @@ async def handle_slash(text: str, session, session_key: str = '',
         return await _handle_plan(session, arg)
     if cmd == 'model':
         return await _handle_model(session, arg)
-    if cmd == 'thinking':
-        return await _handle_thinking(session, arg)
     if cmd == 'effort':
         return await _handle_effort(session, arg)
     if cmd == 'cost':

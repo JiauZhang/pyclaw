@@ -52,6 +52,9 @@ def _fake_session(**kwargs):
             self.thinking = thinking
             self.set.append(thinking)
 
+        def remember_thinking(self):
+            self.remembered = True
+
         def agent_usage(self):
             return list(getattr(self, 'agents', ()))
 
@@ -112,7 +115,8 @@ def test_clear_command():
 def test_the_tools_command_stays_gone_but_reasoning_is_settable():
     assert "/tools" not in slash.HELP
     assert "Unknown command" in asyncio.run(_call("/tools", _fake_session()))
-    assert "/thinking" in slash.HELP and "/effort" in slash.HELP
+    assert "/thinking" not in slash.HELP
+    assert "/effort" in slash.HELP
 
 
 def test_status_reports_the_session_and_its_environment():
@@ -566,41 +570,6 @@ def test_status_names_the_worktree_the_session_moved_into():
     assert 'Worktree: wt/side' in out
 
 
-def test_thinking_can_be_switched_and_persists_for_next_time(monkeypatch,
-                                                              tmp_path):
-    written = {}
-    monkeypatch.setattr(config, 'load', lambda: {'thinking': {}})
-    monkeypatch.setattr(config, 'save', written.update)
-    session = _fake_session()
-
-    out = asyncio.run(_call('/thinking adaptive', session))
-
-    assert session.set[-1].mode == 'adaptive'
-    assert 'adaptive' in out
-    assert written['thinking']['mode'] == 'adaptive'
-
-
-def test_a_budget_is_read_from_the_argument(monkeypatch):
-    monkeypatch.setattr(config, 'load', lambda: {'thinking': {'mode': 'on'}})
-    monkeypatch.setattr(config, 'save', lambda cfg: None)
-    session = _fake_session()
-
-    asyncio.run(_call('/thinking 8000', session))
-
-    assert (session.set[-1].mode, session.set[-1].budget) == ('on', 8000)
-
-
-def test_an_unknown_reasoning_setting_changes_nothing(monkeypatch):
-    monkeypatch.setattr(config, 'load', lambda: {'thinking': {'mode': 'on'}})
-    monkeypatch.setattr(config, 'save',
-                        lambda cfg: (_ for _ in ()).throw(AssertionError()))
-    session = _fake_session()
-
-    out = asyncio.run(_call('/thinking sometimes', session))
-
-    assert 'adaptive' in out and session.set == []
-
-
 def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
     monkeypatch.setattr(config, 'load', lambda: {'thinking': {}})
     monkeypatch.setattr(config, 'save', lambda cfg: None)
@@ -608,6 +577,7 @@ def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
 
     asyncio.run(_call('/effort high', session))
     assert session.set[-1].effort == 'high'
+    assert session.remembered
     asyncio.run(_call('/effort auto', session))
     assert session.set[-1].effort == ''
     unknown = asyncio.run(_call('/effort extreme', session))

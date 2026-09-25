@@ -296,6 +296,23 @@ class Session:
     def set_thinking(self, thinking: Thinking):
         self._team.set_thinking(thinking)
 
+    def remember_thinking(self):
+        from . import config
+
+        saved = config.load()
+        saved['thinking'] = {'mode': self.thinking.mode,
+                             'budget': self.thinking.budget,
+                             'effort': self.thinking.effort}
+        config.save(saved)
+
+    def toggle_thinking(self) -> str:
+        current = self.thinking
+        mode = 'on' if not current.enabled else 'off'
+        self.set_thinking(Thinking(mode=mode, budget=current.budget,
+                                   effort=current.effort))
+        self.remember_thinking()
+        return self.thinking.label()
+
     def set_model(self, model: str) -> str:
         self._model = model
         self._team.set_model(model)

@@ -136,6 +136,8 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
                 ("ctrl+o", "toggle_transcript", "Transcript"),
                 Binding("ctrl+shift+o", "agent_preview",
                         "Preview teammate activity", priority=True),
+                Binding("alt+t", "toggle_thinking",
+                        "Turn thinking on or off", priority=True),
                 ("ctrl+r", "history_search", "Search history"),
                 ("ctrl+s", "stash", "Stash prompt"),
                 ("pageup", "conv_page_up", "Scroll up"),
@@ -542,6 +544,13 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
             inp.value = self._stashed
             inp.cursor_position = len(self._stashed)
             self._stashed = None
+
+    async def action_toggle_thinking(self):
+        if self._session is None:
+            return
+        self._session.toggle_thinking()
+        await self._session.note_config_change('settings')
+        self._render_status()
 
     def action_toggle_help(self):
         if isinstance(self.screen, HelpScreen):

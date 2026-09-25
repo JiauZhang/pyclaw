@@ -70,6 +70,15 @@ class _FakeTeam:
 
         return Metrics(tool_calls=1, api_ms=120, requests=1)
 
+    def set_thinking(self, thinking):
+        self.thinking = thinking
+
+    def remember_thinking(self):
+        self.remembered = True
+
+    async def note_config_change(self, source):
+        self.notes = getattr(self, 'notes', []) + [source]
+
     def last_usage(self):
         class _U:
             prompt_tokens = 0
@@ -256,6 +265,28 @@ def test_shift_tab_cycles_permission_mode():
             row = str(app.query_one("#hud2").content)
             assert "plan mode on" in row
             assert "shift+tab to cycle" in row
+    asyncio.run(scenario())
+
+
+def test_alt_t_toggles_thinking(monkeypatch):
+    written = {}
+    from pyclaw import config
+
+    monkeypatch.setattr(config, 'save', written.update)
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: _FakeTeam()).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            assert app._session.thinking.mode == "off"
+            await pilot.press("alt+t")
+            await pilot.pause()
+            assert app._session.thinking.mode == "on"
+            assert written['thinking']['mode'] == 'on'
+            await pilot.press("alt+t")
+            await pilot.pause()
+            assert app._session.thinking.mode == "off"
     asyncio.run(scenario())
 
 
