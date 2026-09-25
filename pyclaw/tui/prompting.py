@@ -12,11 +12,23 @@ from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
                                 RewindScreen, TasksScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
+from pyclaw.tui.theme import RESULT_HANG, RESULT_PREFIX
 
 logger = logging.getLogger(__name__)
 
 
 class PromptMixin:
+    async def _run_bash(self, command: str):
+        if not command or self._session is None:
+            return
+        await self._append_user(f'!{command}')
+        result = await self._session.run_bash(command)
+        body = (result['stdout'] + result['stderr']).rstrip('\n')
+        if not body:
+            body = '(no output)'
+        await self._append_block(
+            RESULT_PREFIX + escape(body).replace('\n', '\n' + RESULT_HANG))
+
     async def on_input_submitted(self, event: Input.Submitted):
         text = event.value.strip()
         self._history_index = None
@@ -40,6 +52,10 @@ class PromptMixin:
                 self.query_one("#input", Input).value = ""
                 await self._send_direct(target, direct[1])
                 return
+        if text.startswith('!') and len(text) > 1:
+            self.query_one("#input", Input).value = ""
+            await self._run_bash(text[1:].strip())
+            return
         if text == '/permissions':
             self.query_one("#input", Input).value = ""
             await self._append_user(text)

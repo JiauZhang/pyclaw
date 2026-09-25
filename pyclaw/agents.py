@@ -464,6 +464,38 @@ class Session:
             append_conv(session_id, "assistant", reply,
                         reasoning_content=thinking or None)
 
+    async def run_bash(self, command: str) -> dict:
+        import subprocess
+
+        from .tools.coding.shell import get_default_timeout_ms
+
+        cwd = self.cwd
+        limit = get_default_timeout_ms() / 1000
+        try:
+            done = subprocess.run(command, shell=True, cwd=cwd,
+                                  capture_output=True, text=True,
+                                  errors='replace', timeout=limit)
+            out, err, code = done.stdout, done.stderr, done.returncode
+        except subprocess.TimeoutExpired as exc:
+            out = exc.stdout or ''
+            err = (exc.stderr or '') + f'\nThe command ran past {int(limit)}s.'
+            code = None
+        except OSError as exc:
+            out, err, code = '', str(exc), None
+        self._team.lead.messages.append(
+            {'role': 'user', 'content': f'<bash-input>{command}</bash-input>'})
+        self._team.lead.messages.append(
+            {'role': 'user',
+             'content': (f'<bash-stdout>{out}</bash-stdout>'
+                         f'<bash-stderr>{err}</bash-stderr>')})
+        if self.conv_session_id:
+            append_conv(self.conv_session_id, 'user', f'!{command}')
+            body = (out + err).rstrip('\n')
+            if body:
+                append_conv(self.conv_session_id, 'user', body)
+        return {'command': command, 'stdout': out, 'stderr': err,
+                'exit_code': code}
+
     async def chat(self, message: str, on_event: Optional[Callable] = None) -> str:
         if on_event is not None:
             out = await self._run(message, on_event)

@@ -106,6 +106,7 @@ class _FakeTeam:
         self.background = {}
         self.lead = self.agents["lead@t"]
         self._messages = []
+        self.lead.messages = self._messages
         self.tool_context = ToolContext(cwd=Path.cwd())
 
     def provided_tools(self):
@@ -1296,6 +1297,28 @@ def test_a_compaction_leaves_a_summary_entry_with_the_full_text_behind_ctrl_o():
     assert "ctrl+o shows more" in live
     assert "we settled on the parser rewrite" not in live
     assert "we settled on the parser rewrite" in screen
+
+
+def test_a_bang_command_runs_in_the_shell_without_a_model_turn():
+    asked = []
+
+    class _Team(_FakeTeam):
+
+        async def query(self, prompt, timeout=None):
+            asked.append(prompt)
+            return "the model was asked"
+
+    async def scenario():
+        async with PyClawApp(builder=_Team).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _submit_and_wait(pilot, '!echo hi')
+            return _flatten(app)
+
+    text = asyncio.run(scenario())
+    assert asked == []
+    assert '!echo hi' in text
+    assert 'hi' in text
 
 
 def test_dynamic_text_with_brackets_renders_without_crash():
