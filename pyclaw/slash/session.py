@@ -4,7 +4,7 @@ from pyclaw.tui.formatting import _plural
 from pyclaw.slash.usage import _cost_of
 
 from pyclaw.cost import format_cost
-from pyclaw import session_store
+from pyclaw.session import store as session_store
 from pyclaw.version import __version__
 
 

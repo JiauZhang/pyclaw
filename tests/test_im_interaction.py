@@ -5,7 +5,7 @@ import pytest
 from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TEXT,
                                    AGENT_TOOL_CALL, AGENT_WARN, RuntimeEvent)
 
-from pyclaw import session_store
+from pyclaw.session import store as session_store
 from pyclaw.gateway.im import _im_progress_text, run_im_interaction
 
 

@@ -5,7 +5,7 @@ import dataclasses
 from pyclaw.tui import keys
 from rich.markup import escape
 
-from pyclaw import agent_defs
+from pyclaw.team import defs as agent_defs
 from pyclaw.tui.agent_form import AGENT_LOCATIONS, AGENT_NAV
 from pyclaw.tui.theme import POINTER
 

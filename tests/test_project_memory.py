@@ -1,8 +1,8 @@
 import asyncio
 
-from pyclaw.agent_memory import (load_instruction_files,
+from pyclaw.team.memory import (load_instruction_files,
                                  load_project_memory)
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 
 
 def _team(tmp_path):
@@ -15,7 +15,7 @@ def _user_memory(tmp_path, monkeypatch):
     user_dir = tmp_path / 'user'
     user_dir.mkdir()
     (user_dir / 'AGENTS.md').write_text('user rules', encoding='utf-8')
-    monkeypatch.setattr('pyclaw.agent_memory._user_memory_file',
+    monkeypatch.setattr('pyclaw.team.memory._user_memory_file',
                         lambda: user_dir / 'AGENTS.md')
     return user_dir
 
@@ -38,7 +38,7 @@ def test_load_missing_returns_empty(tmp_path):
 
 
 def test_build_team_appends_project_memory(tmp_path, monkeypatch):
-    monkeypatch.setattr('pyclaw.agent_memory.load_project_memory',
+    monkeypatch.setattr('pyclaw.team.memory.load_project_memory',
                         lambda cwd: 'PROJECT MEMORY MARKER')
     instruction = _team(tmp_path).lead.instruction
     assert 'PROJECT MEMORY MARKER' in instruction

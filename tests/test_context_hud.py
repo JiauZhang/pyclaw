@@ -10,7 +10,7 @@ from chatchat.team.team import Team
 
 from pyclaw import banner, config
 from pyclaw import session as session_mod
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 from pyclaw.tui.readout import (CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS,
                                 context_meter, git_label, usage_hud,
                                 usage_meter)

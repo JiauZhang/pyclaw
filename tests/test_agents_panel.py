@@ -2,7 +2,7 @@ import asyncio
 
 from chatchat.team.agents import AgentDefinition
 
-from pyclaw import agent_defs as agent_defs_mod
+from pyclaw.team import defs as agent_defs_mod
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.agent_form import AGENT_STEPS, _CHECKED, _UNCHECKED
 from pyclaw.tui.theme import POINTER
@@ -51,7 +51,7 @@ def _tools():
 
 
 def _home(monkeypatch, tmp_path):
-    from pyclaw import agent_defs as mod
+    from pyclaw.team import defs as mod
     user = tmp_path / 'home' / 'agents'
     user.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(mod, '_user_agents_dir', lambda: user)
@@ -325,7 +325,7 @@ def test_escaping_the_panel_without_changes_only_dismisses(monkeypatch, tmp_path
 
 
 def test_the_tools_step_marks_buckets_by_full_selection(monkeypatch, tmp_path):
-    from pyclaw import agent_defs
+    from pyclaw.team import defs as agent_defs
     _home(monkeypatch, tmp_path)
     _project(tmp_path)
     team = _AgentsTeam(tmp_path, _tools())

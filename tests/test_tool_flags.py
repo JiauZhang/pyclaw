@@ -3,7 +3,7 @@ run can be narrowed without editing settings files."""
 import asyncio
 
 from pyclaw import __main__
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 from pyclaw.permissions import split_rules
 
 

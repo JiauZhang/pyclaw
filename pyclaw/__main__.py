@@ -5,7 +5,7 @@ from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version_
 from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
 from pyclaw.session import Session
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
@@ -13,7 +13,7 @@ from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
 
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
-from pyclaw.session_store import resolve_session_id
+from pyclaw.session.store import resolve_session_id
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 

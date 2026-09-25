@@ -11,7 +11,7 @@ from textual.screen import Screen
 from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
-from pyclaw.agent_memory import memory_targets
+from pyclaw.team.memory import memory_targets
 from pyclaw import editor
 
 

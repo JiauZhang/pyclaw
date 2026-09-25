@@ -9,7 +9,7 @@ from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TOOL_CALL,
 
 from ..channels import OutboundMessage
 from ..channels.im_formatter import IMStatusTracker, split_long_message
-from ..session_store import append_conv, record_meta, resolve_session_id
+from ..session.store import append_conv, record_meta, resolve_session_id
 from ..slash import handle_slash
 
 logger = logging.getLogger(__name__)

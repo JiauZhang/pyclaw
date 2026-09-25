@@ -19,12 +19,12 @@ from chatchat.hooks.events import (
 from pyclaw import config
 from pyclaw.tools.bash import get_default_timeout_ms
 from pyclaw.usage_history import record, row
-from .session_history import HistoryMixin
-from .session_readout import ReadoutMixin
-from .session_store import (_session_dir, append_conv, close_session_logger,
-                            load_transcript, save_transcript)
-from .team_builder import _dispatch_event, configured_context_window
-from .permissions import parse_mode
+from .history import HistoryMixin
+from .readout import ReadoutMixin
+from .store import (_session_dir, append_conv, close_session_logger,
+                   load_transcript, save_transcript)
+from pyclaw.team.builder import _dispatch_event, configured_context_window
+from pyclaw.permissions import parse_mode
 
 _sessions_by_root: dict[str, 'Session'] = {}
 

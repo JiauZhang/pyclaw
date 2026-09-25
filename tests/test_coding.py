@@ -23,7 +23,7 @@ from pyclaw.permissions.gate import (REJECT_MESSAGE,
                                      SUBAGENT_REJECT_MESSAGE,
                                      SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
                                      PermissionChoice)
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 from pyclaw import task_registry
 from pyclaw.tools import BUILTIN_TOOLS, background
 from pyclaw.tools import bash as shell
@@ -866,7 +866,7 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
 
         async def main():
             from pyclaw.session import Session
-            from pyclaw.team_builder import build_team
+            from pyclaw.team.builder import build_team
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             team.hooks.on('PreToolUse', fn=lambda inp: seen.append(
                 inp.get('permission_mode', 'missing')) or True)

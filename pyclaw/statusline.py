@@ -5,7 +5,7 @@ import json
 import os
 from pyclaw import config
 from pyclaw.config import load
-from pyclaw.session_store import transcript_path
+from pyclaw.session.store import transcript_path
 from pyclaw.version import __version__
 
 STATUS_LINE_TIMEOUT_SECONDS = 5.0

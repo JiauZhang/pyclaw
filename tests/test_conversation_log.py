@@ -6,9 +6,9 @@ import pytest
 
 from conippets import jsonl
 
-from pyclaw import session_store
+from pyclaw.session import store as session_store
 from pyclaw.session import Session as RealSession
-from pyclaw.session_store import (_session_dir, append_conv,
+from pyclaw.session.store import (_session_dir, append_conv,
                                   close_session_logger, record_meta,
                                   resolve_session_id, session_logger)
 from pyclaw.gateway.im import run_im_interaction

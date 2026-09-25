@@ -7,7 +7,7 @@ from pathlib import Path
 
 from rich.markup import escape
 from pyclaw import config
-from pyclaw import session_store
+from pyclaw.session import store as session_store
 
 MEMORY_FILE_NAME = 'AGENTS.md'
 ONBOARDING_SEEN_LIMIT = 4

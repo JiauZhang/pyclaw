@@ -3,7 +3,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from pyclaw.session_store import (
+from pyclaw.session.store import (
     rename_session,
     title_of,
     create_branch,

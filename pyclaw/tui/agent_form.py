@@ -6,7 +6,7 @@ from textual.widgets import Input
 
 from chatchat.team.agents import AgentDefinition
 
-from pyclaw import agent_defs
+from pyclaw.team import defs as agent_defs
 from pyclaw.tui.theme import POINTER
 
 

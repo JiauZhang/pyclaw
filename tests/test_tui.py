@@ -23,8 +23,8 @@ from chatchat.hooks.events import (
 from chatchat.tool import ToolContext
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
-from pyclaw import session_store
-from pyclaw.session_store import save_transcript
+from pyclaw.session import store as session_store
+from pyclaw.session.store import save_transcript
 from pyclaw.tools import background
 from pyclaw.tui import app as tui
 from pyclaw.tui import status_rows, turn_flow
@@ -4965,7 +4965,7 @@ def test_the_memory_command_opens_the_picker_and_hands_the_file_to_the_editor(
     from pyclaw.tui.screens import MemoryScreen
 
     user_file = tmp_path / 'pyclaw-home' / 'AGENTS.md'
-    monkeypatch.setattr('pyclaw.agent_memory._user_memory_file',
+    monkeypatch.setattr('pyclaw.team.memory._user_memory_file',
                         lambda: user_file)
     opened = []
     monkeypatch.setattr(editor, 'open_file',

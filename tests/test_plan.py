@@ -1,6 +1,6 @@
 from chatchat.tasks.tasks import TaskList
 
-from pyclaw.team_builder import agent_instruction, team_instruction
+from pyclaw.team.builder import agent_instruction, team_instruction
 
 from pyclaw.tui.plan import (next_pending, next_task_line, plan_lines,
                              recent_completions)
@@ -176,7 +176,7 @@ def test_both_instructions_point_at_the_task_list():
 def _built(tmp_path):
     import asyncio
 
-    from pyclaw.team_builder import build_team
+    from pyclaw.team.builder import build_team
 
     async def build():
         return build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))

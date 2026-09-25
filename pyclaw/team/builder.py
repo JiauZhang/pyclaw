@@ -12,14 +12,16 @@ from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
 
 from pyclaw import task_registry
-from pyclaw import agent_defs, agent_memory, config
+from pyclaw import config
+from pyclaw.team import defs as agent_defs
+from pyclaw.team import memory as agent_memory
 from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
-from .plugins import discover_tools
-from .skills import discover_registry
-from .tools import tools as base_tools
-from .permissions import PermissionController, PermissionMode, parse_mode
-from .tools import BUILTIN_TOOLS
+from pyclaw.plugins import discover_tools
+from pyclaw.skills import discover_registry
+from pyclaw.tools import tools as base_tools
+from pyclaw.permissions import PermissionController, PermissionMode, parse_mode
+from pyclaw.tools import BUILTIN_TOOLS
 from chatchat.knowledge.agent_memory import AgentMemory
 from chatchat.knowledge.skills import SkillRegistry
 

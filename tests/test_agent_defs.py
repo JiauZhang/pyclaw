@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 
 from chatchat.team.agents import AgentDefinition
-from pyclaw import agent_defs as mod
-from pyclaw.agent_defs import (BUILT_IN, AgentEntry, agent_count, discover,
+from pyclaw.team import defs as mod
+from pyclaw.team.defs import (BUILT_IN, AgentEntry, agent_count, discover,
                                list_order, load_agent_defs, model_display,
                                relative_path, remove_agent, tool_buckets,
                                validate, validate_type, write_agent)
-from pyclaw.team_builder import build_team
+from pyclaw.team.builder import build_team
 from pyclaw.tools import BUILTIN_TOOLS
 
 
@@ -416,7 +416,7 @@ def test_a_written_agent_keeps_its_scope_on_the_way_out():
 
 
 def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
-    from pyclaw.agent_defs import builtin_agent_defs
+    from pyclaw.team.defs import builtin_agent_defs
     from pyclaw.tools import BUILTIN_TOOLS
 
     defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}
@@ -430,7 +430,7 @@ def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
 
 
 def test_the_explorer_says_what_it_is_for():
-    from pyclaw.agent_defs import builtin_agent_defs
+    from pyclaw.team.defs import builtin_agent_defs
     from pyclaw.tools import BUILTIN_TOOLS
 
     defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}

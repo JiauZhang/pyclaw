@@ -11,7 +11,7 @@ from pyclaw.slash.text import _copy, _export
 from pyclaw.slash.usage import (_context, _handle_cost, _handle_model,
                                 _stats_lines, _usage_lines)
 
-from pyclaw import agent_memory
+from pyclaw.team import memory as agent_memory
 
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},

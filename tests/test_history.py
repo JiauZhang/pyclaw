@@ -6,8 +6,8 @@ from chatchat.client import MockClient
 from chatchat.team.team import Team
 
 from pyclaw import __main__, session as session_mod
-from pyclaw import session_store
-from pyclaw.session_store import load_entries, load_transcript, save_transcript, transcript_path
+from pyclaw.session import store as session_store
+from pyclaw.session.store import load_entries, load_transcript, save_transcript, transcript_path
 
 
 @pytest.fixture(autouse=True)

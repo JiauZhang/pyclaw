@@ -10,7 +10,7 @@ from chatchat.hooks.events import (AGENT_COMPACT, AGENT_PROGRESS,
                                    AGENT_REASON_START, AGENT_STATE, AGENT_TEXT,
                                    AGENT_TOOL_CALL, AGENT_TOOL_RESULT,
                                    AGENT_TURN_FINISHED, AGENT_WARN)
-from pyclaw.session_store import append_conv
+from pyclaw.session.store import append_conv
 from pyclaw.tui.components import _SummaryBlock
 from pyclaw.tui.formatting import _content_text, _log_data, _summarize
 from pyclaw.tui.theme import RECENT_ACTIVITIES, RESULT_PREFIX

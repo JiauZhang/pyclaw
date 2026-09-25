@@ -15,9 +15,9 @@ import uvicorn
 from pyclaw.version import __version__
 
 from ..session import Session
-from ..session_store import (append_conv, record_meta, resolve_session_id,
+from ..session.store import (append_conv, record_meta, resolve_session_id,
                              session_logger)
-from ..team_builder import IM_EXTRA, build_team
+from pyclaw.team.builder import IM_EXTRA, build_team
 from chatchat.hooks.events import (
     AGENT_REASON_START,
     AGENT_TOOL_CALL,
