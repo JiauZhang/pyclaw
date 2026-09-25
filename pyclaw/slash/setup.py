@@ -1,4 +1,4 @@
-from chatchat.core.thinking import Thinking
+from chatchat.runtime.thinking import Thinking
 
 # Session setup commands: how much the model may reason, and the status line.
 EFFORT_HINT = ('effort takes low, medium, high, or auto to leave it to the '

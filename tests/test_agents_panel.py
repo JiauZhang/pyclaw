@@ -1,6 +1,6 @@
 import asyncio
 
-from chatchat.core.agents import AgentDefinition
+from chatchat.team.agents import AgentDefinition
 
 from pyclaw import agent_defs as agent_defs_mod
 from pyclaw.tui import PyClawApp
@@ -27,7 +27,7 @@ class _AgentsTeam(_FakeTeam):
 
     def __init__(self, cwd, tools):
         super().__init__()
-        from chatchat.core.agents import AgentRegistry
+        from chatchat.team.agents import AgentRegistry
         from types import SimpleNamespace
         self.agent_defs = AgentRegistry()
         self.agent_defs.define('general-purpose', system_prompt='p',
@@ -483,7 +483,7 @@ def test_an_agent_from_the_command_line_is_listed_and_read_only(tmp_path):
 
 
 def _noted(monkeypatch, tmp_path, pending=False):
-    from chatchat.core.agent_memory import AgentMemory
+    from chatchat.knowledge.agent_memory import AgentMemory
 
     user = _write_agents(_home(monkeypatch, tmp_path), 'reviewer')
     (user / 'reviewer.md').write_text(

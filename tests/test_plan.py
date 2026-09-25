@@ -1,4 +1,4 @@
-from chatchat.core.tasks import TaskList
+from chatchat.tasks.tasks import TaskList
 
 from pyclaw.team_builder import agent_instruction, team_instruction
 

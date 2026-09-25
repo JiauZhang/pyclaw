@@ -1,6 +1,6 @@
 import asyncio
 import json
-from chatchat.core.thinking import Thinking
+from chatchat.runtime.thinking import Thinking
 
 
 from pyclaw import __main__

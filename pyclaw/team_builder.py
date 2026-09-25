@@ -6,9 +6,9 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from chatchat.core.team import Team
-from chatchat.core.cron_schedule import CronStore
-from chatchat.core.thinking import Thinking
+from chatchat.team.team import Team
+from chatchat.tasks.cron_schedule import CronStore
+from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
 
 from pyclaw import task_registry
@@ -20,8 +20,8 @@ from .skills import discover_registry
 from .tools import tools as base_tools
 from .permissions import PermissionController, PermissionMode, parse_mode
 from .tools import BUILTIN_TOOLS
-from chatchat.core.agent_memory import AgentMemory
-from chatchat.core.skills import SkillRegistry
+from chatchat.knowledge.agent_memory import AgentMemory
+from chatchat.knowledge.skills import SkillRegistry
 
 _name_counter = itertools.count()
 

@@ -2,8 +2,8 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from chatchat.core import cron_schedule
-from chatchat.core.cron_schedule import CronStore, SchedulerLock
+from chatchat.tasks import cron_schedule
+from chatchat.tasks.cron_schedule import CronStore, SchedulerLock
 
 from pyclaw.cron import run, tick
 

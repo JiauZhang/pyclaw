@@ -1,6 +1,6 @@
 import asyncio
 
-from chatchat.core.thinking import Thinking
+from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
 
 from pyclaw.session import Session

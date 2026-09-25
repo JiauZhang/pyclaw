@@ -6,8 +6,8 @@ from pathlib import Path
 
 from conippets import json
 
-from chatchat.core.agents import AgentDefinition
-from chatchat.core.filehistory import FileHistory
+from chatchat.team.agents import AgentDefinition
+from chatchat.knowledge.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import session as session_mod

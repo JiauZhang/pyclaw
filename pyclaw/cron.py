@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime
 
-from chatchat.core.cron_schedule import DEFAULT_JITTER, expired, next_fire
+from chatchat.tasks.cron_schedule import DEFAULT_JITTER, expired, next_fire
 
 
 DEFAULT_TICK_SECONDS = 1.0

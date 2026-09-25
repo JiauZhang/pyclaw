@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from chatchat.core.skills import SkillRegistry
+from chatchat.knowledge.skills import SkillRegistry
 
 from pyclaw.home import pyclaw_home
 from pyclaw.plugins import discover_skills

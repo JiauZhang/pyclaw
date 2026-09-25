@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from chatchat.core.agents import AgentDefinition
+from chatchat.team.agents import AgentDefinition
 from pyclaw import agent_defs as mod
 from pyclaw.agent_defs import (BUILT_IN, AgentEntry, agent_count, discover,
                                list_order, load_agent_defs, model_display,

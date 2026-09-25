@@ -7,9 +7,9 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
-from chatchat.core.team import Team
-from chatchat.core.metrics import Metrics
-from chatchat.core.thinking import Thinking
+from chatchat.team.team import Team
+from chatchat.runtime.metrics import Metrics
+from chatchat.runtime.thinking import Thinking
 from chatchat.hooks.events import (
     AGENT_PROGRESS,
     AGENT_TEXT,

@@ -4,7 +4,7 @@ from pyclaw.tui import keys
 from rich.markup import escape
 from textual.widgets import Input
 
-from chatchat.core.agents import AgentDefinition
+from chatchat.team.agents import AgentDefinition
 
 from pyclaw import agent_defs
 from pyclaw.tui.theme import POINTER

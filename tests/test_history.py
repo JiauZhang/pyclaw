@@ -3,7 +3,7 @@ import asyncio
 import pytest
 
 from chatchat.client import MockClient
-from chatchat.core.team import Team
+from chatchat.team.team import Team
 
 from pyclaw import __main__, session as session_mod
 from pyclaw import session_store

@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from chatchat.core.agents import AgentDefinition
+from chatchat.team.agents import AgentDefinition
 
 from pyclaw.config import __config_file__
 from pyclaw.home import pyclaw_home

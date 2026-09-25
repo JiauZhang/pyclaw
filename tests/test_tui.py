@@ -38,8 +38,8 @@ from pyclaw.tui.roster import (hide_row, leader_row, status_text,
 from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.components import (_AgentGroupBlock, _TextBlock,
                                 _ToolBlock)
-from chatchat.core.tasks import TaskList
-from chatchat.core.thinking import Thinking
+from chatchat.tasks.tasks import TaskList
+from chatchat.runtime.thinking import Thinking
 from fakes import Usage
 from markup import plain
 
@@ -69,7 +69,7 @@ class _FakeTeam:
     auto_compact = False
 
     def total_metrics(self):
-        from chatchat.core.metrics import Metrics
+        from chatchat.runtime.metrics import Metrics
 
         return Metrics(tool_calls=1, api_ms=120, requests=1)
 
@@ -5296,7 +5296,7 @@ def test_the_question_card_keeps_the_prompt_history_out_of_its_way():
 
 def test_the_session_can_answer_a_model_question():
     async def scenario():
-        from chatchat.core.tools import ask_user
+        from chatchat.tools.tools import ask_user
         async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             await pilot.pause()

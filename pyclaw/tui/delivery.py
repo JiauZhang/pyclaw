@@ -5,7 +5,7 @@ from datetime import datetime
 
 from pyclaw.tui.formatting import duration
 from pyclaw.tui.theme import ASTERISK
-from chatchat.core.cron_schedule import find_missed, SchedulerLock
+from chatchat.tasks.cron_schedule import find_missed, SchedulerLock
 from pyclaw.cron import run
 
 

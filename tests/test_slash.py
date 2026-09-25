@@ -15,7 +15,7 @@ class _Bare:
 
 
 def _thinking():
-    from chatchat.core.thinking import Thinking
+    from chatchat.runtime.thinking import Thinking
 
     return Thinking()
 
@@ -585,7 +585,7 @@ def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
 
 
 def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
-    from chatchat.core.thinking import Thinking
+    from chatchat.runtime.thinking import Thinking
 
     monkeypatch.setattr(config, 'load', lambda: {'thinking': {}})
     session = _fake_session()
@@ -615,7 +615,7 @@ def _history(monkeypatch, tmp_path, rows):
 
 
 def _row(day, **kw):
-    from chatchat.core.metrics import Metrics
+    from chatchat.runtime.metrics import Metrics
 
     base = {'at': f'{day}T09:00:00', 'day': day, 'session': 's1',
             'provider': 'agnes', 'model': 'm', 'input': 1000, 'output': 200,

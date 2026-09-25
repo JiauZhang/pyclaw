@@ -17,7 +17,7 @@ from pyclaw.permissions.rules import (BASH, _command_of,
 from conippets import json
 
 from pyclaw.tools.paths import resolve
-from chatchat.core.structured import STRUCTURED_OUTPUT_TOOL
+from chatchat.runtime.structured import STRUCTURED_OUTPUT_TOOL
 from pyclaw.tools.names import (AGENT, ASK_USER_QUESTION, CRON_CREATE,
                                CRON_DELETE, CRON_LIST, ENTER_PLAN_MODE,
                                EXIT_PLAN_MODE, SEND_MESSAGE, SKILL,
