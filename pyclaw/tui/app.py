@@ -19,7 +19,7 @@ from pyclaw.agents import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
 
 from pyclaw import events
-from pyclaw.tui.approval import _Approval
+from pyclaw.tui.permission_card import _Approval
 from pyclaw.tui.approval_flow import ApprovalFlowMixin
 from pyclaw.tui.formatting import _log_data
 from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens

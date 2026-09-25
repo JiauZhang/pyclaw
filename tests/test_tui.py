@@ -30,7 +30,7 @@ from pyclaw.tui import app as tui
 from pyclaw.tui import status_line
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
-from pyclaw.tui.approval import _PermissionPrompt
+from pyclaw.tui.permission_card import _PermissionPrompt
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import (hide_row, leader_row, status_text,
@@ -5181,7 +5181,7 @@ async def _type(pilot, text):
 
 
 async def _ask_on_screen(app, pilot, questions):
-    from pyclaw.tui.approval import _QuestionPrompt
+    from pyclaw.tui.question_card import _QuestionPrompt
     task = asyncio.create_task(app._ask_questions('lead', questions))
     for _ in range(3):
         await pilot.pause()

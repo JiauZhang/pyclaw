@@ -25,7 +25,8 @@ from pyclaw.tui.theme import (
     RESULT_PREFIX,
 )
 from pyclaw.tui.formatting import _hang, model_map, thinking_map
-from pyclaw.tui.approval import _PermissionPrompt, _QuestionPrompt
+from pyclaw.tui.permission_card import _PermissionPrompt
+from pyclaw.tui.question_card import _QuestionPrompt
 from pyclaw.tui.diff import _diff_block
 
 
