@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
+
 import logging
 
 from rich.markup import escape
@@ -66,7 +68,8 @@ class PromptMixin:
             await self._append_user(text)
             if self._processing:
                 await self._append_block(escape(
-                    'PyClaw is still working. Press esc to stop it first, '
+                    f'PyClaw is still working. Press {keys.display("escape")} '
+                    'to stop it first, '
                     'then rewind.'))
                 return
             if not self._session.turns():

@@ -3,39 +3,42 @@ from __future__ import annotations
 from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
+from textual.binding import Binding
+from pyclaw.tui import keys
 from textual.screen import Screen
 from textual.widgets import Static
 
 
 class _RuleList(VerticalScroll):
 
-    BINDINGS = [("up", "move_up", "Up"), ("down", "move_down", "Down"),
-                ("d", "remove_rule", "Remove rule"),
-                ("escape", "close", "Close"), ("q", "close", "Close")]
+    BINDINGS = [keys.binding('prev', 'Up'), keys.binding('next', 'Down'),
+                keys.binding('remove_rule', 'Remove rule'),
+                keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close')]
 
     def __init__(self, screen, **kw):
         super().__init__(**kw)
         self._screen = screen
 
-    def action_move_up(self):
-        self._screen.action_move_up()
+    def action_prev(self):
+        self._screen.action_prev()
 
-    def action_move_down(self):
-        self._screen.action_move_down()
+    def action_next(self):
+        self._screen.action_next()
 
     async def action_remove_rule(self):
         await self._screen.action_remove_rule()
 
-    def action_close(self):
-        self._screen.action_close()
+    def action_dismiss(self):
+        self._screen.action_dismiss()
 
 class PermissionsScreen(Screen):
 
-    BINDINGS = [("escape", "close", "Close"),
-                ("q", "close", "Close"),
-                ("d", "remove_rule", "Remove rule"),
-                ("up", "move_up", "Up"),
-                ("down", "move_down", "Down")]
+    BINDINGS = [keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close'),
+                keys.binding('remove_rule', 'Remove rule'),
+                keys.binding('prev', 'Up'),
+                keys.binding('next', 'Down')]
 
     def __init__(self, session, **kw):
         super().__init__(**kw)
@@ -60,7 +63,8 @@ class PermissionsScreen(Screen):
         bypass = bool(getattr(self._session, 'bypass_available', False))
         lines = [f'[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]',
                  f'[#9A9A9A]bypass available: {bypass} · '
-                 f'shift+tab cycles · /permissions <mode> switches[/]', '']
+                 f'{keys.hint("cycle_permission", "cycles")} · '
+                 f'/permissions <mode> switches[/]', '']
         if not rules:
             lines.append('[#9A9A9A]No permission rules.[/]')
         else:
@@ -73,14 +77,14 @@ class PermissionsScreen(Screen):
                              else body)
         self.query_one('#permissions-body', Static).update('\n'.join(lines))
 
-    def action_close(self):
+    def action_dismiss(self):
         self.app.pop_screen()
 
-    def action_move_up(self):
+    def action_prev(self):
         self._selected = max(0, self._selected - 1)
         self._refresh_body()
 
-    def action_move_down(self):
+    def action_next(self):
         rules = self._rules()
         self._selected = min(max(0, len(rules) - 1), self._selected + 1)
         self._refresh_body()

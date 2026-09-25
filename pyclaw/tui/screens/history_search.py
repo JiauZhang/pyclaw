@@ -5,17 +5,18 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from pyclaw.tui import keys
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
 
 class HistorySearchScreen(Screen):
 
-    BINDINGS = [Binding("up", "prev", "Previous", priority=True),
-                Binding("down", "next", "Next", priority=True),
-                ("escape", "close", "Close"),
-                ("ctrl+c", "close", "Close"),
-                ("tab", "accept", "Accept")]
+    BINDINGS = [keys.binding('prev', 'Previous', priority=True),
+                keys.binding('next', 'Next', priority=True),
+                keys.binding('dismiss', 'Close'),
+                Binding('ctrl+c', 'dismiss', 'Close'),
+                keys.binding('accept', 'Accept')]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -67,7 +68,7 @@ class HistorySearchScreen(Screen):
     def action_accept(self):
         asyncio.get_running_loop().create_task(self._finish(False))
 
-    def action_close(self):
+    def action_dismiss(self):
         self.app.pop_screen()
 
     def action_prev(self):

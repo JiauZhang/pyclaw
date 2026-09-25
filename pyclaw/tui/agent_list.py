@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 
+from pyclaw.tui import keys
 from rich.markup import escape
 
 from pyclaw import agent_defs
@@ -107,7 +108,8 @@ class AgentListMixin:
             lines.append(f'[bold]Notes[/bold]: {escape(defn.memory)} scope')
         lines += ['', '[bold]System prompt[/bold]',
                   escape(defn.system_prompt or '')]
-        return lines + self._footer('enter or esc goes back')
+        return lines + self._footer(
+            keys.either('open', 'dismiss', 'goes back'))
     def _render_delete(self) -> list:
         lines = self._header('Delete an agent')
         lines += [escape(f'Remove {self._target.agent_type} for good?'),

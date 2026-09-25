@@ -3264,7 +3264,7 @@ def test_permission_screen_keeps_its_own_arrow_keys():
 
     selected, action = asyncio.run(scenario())
     assert selected == 0
-    assert action == "move_down"
+    assert action == "next"
 
 
 def test_escape_interrupts_a_running_turn():

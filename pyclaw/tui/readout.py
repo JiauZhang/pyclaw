@@ -5,6 +5,7 @@ import time
 
 from pyclaw import banner
 
+from pyclaw.tui import keys
 from pyclaw.tui.formatting import _format_count, duration
 from pyclaw.tui.theme import MODE_COLORS, MODE_SYMBOLS, MODE_TITLES
 
@@ -156,7 +157,7 @@ def mode_pill(session, *, background: bool) -> str:
     pill = (f"[{MODE_COLORS.get(perm, '#9A9A9A')}]{MODE_SYMBOLS[perm]} "
             f"{MODE_TITLES[perm]} on[/]")
     if not background:
-        pill += " [dim](shift+tab to cycle)[/]"
+        pill += f" [dim]({keys.hint('cycle_permission', 'to cycle')})[/]"
     return pill
 
 

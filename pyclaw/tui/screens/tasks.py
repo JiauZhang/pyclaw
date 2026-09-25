@@ -3,22 +3,24 @@ from __future__ import annotations
 from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
+from textual.binding import Binding
 from textual.screen import Screen
 from pyclaw.tui.screens.task_detail import TaskDetailScreen
+from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 
 
 class TasksScreen(Screen):
 
-    BINDINGS = [("up", "prev", "Previous"),
-                ("down", "next", "Next"),
-                ("x", "stop_selected", "Stop"),
-                ("a", "stop_all", "Stop all"),
-                ("enter", "open", "Open"),
-                ("escape", "dismiss", "Close"),
-                ("q", "dismiss", "Close"),
-                ("ctrl+c", "dismiss", "Close")]
+    BINDINGS = [keys.binding('prev', 'Previous'),
+                keys.binding('next', 'Next'),
+                keys.binding('stop_selected', 'Stop'),
+                keys.binding('stop_all', 'Stop all'),
+                keys.binding('open', 'Open'),
+                keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close'),
+                Binding('ctrl+c', 'dismiss', 'Close')]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -47,8 +49,10 @@ class TasksScreen(Screen):
             escaped = escape(text)
             lines.append(f'[#B1B9F9]{escaped}[/]' if index == self._selected
                          else f'  [dim]{escaped}[/]')
-        lines.append('[dim]x stops the selected · a stops them all · '
-                     'enter views · esc closes[/]')
+        lines.append('[dim]' + keys.hints(
+            ('stop_selected', 'stops the selected'),
+            ('stop_all', 'stops them all'), ('open', 'views'),
+            ('dismiss', 'closes')) + '[/]')
         self.query_one("#tk-body", Static).update('\n'.join(lines))
 
     def _move(self, delta: int):

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
+
 import asyncio
 import logging
 import time
@@ -30,7 +32,7 @@ class StatusMixin:
             if self._agent_running(self._agent_by_name(viewed)):
                 verb = self._state(viewed)['verb']
                 return (f"[{self.brand}]{char}[/] {escape(verb)}\u2026 "
-                        f"[dim](esc stops the turn [/]"
+                        f"[dim]({keys.display('escape')} stops the turn [/]"
                         f"[{self._agent_color(viewed)}]@{escape(viewed)}[/]"
                         f"[dim])[/]")
             return self._idle_row(self._state(viewed))
@@ -123,7 +125,8 @@ class StatusMixin:
                 parts.append(TEAMMATE_VIEW_HINT)
             else:
                 if self._processing is not None or viewing_busy:
-                    parts.append("esc stops the turn")
+                    parts.append(
+                        f"{keys.display('escape')} stops the turn")
                 hint = self._tasks_hint()
                 if hint:
                     parts.append(hint)

@@ -3,6 +3,8 @@ from __future__ import annotations
 from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
+from textual.binding import Binding
+from pyclaw.tui import keys
 from textual.screen import Screen
 from pyclaw.tui.formatting import _plural, _summarize
 from pyclaw.tui.theme import POINTER
@@ -11,12 +13,12 @@ from textual.widgets import Static
 
 class RewindScreen(Screen):
 
-    BINDINGS = [("up", "prev", "Previous"),
-                ("down", "next", "Next"),
-                ("enter", "choose", "Choose"),
-                ("escape", "dismiss", "Back"),
-                ("q", "dismiss", "Back"),
-                ("ctrl+c", "dismiss", "Back")]
+    BINDINGS = [keys.binding('prev', 'Previous'),
+                keys.binding('next', 'Next'),
+                keys.binding('choose', 'Choose'),
+                keys.binding('dismiss', 'Back'),
+                Binding('q', 'dismiss', 'Back'),
+                Binding('ctrl+c', 'dismiss', 'Back')]
 
     MODES = (('both', 'Restore code and conversation'),
              ('conversation', 'Restore conversation'),

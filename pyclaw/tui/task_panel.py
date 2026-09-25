@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
+
 import logging
 import time
 
@@ -183,7 +185,7 @@ class TaskPanelMixin:
             action = 'shows the teammate tree'
         else:
             action = 'hides them'
-        return f"[dim]ctrl+t {action}[/]"
+        return f"[dim]{keys.display('toggle_tasks')} {action}[/]"
 
     def _render_tasks(self):
         if self._team is None:

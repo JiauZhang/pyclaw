@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from rich.markup import escape
 from textual.app import ComposeResult
+from textual.binding import Binding
+from pyclaw.tui import keys
 from textual.screen import Screen
 from textual.widgets import Static
 from pyclaw.tui.components import (
@@ -29,10 +31,10 @@ from pyclaw.tui.diff import _diff_block
 
 class TranscriptScreen(Screen):
 
-    BINDINGS = [("escape", "exit_transcript", "Back"),
-                ("q", "exit_transcript", "Back"),
-                ("ctrl+o", "exit_transcript", "Back"),
-                ("ctrl+c", "exit_transcript", "Back")]
+    BINDINGS = [keys.binding('dismiss', 'Back'),
+                Binding('q', 'dismiss', 'Back'),
+                Binding('ctrl+o', 'dismiss', 'Back'),
+                Binding('ctrl+c', 'dismiss', 'Back')]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -102,5 +104,5 @@ class TranscriptScreen(Screen):
                 entries.append(str(widget.content))
         return entries
 
-    def action_exit_transcript(self):
+    def action_dismiss(self):
         self.app.pop_screen()

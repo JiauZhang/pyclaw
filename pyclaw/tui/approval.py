@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
+
 import asyncio
 import dataclasses
 from rich.markup import escape
@@ -151,7 +153,7 @@ class _PermissionPrompt(Vertical):
         if closed:
             note = (" \u00b7 tab edits the rule" if focused.feedback == "rule"
                     else " \u00b7 tab adds a note")
-        lines.append(f"[dim]  esc cancels{note}[/]")
+        lines.append(f"[dim]  {keys.hint('dismiss', 'cancels')}{note}[/]")
         self.query_one("#perm-body", Static).update("\n".join(lines))
 
     def _move(self, delta: int, wrap: bool):
@@ -331,8 +333,10 @@ class _QuestionPrompt(Vertical):
             lines.append("")
             for line in preview.splitlines():
                 lines.append(f"[dim]  \u2502 {escape(line)}[/]")
-        keys = "space picks, " if ask.multi else ""
-        lines.append(f"[dim]  esc skips \u00b7 {keys}tab types your own[/]")
+        picker = (keys.hint('toggle_option', 'picks') + ', '
+                  if ask.multi else '')
+        lines.append(f"[dim]  {keys.hint('dismiss', 'skips')} \u00b7 "
+                     f"{picker}{keys.hint('type_answer', 'types your own')}[/]")
         self.query_one("#q-body", Static).update("\n".join(lines))
         self._sync_field()
 

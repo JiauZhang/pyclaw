@@ -34,6 +34,7 @@ from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
 from pyclaw.tui.transcript import TranscriptMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
+from pyclaw.tui import keys
 from pyclaw.tui.theme import (FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT,
                               OVERLAY_GATED_ACTIONS, POINTER, SPINNER_FRAMES,
                               SPINNER_INTERVAL)
@@ -126,36 +127,7 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
     #status-right { height: 1; width: 1fr; text-align: right;
                     background: $background; color: $subtle; padding: 0 1; }
     """
-    BINDINGS = [Binding("ctrl+d", "quit", "Exit", priority=True),
-                Binding("ctrl+c", "interrupt", "Stop current work",
-                        priority=True),
-                Binding("escape", "escape", "Cancel / dismiss"),
-                ("ctrl+q", "quit", "Exit (fallback)"),
-                ("ctrl+t", "toggle_tasks", "Show/hide tasks"),
-                ("ctrl+l", "redraw", "Redraw"),
-                ("ctrl+o", "toggle_transcript", "Transcript"),
-                Binding("ctrl+shift+o", "agent_preview",
-                        "Preview teammate activity", priority=True),
-                Binding("alt+t", "toggle_thinking",
-                        "Turn thinking on or off", priority=True),
-                ("ctrl+r", "history_search", "Search history"),
-                ("ctrl+s", "stash", "Stash prompt"),
-                ("pageup", "conv_page_up", "Scroll up"),
-                ("pagedown", "conv_page_down", "Scroll down"),
-                Binding("ctrl+home", "conv_scroll_top", "Scroll to top"),
-                Binding("ctrl+end", "jump_to_bottom", "Scroll to latest"),
-                Binding("shift+up", "agent_prev", "Previous agent",
-                        priority=True),
-                Binding("shift+down", "agent_next", "Next agent",
-                        priority=True),
-                Binding("k", "stop_agent", "Stop selected agent",
-                        priority=True),
-                Binding("shift+tab", "cycle_permission", "Cycle permission mode",
-                        priority=True),
-                Binding("down", "prompt_next", "Next", priority=True),
-                Binding("up", "prompt_prev", "Previous", priority=True),
-                Binding("tab", "suggest_tab", "Complete suggestion",
-                        priority=True)]
+    BINDINGS = keys.app_bindings()
 
     def check_action(self, action: str, parameters) -> bool:
         if action in OVERLAY_GATED_ACTIONS and self.modal_overlay_active:

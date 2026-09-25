@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
+
 import json
 import re
 from pathlib import Path
@@ -65,7 +67,7 @@ def _preview(text, width: int, limit: int = MAX_RESULT_LINES) -> str:
         return "\n".join(rows)
     return "\n".join(rows[:limit]
                      + [f"\u2026 +{len(rows) - limit} lines "
-                        f"(ctrl+o shows the rest)"])
+                        f"({keys.hint('toggle_transcript', 'shows the rest')})"])
 
 
 def _edit_summary(added: int, removed: int) -> str:

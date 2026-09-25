@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pyclaw.tui import keys
 from rich.markup import escape
 from textual.widgets import Input
 
@@ -40,8 +41,11 @@ AGENT_PLACEHOLDERS = {
 AGENT_TEXT_STEPS = ('name', 'prompt', 'description', 'model')
 AGENT_LOCATIONS = (('project', '.pyclaw/agents/'),
                    ('user', '~/.pyclaw/agents/'))
-AGENT_NAV = ('\u2191\u2193 move \u00b7 enter picks \u00b7 esc goes back')
-AGENT_TEXT_NAV = ('type it in \u00b7 enter continues \u00b7 esc goes back')
+AGENT_NAV = (f'{keys.display("prev")}{keys.display("next")} move \u00b7 '
+             f'{keys.hint("open", "picks")} \u00b7 '
+             f'{keys.hint("dismiss", "goes back")}')
+AGENT_TEXT_NAV = (f'type it in \u00b7 {keys.hint("open", "continues")} \u00b7 '
+                  f'{keys.hint("dismiss", "goes back")}')
 
 
 class AgentFormMixin:
@@ -113,7 +117,9 @@ class AgentFormMixin:
                     else f'{chosen} of {len(self._names)} picked')
         lines += ['', f'[#9A9A9A]{escape(selected)}[/#9A9A9A]']
         return lines + self._footer(
-            'enter toggles \u00b7 \u2191\u2193 move \u00b7 esc goes back')
+            f'{keys.hint("open", "toggles")} \u00b7 '
+            f'{keys.display("prev")}{keys.display("next")} move \u00b7 '
+            f'{keys.hint("dismiss", "goes back")}')
     def _render_edit_model(self) -> list:
         lines = self._header(AGENT_TITLES['model'], self._error or None)
         return lines + [escape(AGENT_QUESTIONS['model'])] \
@@ -138,7 +144,9 @@ class AgentFormMixin:
             lines += ['', '[bold][#FF6B80]Errors:[/#FF6B80][/bold]']
             lines += [f'[#FF6B80] \u2022 {escape(e)}[/#FF6B80]'
                       for e in errors]
-        return lines + self._footer('s or enter saves \u00b7 esc goes back')
+        return lines + self._footer(
+            keys.either('save', 'open', 'saves') + ' \u00b7 '
+            + keys.hint('dismiss', 'goes back'))
     def _tools_display(self) -> str:
         chosen = self._draft['tools']
         return 'All tools' if chosen is None else ', '.join(chosen)

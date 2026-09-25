@@ -5,19 +5,21 @@ import contextlib
 from rich.markup import escape
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import VerticalScroll
+from textual.binding import Binding
 from textual.screen import Screen
+from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 
 
 class MemoryScreen(Screen):
 
-    BINDINGS = [("up", "prev", "Previous"),
-                ("down", "next", "Next"),
-                ("enter", "open", "Edit"),
-                ("escape", "dismiss", "Close"),
-                ("q", "dismiss", "Close"),
-                ("ctrl+c", "dismiss", "Close")]
+    BINDINGS = [keys.binding('prev', 'Previous'),
+                keys.binding('next', 'Next'),
+                keys.binding('open', 'Edit'),
+                keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close'),
+                Binding('ctrl+c', 'dismiss', 'Close')]
 
     def __init__(self, owner, cwd: str, **kw):
         super().__init__(**kw)
@@ -48,7 +50,9 @@ class MemoryScreen(Screen):
             text = escape(f'{marker} {scope} · {path}{state}')
             lines.append(f'[#B1B9F9]{text}[/]' if index == self._selected
                          else f'  [dim]{text}[/]')
-        lines.append('[dim]enter edits the selected file · esc closes[/]')
+        lines.append('[dim]' + keys.hints(
+            ('open', 'edits the selected file'),
+            ('dismiss', 'closes')) + '[/]')
         self.query_one("#mm-body", Static).update('\n'.join(lines))
 
     def _move(self, delta: int):

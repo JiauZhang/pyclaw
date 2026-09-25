@@ -3,15 +3,17 @@ from __future__ import annotations
 from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
+from pyclaw.tui import keys
+from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Static
 
 
 class DiffScreen(Screen):
 
-    BINDINGS = [("escape", "dismiss", "Close"),
-                ("q", "dismiss", "Close"),
-                ("ctrl+c", "dismiss", "Close")]
+    BINDINGS = [keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close'),
+                Binding('ctrl+c', 'dismiss', 'Close')]
 
     CSS = """
     #diff-panel { width: 1fr; height: 1fr; }
@@ -44,7 +46,7 @@ class DiffScreen(Screen):
                 lines.append(f'[dim]{escape(line)}[/]')
             else:
                 lines.append(escape(line) or '')
-        lines += ['', '[dim]esc closes[/]']
+        lines += ['', f'[dim]{keys.hint("dismiss", "closes")}[/]']
         self.query_one("#diff-body", Static).update('\n'.join(lines))
 
     def action_dismiss(self):

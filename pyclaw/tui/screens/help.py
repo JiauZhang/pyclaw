@@ -4,6 +4,7 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
+from pyclaw.tui import keys
 from textual.screen import Screen
 from pyclaw.tui.components import _PagerScroll
 from textual.widgets import Static
@@ -11,8 +12,10 @@ from textual.widgets import Static
 
 class HelpScreen(Screen):
 
-    BINDINGS = [("escape", "close", "Close"), ("q", "close", "Close"),
-                ("ctrl+o", "close", "Close"), ("?", "close", "Close")]
+    BINDINGS = [keys.binding('dismiss', 'Close'),
+                Binding('q', 'dismiss', 'Close'),
+                Binding('ctrl+o', 'dismiss', 'Close'),
+                Binding('?', 'dismiss', 'Close')]
 
     def _body(self) -> str:
         from pyclaw.slash import COMMANDS
@@ -32,7 +35,8 @@ class HelpScreen(Screen):
             lines.append(f"  {escape(key)}  "
                          f"[dim]{escape(description)}[/]")
         lines.append("")
-        lines.append("[bold]Reading the transcript (ctrl+o)[/bold]")
+        lines.append(f"[bold]Reading the transcript "
+                     f"({keys.display('toggle_transcript')})[/bold]")
         pager_seen = set()
         for entry in _PagerScroll.BINDINGS:
             if entry.key in pager_seen or not entry.description:
@@ -46,12 +50,12 @@ class HelpScreen(Screen):
             lines.append(f"  /{escape(item['name'])}  "
                          f"[dim]{escape(item['desc'])}[/]")
         lines.append("")
-        lines.append("[dim]esc to close[/]")
+        lines.append(f"[dim]{keys.hint('dismiss', 'to close')}[/]")
         return "\n".join(lines)
 
     def compose(self) -> ComposeResult:
         with VerticalScroll(id="help"):
             yield Static(self._body(), markup=True)
 
-    def action_close(self):
+    def action_dismiss(self):
         self.app.pop_screen()

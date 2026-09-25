@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 
+from pyclaw.tui import keys
+
 
 BULLET = "\u23fa" if sys.platform == "darwin" else "\u25cf"
 POINTER = "\u276f"
@@ -17,12 +19,12 @@ TREE_BRANCH = ("\u251c\u2500", "\u255e\u2550")
 TREE_LAST = ("\u2514\u2500", "\u2558\u2550")
 TREE_INDENT = "   "
 TREE_POINTER = POINTER
-SELECT_HINT = "shift+\u2191/\u2193 picks a row"
-VIEW_HINT = "enter opens it"
-COLLAPSE_HINT = "enter closes it"
+SELECT_HINT = keys.chord('agent_prev', 'agent_next', 'picks a row')
+VIEW_HINT = keys.hint('open', 'opens it')
+COLLAPSE_HINT = keys.hint('open', 'closes it')
 IDLE_TEXT = "Idle"
 AGENT_TEAMMATES_HINT = "subagents are active"
-TEAMMATE_VIEW_HINT = "esc goes back to the lead"
+TEAMMATE_VIEW_HINT = keys.hint('dismiss', 'goes back to the lead')
 STOPPING_TEXT = "Stopping\u2026"
 STOPPED_TEXT = "Stopped"
 
@@ -51,7 +53,7 @@ PLAN_HIDDEN = " \u2026 +"
 AGENT_TRAIL_LIMIT = 3
 DONE_TEXT = "Done"
 INITIALIZING_TEXT = "Starting up\u2026"
-EXPAND_HINT = "ctrl+o shows more"
+EXPAND_HINT = keys.hint('toggle_transcript', 'shows more')
 
 
 WAITING_PERMISSION_TEXT = "Needs your approval\u2026"
