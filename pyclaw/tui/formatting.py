@@ -193,6 +193,17 @@ def thinking_map(messages) -> dict:
     return pairs
 
 
+def model_map(messages) -> dict:
+    pairs = {}
+    for message in messages:
+        if message.get('role') != 'assistant' or not message.get('model'):
+            continue
+        text = _content_text(message.get('content'))
+        if text:
+            pairs[text] = str(message['model'])
+    return pairs
+
+
 MAX_LOG_PAYLOAD = 1000
 
 def _log_data(data) -> str:

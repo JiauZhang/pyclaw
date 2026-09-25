@@ -22,7 +22,7 @@ from pyclaw.tui.theme import (
     RESULT_HANG,
     RESULT_PREFIX,
 )
-from pyclaw.tui.formatting import _hang, thinking_map
+from pyclaw.tui.formatting import _hang, model_map, thinking_map
 from pyclaw.tui.approval import _PermissionPrompt, _QuestionPrompt
 from pyclaw.tui.diff import _diff_block
 
@@ -69,6 +69,7 @@ class TranscriptScreen(Screen):
         app = self._owner
         entries: list[str] = []
         thoughts = thinking_map(app._team.transcript())
+        models = model_map(app._team.transcript())
         for widget in app._conv().children:
             if isinstance(widget, (_PermissionPrompt, _QuestionPrompt,
                                    _JumpToBottom, _LogoBlock)):
@@ -76,6 +77,9 @@ class TranscriptScreen(Screen):
             if isinstance(widget, _TextBlock):
                 body = widget._body or ""
                 shown = body.strip("\n")
+                model = models.get(body) or models.get(shown)
+                if model:
+                    entries.append(f"[dim]{escape(model)}[/]")
                 thought = thoughts.get(body) or thoughts.get(shown)
                 if thought:
                     entries.append(self._thinking_entry(thought))

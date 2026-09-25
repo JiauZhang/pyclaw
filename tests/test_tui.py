@@ -1299,6 +1299,29 @@ def test_a_compaction_leaves_a_summary_entry_with_the_full_text_behind_ctrl_o():
     assert "we settled on the parser rewrite" in screen
 
 
+def test_the_transcript_view_names_the_model_behind_each_answer():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead",
+                                           data={"delta": "the answer"}))
+            await pilot.pause()
+            app._team._messages.append(
+                {"role": "assistant", "content": "the answer",
+                 "model": "agnes-2.5-flash"})
+            live = _flatten(app)
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            screen = "\n".join(
+                _block_text(w) for w in app.screen.query(Static))
+            return live, screen
+
+    live, screen = asyncio.run(scenario())
+    assert "agnes-2.5-flash" not in live
+    assert "agnes-2.5-flash" in screen
+
+
 def test_a_bang_command_runs_in_the_shell_without_a_model_turn():
     asked = []
 
