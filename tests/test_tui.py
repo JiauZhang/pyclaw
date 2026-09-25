@@ -5008,6 +5008,54 @@ def _question(multi=False):
             'multiSelect': multi}
 
 
+def test_a_focused_option_preview_is_shown_and_carried_into_the_answer():
+    questions = [{'question': 'Which layout?', 'header': 'layout',
+                  'options': [{'label': 'stacked', 'preview': 'a\nb'},
+                              {'label': 'beside', 'preview': 'a | b'}]}]
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot, questions)
+            first = _plain(str(card.query_one("#q-body", Static).content))
+            await pilot.press("down")
+            await pilot.pause()
+            second = _plain(str(card.query_one("#q-body", Static).content))
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            return first, second, await task
+
+    first, second, answers = asyncio.run(scenario())
+    assert 'a' in first and 'b' in first and 'a | b' not in first
+    assert 'a | b' in second
+    assert answers == ['beside\nselected preview:\na | b']
+
+
+def test_a_multi_select_question_shows_no_preview():
+    questions = [{'question': 'Which shapes?', 'header': 'shape',
+                  'multiSelect': True,
+                  'options': [{'label': 'round', 'preview': 'a circle'}]}]
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            task, card = await _ask_on_screen(app, pilot, questions)
+            text = _plain(str(card.query_one("#q-body", Static).content))
+            await pilot.press("escape")
+            for _ in range(3):
+                await pilot.pause()
+            return text, await task
+
+    text, _answers = asyncio.run(scenario())
+    assert 'a circle' not in text
+
+
+
+
+
 async def _type(pilot, text):
     for char in text:
         await pilot.press("space" if char == " " else char)

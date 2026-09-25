@@ -326,10 +326,21 @@ class _QuestionPrompt(Vertical):
                          else f"[dim]{row}[/]")
         if not ask.options:
             lines.append("  [dim]no options, type an answer[/]")
+        preview = self._focused_preview(ask)
+        if preview:
+            lines.append("")
+            for line in preview.splitlines():
+                lines.append(f"[dim]  \u2502 {escape(line)}[/]")
         keys = "space picks, " if ask.multi else ""
         lines.append(f"[dim]  esc skips \u00b7 {keys}tab types your own[/]")
         self.query_one("#q-body", Static).update("\n".join(lines))
         self._sync_field()
+
+    def _focused_preview(self, ask: _Ask) -> str:
+        if ask.multi or not ask.options:
+            return ""
+        index = min(self._focused, len(ask.options) - 1)
+        return str(ask.options[index].get("preview") or "").strip()
 
     def _sync_field(self):
         field = self.query_one("#q-text", Input)
@@ -400,8 +411,19 @@ class _QuestionPrompt(Vertical):
                       for index in sorted(self._picked)]
             self._record(", ".join(label for label in labels if label))
             return
-        self._record(str(ask.options[self._focused].get("label") or "")
-                     if ask.options else NO_ANSWER)
+        if not ask.options:
+            self._record(NO_ANSWER)
+            return
+        option = ask.options[self._focused]
+        self._record(self._with_preview(
+            str(option.get("label") or ""), option))
+
+    @staticmethod
+    def _with_preview(answer: str, option: dict) -> str:
+        preview = str(option.get("preview") or "").strip()
+        if not preview:
+            return answer
+        return f'{answer}\nselected preview:\n{preview}'
 
     def _record(self, answer: str):
         self._answers.append(answer or NO_ANSWER)
