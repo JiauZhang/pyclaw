@@ -11,7 +11,7 @@ from pyclaw.agents import Session as RealSession
 from pyclaw.session_store import (_session_dir, append_conv,
                                   close_session_logger, record_meta,
                                   resolve_session_id, session_logger)
-from pyclaw.gateway.server import run_im_interaction
+from pyclaw.gateway.im import run_im_interaction
 
 
 @pytest.fixture(autouse=True)

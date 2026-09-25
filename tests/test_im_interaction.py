@@ -7,7 +7,7 @@ from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TEXT,
 
 from pyclaw import agents
 from pyclaw import session_store
-from pyclaw.gateway.server import _im_progress_text, run_im_interaction
+from pyclaw.gateway.im import _im_progress_text, run_im_interaction
 
 
 @pytest.fixture(autouse=True)

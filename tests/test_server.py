@@ -1,4 +1,4 @@
-from pyclaw.gateway.server import _friendly_channel_error
+from pyclaw.gateway.im import _friendly_channel_error
 
 
 def test_a_channel_failure_is_reworded_for_the_user():
