@@ -20,6 +20,7 @@ from pyclaw.spinner_verbs import SPINNER_VERBS
 
 from pyclaw import events
 from pyclaw.tui.permission_card import _Approval
+from pyclaw.tui.actions import ActionMixin
 from pyclaw.tui.approval_flow import ApprovalFlowMixin
 from pyclaw.tui.formatting import _log_data
 from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
@@ -33,6 +34,7 @@ from pyclaw.tui.status_line import StatusMixin
 from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
 from pyclaw.tui.transcript import TranscriptMixin
+from pyclaw.tui.turn_flow import TurnFlowMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
 from pyclaw.tui import keys
 from pyclaw.tui.theme import (FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT,
@@ -44,7 +46,7 @@ from pyclaw.tui.components import (_AgentGroupBlock, _AgentPane, _Conv,
 
 logger = logging.getLogger(__name__)
 
-class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
+class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
                 TaskPanelMixin, EventRouterMixin, ApprovalFlowMixin,
                 TranscriptMixin, ScrollFollowMixin, DeliveryMixin,
                 NotifyMixin, App[None]):
@@ -370,32 +372,8 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
             cwd=cwd, feeds=feeds, brand=self.brand)
         return text, shown
 
-    def _note_lingering(self):
-        alive = {str(getattr(agent, 'name', '')): agent
-                 for agent in self._alive_teammates()}
-        now = time.monotonic()
-        for name, agent in self._known_teammates.items():
-            if name not in alive and name not in self._lingering:
-                self._lingering[name] = (agent, now + FINISHED_LINGER_SECONDS)
-        self._known_teammates = alive
-        for name in [name for name, (_, deadline) in self._lingering.items()
-                     if now >= deadline]:
-            self._lingering.pop(name, None)
-            self._agent_state.pop(name, None)
 
-    def _schedule_linger(self):
-        if not self._lingering or self._linger_task is not None:
-            return
-        self._linger_task = asyncio.create_task(self._expire_lingering())
 
-    async def _expire_lingering(self):
-        try:
-            while self._lingering:
-                deadline = min(end for _, end in self._lingering.values())
-                await asyncio.sleep(max(0.1, deadline - time.monotonic()))
-                await self._refresh_agents()
-        finally:
-            self._linger_task = None
 
     async def _after_mount(self):
         if self._follow:
@@ -406,131 +384,18 @@ class PyClawApp(RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
 
     _SPIN = "".join(SPINNER_FRAMES)
 
-    async def action_escape(self):
-        if self._suggest_items:
-            self.action_suggest_dismiss()
-            return
-        if self._viewing is not None:
-            agent = self._agent_by_name(self._viewing)
-            if agent is not None and self._agent_running(agent):
-                agent.abort_work()
-                await self._render_agent_view()
-                return
-            await self._exit_agent_view()
-            await self._refresh_agents()
-            return
-        if self._view_selection == 'selecting-agent':
-            self._view_selection = 'none'
-            self._selected_index = -1
-            await self._refresh_agents()
-            return
-        if self._processing is None:
-            return
-        await self._interrupt()
 
-    async def action_interrupt(self):
-        now = asyncio.get_running_loop().time()
-        if self._processing is None and now - self._last_interrupt < 2.0:
-            self.exit()
-            return
-        self._last_interrupt = now
-        await self._interrupt()
 
-    async def _interrupt(self):
-        rejected = await self._deny_pending_permission()
-        if self._team is not None:
-            self._team.lead.abort_work()
-        if self._processing and not self._wrote_body:
-            self.query_one("#input", Input).value = self._processing
-            self._processing = None
-        if not rejected:
-            await self._append_block(
-                f"[#9A9A9A]{INTERRUPTED_TEXT}[/]")
 
-    def _begin_turn(self):
-        self._set_title(True)
-        self._live = None
-        self._live_text = ""
-        self._turn_usage = _agent_tokens(self._team.lead)
-        self._wrote_body = False
-        self._interrupted_call = False
-        self._turn_start = len(self._team.transcript())
-        self._turn_verb = random.choice(SPINNER_VERBS)
-        self._turn_past = self._completion_verb()
-        self._turn_started_at = time.monotonic()
 
-    async def _settle_paint(self):
-        done = asyncio.Event()
-        self.call_after_refresh(done.set)
-        await done.wait()
 
-    async def _wait_session_idle(self):
-        lead = self._team.lead
-        while True:
-            if not getattr(lead, 'busy', False) and await lead.idle():
-                return
-            await asyncio.sleep(0.05)
 
-    def _teammates_running(self) -> bool:
-        return any(a is not self._team.lead and getattr(a, 'busy', False)
-                   for a in self._team.agents.values())
 
-    async def _finish_work_when_settled(self):
-        while self._teammates_running():
-            await asyncio.sleep(0.1)
-        await self._finish_work()
 
-    async def _converse(self, text: str):
-        try:
-            out = await self._session.chat(text)
-        except Exception as exc:
-            logger.exception("chat failed for prompt %r", _log_data(text))
-            if self._events is not None:
-                self._events.note_error(str(exc))
-            await self._append_error(str(exc))
-            return
-        await self._wait_session_idle()
-        await self._queue.join()
-        if out.strip() and not self._wrote_body and not self._interrupted_call \
-                and len(self._team.transcript()) > self._turn_start:
-            await self._append_block(escape(out))
-        self._render_status()
 
-    def action_redraw(self):
-        self.refresh()
 
-    def action_toggle_transcript(self):
-        self.push_screen(TranscriptScreen(self))
 
-    def action_history_search(self):
-        if self._history:
-            self.push_screen(HistorySearchScreen(self))
 
-    def action_stash(self):
-        inp = self.query_one("#input", Input)
-        text = inp.value
-        if text.strip():
-            self._stashed = text
-            inp.value = ""
-        elif self._stashed is not None:
-            inp.value = self._stashed
-            inp.cursor_position = len(self._stashed)
-            self._stashed = None
 
-    async def action_toggle_thinking(self):
-        if self._session is None:
-            return
-        self._session.toggle_thinking()
-        await self._session.note_config_change('settings')
-        self._render_status()
 
-    def action_toggle_help(self):
-        if isinstance(self.screen, HelpScreen):
-            self.pop_screen()
-            return
-        self.push_screen(HelpScreen())
 
-    async def action_quit(self):
-        if self._spin_timer is not None:
-            self._spin_timer.stop()
-        self.exit()

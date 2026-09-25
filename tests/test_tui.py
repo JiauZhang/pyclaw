@@ -27,7 +27,7 @@ from pyclaw import session_store
 from pyclaw.session_store import save_transcript
 from pyclaw.tools import background
 from pyclaw.tui import app as tui
-from pyclaw.tui import status_line
+from pyclaw.tui import status_line, turn_flow
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.permission_card import _PermissionPrompt
@@ -5346,7 +5346,7 @@ def test_a_teammate_that_left_the_roster_keeps_its_row_for_a_while():
 
 
 def test_a_lingering_row_leaves_when_the_grace_window_ends(monkeypatch):
-    monkeypatch.setattr(tui, 'FINISHED_LINGER_SECONDS', 0)
+    monkeypatch.setattr(turn_flow, 'FINISHED_LINGER_SECONDS', 0)
 
     async def scenario():
         async with PyClawApp(builder=_SwarmTeam).run_test(size=(120, 40)) as pilot:
