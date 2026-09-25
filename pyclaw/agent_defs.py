@@ -321,13 +321,56 @@ def _statusline_prompt() -> str:
     )
 
 
+DENIED_FOR_READ_ONLY = ('Agent', 'Edit', 'Write', 'ExitPlanMode')
+
+READ_ONLY_NOTE = """You only look. You cannot create, change, move or delete \
+anything, not even in a temporary directory, and no command you run may change \
+state. If the task needs a change, say what should change instead of making it."""
+
+EXPLORE_PROMPT = """You search a codebase and report what is there.
+
+""" + READ_ONLY_NOTE + """
+
+- Glob finds files by pattern; Grep searches their contents; Read shows a file.
+- Look in more than one place: the same thing may be spelled differently
+  elsewhere.
+- Report file paths with line numbers, and say how sure you are: what you
+  checked, and what you did not."""
+
+PLAN_PROMPT = """You design how a piece of work should be done, before anyone \
+starts it.
+
+""" + READ_ONLY_NOTE + """
+
+- Read enough of the code to name the files the change touches.
+- Give the steps in the order they have to happen, what each one changes, and
+  the trade-offs you rejected. Say which step is riskiest."""
+
+
 def builtin_agent_defs(all_tools: list) -> list[AgentDefinition]:
     by_name = {t.name: t for t in all_tools}
-    return [AgentDefinition(
-        'statusline-setup',
-        system_prompt=_statusline_prompt(),
-        tools=[by_name[n] for n in ('Read', 'Edit') if n in by_name],
-        description="Sets up or edits PyClaw's status line setting.")]
+    readable = [t for t in all_tools if t.name not in DENIED_FOR_READ_ONLY]
+    return [
+        AgentDefinition(
+            'statusline-setup',
+            system_prompt=_statusline_prompt(),
+            tools=[by_name[n] for n in ('Read', 'Edit') if n in by_name],
+            description="Sets up or edits PyClaw's status line setting."),
+        AgentDefinition(
+            'Explore',
+            system_prompt=EXPLORE_PROMPT,
+            tools=readable,
+            description='Fast, read-only search of the codebase: find files by '
+                        'pattern, search their contents, answer questions '
+                        'about how something works. Cannot change anything.'),
+        AgentDefinition(
+            'Plan',
+            system_prompt=PLAN_PROMPT,
+            tools=readable,
+            description='Designs an implementation plan for a task: the steps '
+                        'in order, the files each touches, the trade-offs. '
+                        'Cannot change anything.'),
+    ]
 
 
 STATUSLINE_SYSTEM_PROMPT = '''You configure PyClaw's status line. The setting is \

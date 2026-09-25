@@ -2,6 +2,7 @@ import asyncio
 
 from chatchat.core.agents import AgentDefinition
 
+from pyclaw import agent_defs as agent_defs_mod
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.agent_form import AGENT_STEPS, _CHECKED, _UNCHECKED
 from pyclaw.tui.theme import POINTER
@@ -111,7 +112,7 @@ def test_the_list_groups_scopes_and_offers_create(monkeypatch, tmp_path):
             screen = await _open_panel(app, pilot)
             body = _plain(_body(screen))
             assert 'Agents' in body
-            assert '3 agents' in body
+            assert f'{2 + len(agent_defs_mod.builtin_agent_defs(_tools()))} agents' in body
             assert 'New agent' in body
             assert f'Your agents ({user})' in body
             assert f'This project ({project})' in body

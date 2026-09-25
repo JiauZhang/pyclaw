@@ -64,6 +64,10 @@ def _project(tmp_path, filename, text):
     return root
 
 
+def _builtin_types():
+    return [d.agent_type for d in mod.builtin_agent_defs(ALL_TOOLS)]
+
+
 async def _agent_def(cwd, agent_type):
     team = build_team('agnes', 'agnes-2.5-flash', cwd=str(cwd))
     return team.agent_defs.get(agent_type)
@@ -150,10 +154,10 @@ def test_discovery_lists_builtins_then_user_then_project(tmp_path, user_agents):
 
     rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
     assert [(r.agent_type, r.scope) for r in rows] == [
-        ('statusline-setup', 'built-in'), ('reviewer', 'user'),
-        ('planner', 'project')]
+        (name, 'built-in') for name in _builtin_types()
+    ] + [('reviewer', 'user'), ('planner', 'project')]
     assert rows[0].path is None
-    assert rows[2].path.name == 'planner.md'
+    assert rows[-1].path.name == 'planner.md'
 
 
 def test_discovery_marks_the_scope_that_wins(tmp_path, user_agents):
@@ -286,14 +290,15 @@ def test_the_panel_groups_by_scope_and_sorts_each_group(tmp_path, user_agents):
     _project(tmp_path, 'alpha.md', REVIEWER.replace('reviewer', 'alpha'))
     rows = discover(str(tmp_path), all_tools=ALL_TOOLS)
     assert [(r.agent_type, r.scope) for r in list_order(rows)] == [
-        ('beta', 'user'), ('reviewer', 'user'),
-        ('alpha', 'project'), ('statusline-setup', 'built-in')]
+        ('beta', 'user'), ('reviewer', 'user'), ('alpha', 'project'),
+    ] + [(name, 'built-in') for name in sorted(_builtin_types(), key=str.lower)]
 
 
 def test_the_header_count_excludes_shadowed_scopes(tmp_path, user_agents):
     _write_agent(user_agents, 'reviewer.md', REVIEWER)
     _project(tmp_path, 'reviewer.md', REVIEWER)
-    assert agent_count(discover(str(tmp_path), all_tools=ALL_TOOLS)) == 2
+    assert agent_count(discover(str(tmp_path), all_tools=ALL_TOOLS)) \
+        == 1 + len(_builtin_types())
 
 
 def test_an_agent_without_a_model_shows_the_team_default():
@@ -408,3 +413,27 @@ def test_a_written_agent_keeps_its_scope_on_the_way_out():
     text = mod.render_agent_md(defn, ALL_TOOLS)
     assert 'memory: local' in text
     assert mod._definition_from_md(text, ALL_TOOLS).memory == 'local'
+
+
+def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
+    from pyclaw.agent_defs import builtin_agent_defs
+    from pyclaw.tools import BUILTIN_TOOLS
+
+    defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}
+
+    assert {'Explore', 'Plan', 'statusline-setup'} <= set(defs)
+    for name in ('Explore', 'Plan'):
+        tools = {t.name for t in defs[name].tools}
+        assert {'Read', 'Glob', 'Grep'} <= tools
+        assert not tools & {'Edit', 'Write', 'Agent'}
+        assert 'You only look' in defs[name].system_prompt
+
+
+def test_the_explorer_says_what_it_is_for():
+    from pyclaw.agent_defs import builtin_agent_defs
+    from pyclaw.tools import BUILTIN_TOOLS
+
+    defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}
+
+    assert 'read-only search' in defs['Explore'].description
+    assert 'implementation plan' in defs['Plan'].description
