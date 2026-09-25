@@ -9,6 +9,7 @@ from unittest import mock
 from textual.widgets import Input, Static
 
 from chatchat.hooks.events import (
+    AGENT_COMPACT,
     AGENT_PROGRESS,
     AGENT_REASON_START,
     AGENT_TEXT,
@@ -1268,6 +1269,33 @@ def test_subagent_progress_renders_tree_line():
 def _transcript_text(app) -> str:
     view = app.screen.query_one("#transcript")
     return "".join(str(w.content) for w in view.children)
+
+
+def test_a_compaction_leaves_a_summary_entry_with_the_full_text_behind_ctrl_o():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await app._handle(RuntimeEvent(
+                AGENT_COMPACT, agent="lead",
+                data={"before": 20, "after": 11, "summarized": 10,
+                      "summary": "we settled on the parser rewrite"}))
+            await pilot.pause()
+            live = _flatten(app)
+            await pilot.press("ctrl+o")
+            await pilot.pause()
+            screen = "\n".join(
+                _block_text(w) for w in app.screen.query(Static))
+            await pilot.press("escape")
+            await pilot.pause()
+            return live, screen
+
+    live, screen = asyncio.run(scenario())
+    assert "Summarized conversation" in live
+    assert "Summarized 10 messages up to this point" in live
+    assert "ctrl+o shows more" in live
+    assert "we settled on the parser rewrite" not in live
+    assert "we settled on the parser rewrite" in screen
 
 
 def test_dynamic_text_with_brackets_renders_without_crash():

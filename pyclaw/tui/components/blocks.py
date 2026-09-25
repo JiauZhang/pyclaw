@@ -25,6 +25,27 @@ def teammate_name(tool_input) -> str:
             if isinstance(tool_input, dict) else '')
 
 
+class _SummaryBlock(Static):
+
+    def __init__(self, summarized: int, summary: str = '', **kw):
+        super().__init__("", **kw)
+        self.summarized = summarized
+        self.summary = summary
+        self.update(self.short())
+
+    def short(self) -> str:
+        return (f'{BULLET_PREFIX}Summarized conversation\n'
+                f'  Summarized {_plural(self.summarized, "message")} up to '
+                f'this point\n'
+                f'  {EXPAND_HINT}')
+
+    def verbose(self) -> str:
+        lines = [f'{BULLET_PREFIX}Summarized conversation']
+        if self.summary:
+            lines += [''] + self.summary.splitlines()
+        return '\n'.join(lines)
+
+
 class _TextBlock(Vertical):
 
     def __init__(self, bullet: str = BULLET_PREFIX, **kw):

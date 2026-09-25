@@ -10,6 +10,7 @@ from pyclaw.tui.components import (
     _JumpToBottom,
     _LogoBlock,
     _PagerScroll,
+    _SummaryBlock,
     _TextBlock,
     _ToolBlock,
     _UserBlock,
@@ -88,6 +89,8 @@ class TranscriptScreen(Screen):
                         entries.append(self._tool_entry(block))
             elif isinstance(widget, _AgentGroupBlock):
                 entries.extend(widget.verbose_entries())
+            elif isinstance(widget, _SummaryBlock):
+                entries.append(widget.verbose())
             elif isinstance(widget, _ToolBlock):
                 if widget.display:
                     entries.append(self._tool_entry(widget))
