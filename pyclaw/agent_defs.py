@@ -41,7 +41,7 @@ READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI})
 _DISPLAY_DIRS = {USER: '~/.pyclaw/agents', PROJECT: '.pyclaw/agents'}
 
 _READ_ONLY = frozenset({'Glob', 'Grep', 'Read', 'TaskOutput', 'TaskStop'})
-_EDIT = frozenset({'Edit', 'Write', 'MultiEdit'})
+_EDIT = frozenset({'Edit', 'Write'})
 _EXECUTION = frozenset({'Bash'})
 BUCKET_NAMES = ('Reading and search', 'Editing files', 'Running commands',
                 'Other tools')

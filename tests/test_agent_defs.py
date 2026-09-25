@@ -275,9 +275,8 @@ def test_tools_are_grouped_by_their_kind():
     names = [t.name for t in ALL_TOOLS]
     assert tool_buckets(names) == [
         ('Reading and search', ['Read', 'Glob', 'Grep', 'TaskOutput', 'TaskStop']),
-        ('Editing files', ['Write', 'Edit', 'MultiEdit']),
-        ('Running commands', ['Bash']),
-        ('Other tools', ['LS'])]
+        ('Editing files', ['Write', 'Edit']),
+        ('Running commands', ['Bash'])]
     assert tool_buckets([]) == []
 
 

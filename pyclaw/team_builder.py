@@ -70,7 +70,7 @@ PLAN_NOTE = '''
 
 You are in PLAN MODE (read-only). Investigate the workspace, explore and
 propose a plan, but do NOT edit files or perform state-changing operations.
-Read/Glob/Grep/LS and read-only shell commands are available; Write, Edit and
+Read/Glob/Grep and read-only shell commands are available; Write, Edit and
 state-changing commands are blocked until the user approves a plan.'''
 
 

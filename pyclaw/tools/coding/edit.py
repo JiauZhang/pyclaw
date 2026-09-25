@@ -85,7 +85,8 @@ def Write(context, file_path: str, content: str) -> str:
     name='Edit',
     description='Replaces an exact string in one file and returns the unified '
                 'diff of the change. old_string must match the file byte for '
-                'byte, indentation included, and must occur exactly once.',
+                'byte, indentation included, and must occur exactly once '
+                'unless replace_all is set.',
     get_path=lambda args: args.get('file_path'),
     parameters={
         'type': 'object',
@@ -96,71 +97,36 @@ def Write(context, file_path: str, content: str) -> str:
                            'description': 'Text to replace.'},
             'new_string': {'type': 'string',
                            'description': 'Replacement text.'},
+            'replace_all': {'type': 'boolean', 'default': False,
+                            'description': 'Replace every occurrence of '
+                                           'old_string.'},
         },
         'required': ['file_path', 'old_string', 'new_string'],
     },
 )
-def Edit(context, file_path: str, old_string: str, new_string: str) -> str:
-    return _replace(context, file_path, [(old_string, new_string)])
+def Edit(context, file_path: str, old_string: str, new_string: str,
+         replace_all: bool = False) -> str:
+    return _replace(context, file_path, old_string, new_string,
+                    bool(replace_all))
 
 
-@tool(
-    name='MultiEdit',
-    description='Applies exact-string replacements to one file in a single '
-                'call and returns the unified diff of the combined change. '
-                'Every old_string must match byte for byte and occur exactly '
-                'once; if any one fails nothing is written. Later strings are '
-                'matched against the file as earlier ones have already '
-                'rewritten it.',
-    get_path=lambda args: args.get('file_path'),
-    parameters={
-        'type': 'object',
-        'properties': {
-            'file_path': {'type': 'string',
-                          'description': 'Path relative to the workspace.'},
-            'edits': {
-                'type': 'array',
-                'minItems': 1,
-                'description': 'Replacements, applied in order.',
-                'items': {
-                    'type': 'object',
-                    'properties': {
-                        'old_string': {'type': 'string',
-                                       'description': 'Text to replace.'},
-                        'new_string': {'type': 'string',
-                                       'description': 'Replacement text.'},
-                    },
-                    'required': ['old_string', 'new_string'],
-                },
-            },
-        },
-        'required': ['file_path', 'edits'],
-    },
-)
-def MultiEdit(context, file_path: str, edits: list) -> str:
-    return _replace(context, file_path,
-                    [(e.get('old_string', ''), e.get('new_string', ''))
-                     for e in edits])
-
-
-def _replace(context, file_path: str, pairs) -> str:
+def _replace(context, file_path: str, old_string: str, new_string: str,
+             replace_all: bool = False) -> str:
     path = resolve(context.cwd, file_path)
     if path is None:
         return f'Error: path is outside the workspace: {file_path}'
     text, err = _read_text(path)
     if text is None:
         return err
-    numbered = len(pairs) > 1
-    working = text
-    for i, (old, new) in enumerate(pairs):
-        tag = f'edit {i + 1} ' if numbered else ''
-        count = working.count(old)
-        if count == 0:
-            return f'Error: {tag}old_string not found in {file_path}.'
-        if count > 1:
-            return (f'Error: {tag}old_string is not unique ({count} matches) in '
-                    f'{file_path}. Provide more surrounding context.')
-        working = working.replace(old, new, 1)
+    count = text.count(old_string)
+    if count == 0:
+        return f'Error: old_string not found in {file_path}.'
+    if count > 1 and not replace_all:
+        return (f'Error: old_string is not unique ({count} matches) in '
+                f'{file_path}. Provide more surrounding context, or set '
+                f'replace_all to change every one of them.')
+    working = (text.replace(old_string, new_string) if replace_all
+               else text.replace(old_string, new_string, 1))
     try:
         context.track_edit(path)
         path.write_text(working, encoding='utf-8')
@@ -186,4 +152,3 @@ def _write_kinds(name, tool_input):
 
 register('Write', build_tool_ui(args=_write_args, kinds=_write_kinds))
 register('Edit', build_tool_ui(args=_write_args, kinds=_write_kinds))
-register('MultiEdit', build_tool_ui(args=_write_args, kinds=_write_kinds))

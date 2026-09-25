@@ -94,8 +94,8 @@ MAX_RESULT_LINES = 3
 MAX_USE_ARG_CHARS = 80
 
 
-DISPLAY_NAMES = {"Edit": "Update", "MultiEdit": "Update", "Grep": "Search",
-                 "Glob": "Search", "LS": "List"}
+DISPLAY_NAMES = {"Edit": "Update", "Grep": "Search",
+                 "Glob": "Search"}
 
 MEMORY_FILE_NAME = 'AGENTS.md'
 

@@ -115,8 +115,6 @@ def test_read_and_find():
         assert "alpha" in out and "a.txt" in out
         g = _text(t["Glob"](pattern="*.txt"))
         assert "a.txt" in g
-        ls = _text(t["LS"](path="."))
-        assert "a.txt" in ls
 
 
 def test_grep_matches_and_limits():
@@ -178,14 +176,14 @@ def test_edit_unique_and_ambiguous():
         assert "not found" in missing
 
 
-def test_write_and_multi_edit():
+def test_write_and_edit():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
         t = _tools(d)
         wrote = _text(t["Write"](file_path="b.txt", content="hi\n"))
         assert "Created b.txt." in wrote
-        out = _text(t["MultiEdit"](file_path="b.txt", edits=[
-            {"old_string": "hi", "new_string": "hello"}]))
+        out = _text(t["Edit"](file_path="b.txt", old_string="hi",
+                              new_string="hello"))
         assert "Saved" in out
         assert "-hi" in out and "+hello" in out
         assert "hello" in _read(root / "b.txt")
@@ -236,7 +234,7 @@ def test_decide_mode_override_per_call():
 def test_coding_tools_declare_their_permissions_capabilities():
     by_name = {t.name: t for t in CODING_TOOLS}
     assert {n for n, t in by_name.items() if t.read_only} == {
-        "Read", "Glob", "Grep", "LS"}
+        "Read", "Glob", "Grep"}
     assert by_name["Edit"].get_path({"file_path": "a.py"}) == "a.py"
     assert by_name["Grep"].get_path({"pattern": "a|b", "path": "src"}) == "src"
     assert by_name["Grep"].get_path({"pattern": "a|b"}) is None
@@ -973,7 +971,8 @@ def test_suggested_rule_uses_the_addressed_path():
     assert g.suggested_rule("Edit", {"file_path": "a.txt"}) == "Edit(./a.txt)"
     assert g.suggested_rule("Read", {"file_path": "./docs/x.md"}
                             ) == "Read(./docs/x.md)"
-    assert g.suggested_rule("LS", {"path": ".pyclaw"}) == "LS(./.pyclaw)"
+    assert g.suggested_rule("Glob", {"pattern": "*.py", "path": ".pyclaw"}
+                            ) == "Glob(./.pyclaw)"
     assert g.suggested_rule("Edit", {}) is None
     assert g.suggested_rule("Edit", {"file_path": "."}) is None
 
@@ -1249,18 +1248,19 @@ def test_edit_result_is_a_unified_diff():
         assert "-b" in out and "+B" in out
 
 
-def test_multi_edit_diff_covers_all_changes():
+def test_edit_replaces_every_occurrence_when_asked():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        (root / "a.txt").write_text("x\ny\nz\n")
+        (root / "a.txt").write_text("x\ny\nx\n")
         t = _tools(d)
-        out = _text(t["MultiEdit"](file_path="a.txt", edits=[
-            {"old_string": "x", "new_string": "X"},
-            {"old_string": "z", "new_string": "Z"},
-        ]))
+        refused = _text(t["Edit"](file_path="a.txt", old_string="x",
+                                  new_string="X"))
+        assert "not unique" in refused
+        out = _text(t["Edit"](file_path="a.txt", old_string="x",
+                              new_string="X", replace_all=True))
         assert "Saved" in out
         assert "-x" in out and "+X" in out
-        assert "-z" in out and "+Z" in out
+        assert _read(root / "a.txt") == "X\ny\nX\n"
 
 
 def test_build_team_wires_task_notifications_to_lead():

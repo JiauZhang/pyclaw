@@ -17,10 +17,8 @@ def test_an_unregistered_tool_gets_the_plain_name():
 
 def test_display_names_come_from_the_theme_table():
     assert tool_label('Edit', {}) == 'Update'
-    assert tool_label('MultiEdit', {}) == 'Update'
     assert tool_label('Grep', {}) == 'Search'
     assert tool_label('Glob', {}) == 'Search'
-    assert tool_label('LS', {}) == 'List'
 
 
 def test_a_spawn_is_labelled_by_its_agent_type():
@@ -34,7 +32,6 @@ def test_a_spawn_is_labelled_by_its_agent_type():
 
 def test_path_tools_show_the_path_and_search_tools_the_pattern():
     assert tool_args('Read', {'file_path': '/tmp/w/a.py'}, '/tmp/w') == 'a.py'
-    assert tool_args('LS', {'path': 'src'}, '/tmp/w') == 'src'
     assert tool_args('Grep', {'pattern': 'x'}, '/tmp/w') == 'pattern: "x"'
     assert (tool_args('Glob', {'pattern': '*.py', 'path': 'src'}, '/tmp/w')
             == 'pattern: "*.py", path: "src"')
@@ -65,8 +62,6 @@ def test_result_summaries_count_what_each_tool_produced():
         'Read 3 lines'
     assert result_summary('Grep', 'a.py:1:x\nb.py:2:y', 80) == 'Found 2 lines'
     assert result_summary('Glob', 'a.py\nb.py', 80) == 'Found 2 files'
-    assert result_summary('LS', 'src\na.py  (1 bytes)\nsub/', 80) == \
-        'Listed 2 entries'
     assert result_summary('Agent', 'spawned worker', 80) == 'Done'
 
 
@@ -83,7 +78,6 @@ def test_collapse_kinds_come_from_each_tool():
         {'memory_read'}
     assert collapse_kinds('Grep', {'pattern': 'x'}) == {'search'}
     assert collapse_kinds('Glob', {'pattern': '*.py'}) == {'search'}
-    assert collapse_kinds('LS', {'path': '.'}) == {'list'}
     assert collapse_kinds('Write', {'file_path': 'a.py'}) == set()
     assert collapse_kinds('Write', {'file_path': 'AGENTS.md'}) == \
         {'memory_write'}

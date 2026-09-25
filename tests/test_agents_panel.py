@@ -422,10 +422,10 @@ def test_editing_tools_rewrites_the_file_and_the_live_definition(
             tools_line = next(line for line in written.splitlines()
                               if line.startswith('tools:'))
             assert set(tools_line.split(': ', 1)[1].split(', ')) == {
-                'Read', 'Grep', 'Edit', 'Write', 'MultiEdit'}
+                'Read', 'Grep', 'Edit', 'Write'}
             live = team.agent_defs.find('reviewer')
             assert {t.name for t in live.tools} == {'Read', 'Grep', 'Edit',
-                                                    'Write', 'MultiEdit'}
+                                                    'Write'}
             assert screen._changes == ['Saved changes to reviewer']
             assert 'Saved changes to reviewer' in _plain(_body(screen))
     asyncio.run(scenario())

@@ -182,45 +182,6 @@ async def Grep(context, pattern: str, path: str | None = None,
                             'num_lines': len(hits)})
 
 
-@tool(
-    name='LS',
-    description='Returns one line per entry: directories suffixed with "/" '
-                'and files followed by their byte size in parentheses. Only '
-                'the immediate children of a directory are listed; hidden '
-                'entries are included.',
-    read_only=True,
-    get_path=lambda args: args.get('path'),
-    parameters={
-        'type': 'object',
-        'properties': {
-            'path': {'type': 'string',
-                     'description': 'Directory to list instead of the whole '
-                                    'workspace.'},
-        },
-        'required': [],
-    },
-)
-def LS(context, path: str | None = None) -> str:
-    base = resolve(context.cwd, path) if path else workspace(context.cwd)
-    if base is None:
-        return f'Error: path is outside the workspace: {path}'
-    if not base.is_dir():
-        return f'Error: not a directory: {path or "."}'
-    entries = []
-    for child in sorted(base.iterdir(), key=lambda c: (c.is_file(), c.name)):
-        if child.is_dir():
-            entries.append(f'{child.name}/')
-        else:
-            try:
-                size = child.stat().st_size
-            except OSError:
-                size = 0
-            entries.append(f'{child.name}  ({size} bytes)')
-    label = relative(context.cwd, base) or '.'
-    return ToolResult(text=f'{label}\n' + '\n'.join(entries),
-                      meta={'num_entries': len(entries)})
-
-
 def _input_path(tool_input) -> str:
     data = tool_input if isinstance(tool_input, dict) else {}
     return data.get('file_path') or data.get('path') or ''
@@ -243,25 +204,6 @@ def _read_kinds(name, tool_input):
 
 register('Read', build_tool_ui(args=_read_args,
                                summary=_read_summary, kinds=_read_kinds))
-
-
-def _list_args(name, tool_input, cwd):
-    return path_args(tool_input, cwd)
-
-
-def _list_summary(name, output, width):
-    rows = [r for r in str(output if output is not None else "")
-            .split("\n")[1:] if r.strip()]
-    noun = "entry" if len(rows) == 1 else "entries"
-    return f"Listed {len(rows)} {noun}"
-
-
-def _list_kinds(name, tool_input):
-    return {'list'}
-
-
-register('LS', build_tool_ui(args=_list_args, summary=_list_summary,
-                             kinds=_list_kinds))
 
 
 def _search_args(name, tool_input, cwd):
