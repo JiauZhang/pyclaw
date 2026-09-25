@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 from pyclaw.session_store import (
     rename_session,
     title_of,
@@ -15,9 +18,6 @@ class HistoryMixin:
         history = self._team.file_history
         return None if history is None else history.diff_stats(mark)
     def diff(self) -> dict:
-        import subprocess
-        from pathlib import Path
-
         cwd = Path(self._team.tool_context.cwd)
 
         def git(*args):

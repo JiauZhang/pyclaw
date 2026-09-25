@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 
 BACKENDS = ('auto', 'bell', 'iterm2', 'kitty', 'ghostty', 'disabled')
@@ -70,8 +71,6 @@ def notify(write, *, title: str, body: str, backend: str = 'auto',
 
 
 def clipboard(text: str) -> str:
-    import base64
-
     payload = base64.b64encode(str(text).encode('utf-8')).decode('ascii')
     return f'\033]52;c;{payload}\007'
 

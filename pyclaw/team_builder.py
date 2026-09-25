@@ -12,7 +12,9 @@ from chatchat.core.thinking import Thinking
 from chatchat.tool import ToolContext
 
 from pyclaw import task_registry
+from pyclaw import agent_defs, agent_memory, config
 from pyclaw.home import pyclaw_home
+from pyclaw.tools import background
 from .plugins import discover_tools
 from .skills import discover_registry
 from .tools import tools as base_tools
@@ -25,13 +27,11 @@ _name_counter = itertools.count()
 
 
 def configured_context_window() -> int:
-    from .config import load
-    return int(load().get('contextWindow') or 0)
+    return int(config.load().get('contextWindow') or 0)
 
 
 def checkpoints_enabled() -> bool:
-    from .config import load
-    return bool(load().get('checkpoints', True))
+    return bool(config.load().get('checkpoints', True))
 
 def _resolve_tools(tools):
     if tools is None:
@@ -94,7 +94,6 @@ def _dispatch_event(on_event, ev):
 
 
 def thinking_from_config() -> Thinking:
-    from . import config
     setting = config.load().get('thinking') or {}
     return Thinking(mode=str(setting.get('mode') or 'on'),
                     budget=int(setting.get('budget') or 0),
@@ -126,8 +125,6 @@ def build_team(
     use_team: bool = False,
 ) -> Team:
     cwd = cwd or os.getcwd()
-    from .agent_memory import (load_instruction_files, load_project_memory,
-                               rule_set)
     registry = _resolve_skills(skills, cwd)
     coding_tools = list(BUILTIN_TOOLS)
     coding_names = {t.name for t in coding_tools}
@@ -163,7 +160,7 @@ def build_team(
         team_store=str(pyclaw_home() / 'teams'),
         agent_memory=_agent_memory(cwd),
         cron=CronStore(Path(cwd) / '.pyclaw'),
-        rules=rule_set(cwd),
+        rules=agent_memory.rule_set(cwd),
         file_history_dir=(str(pyclaw_home() / 'file-history')
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
@@ -186,17 +183,17 @@ def build_team(
     gate.plan_file = team.plan_path
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
-    team.set_instruction_files(load_instruction_files(cwd))
-    memory = load_project_memory(cwd)
+    team.set_instruction_files(agent_memory.load_instruction_files(cwd))
+    memory = agent_memory.load_project_memory(cwd)
     if memory:
         team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)
 
-    from .agent_defs import (builtin_agent_defs, load_agent_defs,
-                          parse_agents_json)
-    for defn in builtin_agent_defs(all_tools=resolved):
+    for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)
-    cli_defs = parse_agents_json(agents_json, resolved) if agents_json else []
-    definitions = load_agent_defs(cwd, all_tools=resolved, cli=cli_defs)
+    cli_defs = (agent_defs.parse_agents_json(agents_json, resolved)
+                if agents_json else [])
+    definitions = agent_defs.load_agent_defs(cwd, all_tools=resolved,
+                                             cli=cli_defs)
     for defn in definitions:
         team.register_agent_definition(defn)
     team.cli_agent_defs = cli_defs
@@ -206,16 +203,15 @@ def build_team(
         and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory)
         != 'none']
 
-    from .tools import background as _background
 
     def _notify_task_finished(task_id, command, code, killed):
-        record = _background.task(task_id)
+        record = background.task(task_id)
         if record is None:
             return
         team.lead.enqueue_attachment(task_registry.notification(
             record, record.output_delta()))
 
-    _background.set_notifier(_notify_task_finished)
+    background.set_notifier(_notify_task_finished)
 
     async def _permission_gate(hook_input):
         agent_type = hook_input.get('agent_type') or ''

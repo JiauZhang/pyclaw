@@ -1,4 +1,5 @@
 # Usage, cost and context commands: what the recorded work cost.
+import json
 from pyclaw.tui.formatting import _plural
 from pyclaw import config, cost, events, usage_history
 from pyclaw.tui.formatting import _format_count
@@ -110,8 +111,6 @@ def _handle_cost(session, arg: str) -> str:
     return '\n'.join(lines)
 
 def _context(session, arg: str) -> str:
-    import json
-
     def size(value) -> int:
         return len(str(value if value is not None else ''))
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 import subprocess
 from typing import List, Optional
 
+from pyclaw import config
+
 
 def find_listener_pids(port: int) -> List[int]:
     try:
@@ -51,13 +53,11 @@ def stop_server(
     force: bool = False,
     all_processes: bool = False,
 ) -> List[int]:
-    from .config import load
-
     if all_processes:
         targets = find_serve_pids()
     else:
         if port is None:
-            port = load().get("gateway", {}).get("http", {}).get("port")
+            port = config.load().get("gateway", {}).get("http", {}).get("port")
         resolved = port or 12321
         targets = find_listener_pids(resolved)
 

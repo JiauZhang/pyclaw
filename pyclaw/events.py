@@ -128,8 +128,6 @@ class Stream:
 
 
 def error_rows(directory: Path, *, until=None, days: int = 7) -> list[dict]:
-    from datetime import date, timedelta
-
     last = until or date.today()
     first = last - timedelta(days=max(1, int(days)) - 1)
     out = []

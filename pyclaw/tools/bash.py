@@ -13,7 +13,8 @@ from pyclaw.tui.theme import MAX_COMMAND_CHARS, MAX_COMMAND_LINES
 from pyclaw.tui.toolui import build_tool_ui, register
 
 from pyclaw.permissions.bash_rules import base_command, split_commands
-from pyclaw.tools.background import adopt, kill_process, scratch_path
+from pyclaw.tools.background import (_output_path, adopt, kill_process,
+                               scratch_path, spawn)
 from .names import BASH
 
 DEFAULT_TIMEOUT_MS = 120_000
@@ -216,7 +217,6 @@ def Bash(context, command: str, timeout: int | None = None,
          description: str | None = None,
          run_in_background: bool = False) -> str:
     if run_in_background:
-        from .background import _output_path, spawn
         task_id = spawn(context.cwd, command)
         return (f'Started in the background as {task_id}; output goes to '
                 f'{_output_path(task_id)}. Read it with TaskOutput.')

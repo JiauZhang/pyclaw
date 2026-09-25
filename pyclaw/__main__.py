@@ -2,6 +2,7 @@ import argparse, asyncio, json, logging, os, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
 from pyclaw.session import Session
 from pyclaw.team_builder import build_team
@@ -130,8 +131,6 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
         if problem:
             raise ValueError(problem)
     session = Session(team, session_id=session_id, resume_from=resume_from)
-
-    from .events import open_stream
 
     stream = open_stream(session=str(session.conv_session_id))
     unregister = register_runtime_handler(stream)

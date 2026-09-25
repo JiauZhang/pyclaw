@@ -211,7 +211,7 @@ def test_model_command_reports_current_model():
 def test_model_command_switches_session_and_config(monkeypatch):
     saved = {}
     monkeypatch.setattr(config, "save", lambda c: saved.update(c))
-    monkeypatch.setattr("pyclaw.load", lambda: {"model": "m"})
+    monkeypatch.setattr("pyclaw.config.load", lambda: {"model": "m"})
 
     session = _fake_session()
     out = asyncio.run(_call("/model newmodel", session))

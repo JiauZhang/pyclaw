@@ -1,10 +1,12 @@
+import os
+import tempfile
+from pathlib import Path
+
 from pyclaw.export import write, copy_targets, replies
 from pyclaw.notify import clipboard
 
 # Commands that take the conversation somewhere else: export and copy.
 def _export(session, arg: str, session_key: str) -> str:
-    import os
-
 
     transcript = session.transcript()
     if not transcript:
@@ -39,9 +41,6 @@ def _copy(session, arg: str, terminal=None) -> str:
             f'{lines} lines){where}')
 
 def _copy_to_file(text: str, label: str):
-    import tempfile
-    from pathlib import Path
-
     name = 'response.md' if label == 'whole reply' else f'code-{label}'
     directory = Path(tempfile.gettempdir()) / 'pyclaw'
     try:

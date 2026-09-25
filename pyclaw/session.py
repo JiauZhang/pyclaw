@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import subprocess
 import os
 import uuid
 from pathlib import Path
@@ -15,6 +16,9 @@ from chatchat.hooks.events import (
     register_runtime_handler,
 )
 
+from pyclaw import config
+from pyclaw.tools.bash import get_default_timeout_ms
+from pyclaw.usage_history import record, row
 from .session_history import HistoryMixin
 from .session_readout import ReadoutMixin
 from .session_store import (_session_dir, append_conv, close_session_logger,
@@ -165,8 +169,6 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.set_thinking(thinking)
 
     def remember_thinking(self):
-        from . import config
-
         saved = config.load()
         saved['thinking'] = {'mode': self.thinking.mode,
                              'budget': self.thinking.budget,
@@ -232,8 +234,6 @@ class Session(HistoryMixin, ReadoutMixin):
                 **{name: 0 for name in Metrics().as_dict()}}
 
     def record_turn(self) -> dict:
-        from .usage_history import record, row
-
         usage = self._team.usage()
         details = getattr(usage, 'prompt_tokens_details', None) or {}
         metrics = self._team.total_metrics().as_dict()
@@ -304,10 +304,6 @@ class Session(HistoryMixin, ReadoutMixin):
                         reasoning_content=thinking or None)
 
     async def run_bash(self, command: str) -> dict:
-        import subprocess
-
-        from .tools.bash import get_default_timeout_ms
-
         cwd = self.cwd
         limit = get_default_timeout_ms() / 1000
         try:
