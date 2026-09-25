@@ -7,6 +7,9 @@ from pathlib import Path
 
 from chatchat.core.agents import AgentDefinition
 
+from pyclaw.config import __config_file__
+from pyclaw.home import pyclaw_home
+
 _FRONTMATTER = re.compile(r'^---\s*\n([\s\S]*?)\n---\s*\n?')
 
 BUILT_IN = 'built-in'
@@ -22,8 +25,7 @@ _PROMPT_MAX = 10_000
 
 
 def _user_agents_dir() -> Path:
-    from pyclaw import __pyclaw_home__
-    return Path(__pyclaw_home__) / 'agents'
+    return pyclaw_home() / 'agents'
 
 
 def agents_dir(scope: str, cwd: str) -> Path:
@@ -313,7 +315,6 @@ def validate(defn: AgentDefinition, known_tools: list[str],
 
 
 def _statusline_prompt() -> str:
-    from pyclaw.config import __config_file__
     home = __config_file__.parent
     return STATUSLINE_SYSTEM_PROMPT.format(
         config_file=__config_file__,

@@ -2,15 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from chatchat.core.rules import RuleSet
+from pyclaw.home import pyclaw_home
+
 
 def _user_memory_file() -> Path:
-    from pyclaw import __pyclaw_home__
-    return Path(__pyclaw_home__) / 'AGENTS.md'
+    return pyclaw_home() / 'AGENTS.md'
 
 
 def rule_set(cwd: str):
-    from chatchat.core.rules import RuleSet
-    from pyclaw import pyclaw_home
     return RuleSet.discover(cwd=Path(cwd), home=pyclaw_home(),
                             subdir='.pyclaw')
 

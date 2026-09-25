@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from conippets import json
-from pyclaw import __pyclaw_home__
+from pyclaw.home import __pyclaw_home__
 
 __config_file__ = Path(__pyclaw_home__) / "config.json"
 

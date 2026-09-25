@@ -1,18 +1,5 @@
 from .version import __version__
-
-import os
-from pathlib import Path
-
-def pyclaw_home() -> Path:
-    return Path(os.environ.get("PYCLAW_HOME", "~/.pyclaw")).expanduser()
-
-
-__pyclaw_home__ = str(pyclaw_home())
-os.environ["PYCLAW_HOME"] = __pyclaw_home__
-os.environ["CHATCHAT_HOME"] = __pyclaw_home__
-os.environ["IMCHAT_HOME"] = __pyclaw_home__
-
-__secret_file__ = str(pyclaw_home() / "chatchat.json")
+from . import home  # sets the home env vars the other libraries read
 
 from .gateway import GatewayServer, GatewayConfig
 from .config import load
@@ -32,6 +19,4 @@ __all__ = [
     "build_team",
     "IM_EXTRA",
     "IMChannelAdapter",
-    "__pyclaw_home__",
-    "__secret_file__",
 ]

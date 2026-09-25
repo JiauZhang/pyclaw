@@ -6,6 +6,8 @@ import unicodedata
 from pathlib import Path
 
 from rich.markup import escape
+from pyclaw import config
+from pyclaw import session_store
 
 MEMORY_FILE_NAME = 'AGENTS.md'
 ONBOARDING_SEEN_LIMIT = 4
@@ -90,8 +92,7 @@ def _plain_text(content) -> str:
 
 
 def first_prompt(session_id) -> str:
-    from pyclaw.session_store import load_entries
-    for entry in load_entries(session_id):
+    for entry in session_store.load_entries(session_id):
         if not isinstance(entry, dict) or entry.get('role') != 'user':
             continue
         text = ' '.join(_plain_text(entry.get('content')).split())
@@ -102,10 +103,9 @@ def first_prompt(session_id) -> str:
 
 def recent_activity(limit: int = ACTIVITY_LIMIT, *, exclude=None,
                     now: float | None = None) -> list[dict]:
-    from pyclaw.session_store import list_sessions
     stamp = time.time() if now is None else now
     found = []
-    for session in list_sessions():
+    for session in session_store.list_sessions():
         if exclude and session.get('id') == exclude:
             continue
         text = first_prompt(session['id'])
@@ -235,14 +235,12 @@ def block(*, version, model, provider, cwd, feeds, brand,
 
 
 def settings() -> dict:
-    from pyclaw import config
     block_config = config.load().get('welcome') or {}
     return {'seen': int(block_config.get('seen', 0) or 0),
             'lastVersion': str(block_config.get('lastVersion', '') or '')}
 
 
 def remember(*, seen_onboarding: bool, version: str) -> None:
-    from pyclaw import config
     current = config.load()
     section = dict(current.get('welcome') or {})
     seen = int(section.get('seen', 0) or 0)

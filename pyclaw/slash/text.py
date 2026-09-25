@@ -1,8 +1,10 @@
+from pyclaw.export import write, copy_targets, replies
+from pyclaw.notify import clipboard
+
 # Commands that take the conversation somewhere else: export and copy.
 def _export(session, arg: str, session_key: str) -> str:
     import os
 
-    from pyclaw.export import write
 
     transcript = session.transcript()
     if not transcript:
@@ -12,8 +14,6 @@ def _export(session, arg: str, session_key: str) -> str:
     return f'Exported {len(transcript)} messages to {path}'
 
 def _copy(session, arg: str, terminal=None) -> str:
-    from pyclaw.export import copy_targets, replies
-    from pyclaw.notify import clipboard
 
     found = replies(session.transcript())
     if not found:

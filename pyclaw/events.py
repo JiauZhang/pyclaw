@@ -11,6 +11,8 @@ from chatchat.hooks.events import (AGENT_PROGRESS, AGENT_REASON_START,
                                    AGENT_TOOL_RESULT, AGENT_TURN_FINISHED,
                                    AGENT_WARN)
 
+from pyclaw.home import pyclaw_home
+
 KINDS = {AGENT_TEXT: 'text', AGENT_REASON_START: 'reason',
          AGENT_TOOL_CALL: 'tool_call', AGENT_TOOL_RESULT: 'tool_result',
          AGENT_TURN_FINISHED: 'turn_finished', AGENT_PROGRESS: 'progress',
@@ -21,7 +23,6 @@ TOOLS = {'Bash': 'command', 'Read': 'file_path', 'Write': 'file_path',
 
 
 def _directory() -> Path:
-    from pyclaw import pyclaw_home
     return pyclaw_home() / 'events'
 
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from pyclaw import agent_defs, task_registry
+from pyclaw import agent_defs
 from pyclaw.team_builder import configured_context_window
 from pyclaw.tools import background
+
+from pyclaw import task_registry as tasks
 
 
 class ReadoutMixin:
@@ -35,7 +37,6 @@ class ReadoutMixin:
     def hook_rows(self) -> list:
         return self._team.hooks.configured()
     def _sync_agent_tasks(self) -> dict:
-        from pyclaw import task_registry as tasks
 
         registry = tasks.registry()
         lead = self._team.lead
@@ -70,8 +71,6 @@ class ReadoutMixin:
         return seen
 
     def task_rows(self) -> list:
-        from pyclaw import task_registry as tasks
-        from pyclaw.tools import background
 
         registry = tasks.registry()
         registry.sweep()
@@ -91,8 +90,6 @@ class ReadoutMixin:
         return rows
 
     async def stop_task(self, row: dict) -> str:
-        from pyclaw import task_registry as tasks
-        from pyclaw.tools import background
 
         if row['kind'] == 'shell':
             background.stop(row['id'])

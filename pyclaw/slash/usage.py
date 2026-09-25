@@ -1,14 +1,14 @@
 # Usage, cost and context commands: what the recorded work cost.
 from pyclaw.tui.formatting import _plural
+from pyclaw import config, cost, events, usage_history
+from pyclaw.tui.formatting import _format_count
 
 
 def _pricing() -> dict:
-    from pyclaw.config import load as load_config
-    return load_config().get('pricing') or {}
+    return config.load().get('pricing') or {}
 
 def _cost_of(session):
-    from pyclaw.cost import usage_cost
-    return usage_cost(session.model, session.usage, _pricing())
+    return cost.usage_cost(session.model, session.usage, _pricing())
 
 def _history_window(arg: str) -> tuple[int, str]:
     if str(arg or '').strip().lower() in ('day', 'today'):
@@ -20,14 +20,13 @@ def _history_window(arg: str) -> tuple[int, str]:
     return 1, 'today'
 
 def _history_cost(rows: list, pricing) -> float | None:
-    from pyclaw.cost import usage_cost
 
     total = 0.0
     priced = False
     for row in rows:
-        cost = usage_cost(row.get('model'), row, pricing)
-        if cost is not None:
-            total += cost
+        row_cost = cost.usage_cost(row.get('model'), row, pricing)
+        if row_cost is not None:
+            total += row_cost
             priced = True
     return total if priced else None
 
@@ -35,15 +34,12 @@ def _ms(ms: int) -> str:
     return f'{int(ms) / 1000:.1f}s'
 
 def _usage_lines(session, arg: str) -> str:
-    from pyclaw.cost import format_cost
-    from pyclaw.tui.formatting import _format_count
-    from pyclaw.usage_history import read_days, totals
 
     days, label = _history_window(arg)
-    rows = read_days(days)
+    rows = usage_history.read_days(days)
     if not rows:
         return f'Usage \u00b7 {label}\nNothing recorded yet.'
-    seen = totals(rows)
+    seen = usage_history.totals(rows)
     return '\n'.join([
         f'Usage \u00b7 {label}',
         (f'tokens {_format_count(seen["total"])} \u00b7 input: '
@@ -57,24 +53,22 @@ def _usage_lines(session, arg: str) -> str:
          f'{seen["lines_removed"]} lines removed \u00b7 '
          f'{_plural(seen["hooks"], "hook run")} \u00b7 '
          f'{_plural(seen["denials"], "refused call")}'),
-        f'cost: {format_cost(_history_cost(rows, _pricing()))} at your '
+        f'cost: {cost.format_cost(_history_cost(rows, _pricing()))} at your '
         f'configured rates'])
 
 def _stats_lines(arg: str) -> str:
-    from pyclaw.events import read_errors
-    from pyclaw.usage_history import by_day, read_days
 
     days = int(arg) if str(arg or '').strip().isdigit() else 7
-    rows = read_days(days)
+    rows = usage_history.read_days(days)
     if not rows:
         return 'Stats\nNothing recorded yet.'
     lines = [f'Stats \u00b7 last {days} days']
-    for day, seen in by_day(rows):
+    for day, seen in usage_history.by_day(rows):
         lines.append(f'{day} \u00b7 in {seen["input"]} \u00b7 out '
                      f'{seen["output"]} \u00b7 {seen["tool_calls"]} tool '
                      f'calls \u00b7 {seen["api_ms"] / 1000:.1f}s with the '
                      f'model')
-    errors = read_errors(days=days)
+    errors = events.read_errors(days=days)
     if errors:
         lines.append(f'{_plural(len(errors), "error")} recorded: '
                      + '; '.join(str(row.get('text') or '')[:60]
@@ -85,27 +79,23 @@ async def _handle_model(session, arg: str) -> str:
     if not arg:
         return f'Model: {session.model}'
     session.set_model(arg)
-    from pyclaw import load as load_config
-    from pyclaw.config import save as save_config
-    config = load_config()
-    config['model'] = session.model
-    save_config(config)
+    settings = config.load()
+    settings['model'] = session.model
+    config.save(settings)
     await session.note_config_change('config')
     return f'Model: {session.model}'
 
 def _agent_cost(model: str, usage) -> str:
-    from pyclaw.cost import format_cost, usage_cost
-    cost = usage_cost(model, usage, _pricing())
-    price = format_cost(cost) + ('' if cost is not None else ' unpriced')
+    amount = cost.usage_cost(model, usage, _pricing())
+    price = cost.format_cost(amount) + ('' if amount is not None else ' unpriced')
     return (f'{usage.prompt_tokens} in / {usage.completion_tokens} out'
             f' / {usage.total_tokens} tokens \u00b7 {price}')
 
 def _handle_cost(session, arg: str) -> str:
-    from pyclaw.cost import format_cost
     usage = session.usage
-    cost = _cost_of(session)
-    detail = format_cost(cost)
-    if cost is None:
+    amount = _cost_of(session)
+    detail = cost.format_cost(amount)
+    if amount is None:
         detail += f' (add pricing.{session.model} to config)'
     lines = [f"Model: {session.model}",
              f"Tokens: {usage.prompt_tokens} in / {usage.completion_tokens} out"

@@ -11,6 +11,8 @@ from textual.screen import Screen
 from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
+from pyclaw.agent_memory import memory_targets
+from pyclaw import editor
 
 
 class MemoryScreen(Screen):
@@ -37,7 +39,6 @@ class MemoryScreen(Screen):
         self._draw()
 
     def _targets(self):
-        from pyclaw.agent_memory import memory_targets
 
         return memory_targets(self._cwd)
 
@@ -64,7 +65,6 @@ class MemoryScreen(Screen):
         self._move(-1)
 
     async def action_open(self):
-        from pyclaw.editor import open_file
 
         rows = self._targets()
         if not rows:
@@ -78,16 +78,16 @@ class MemoryScreen(Screen):
                 stack.enter_context(self.app.suspend())
             except SuspendNotSupported:
                 pass
-            editor = open_file(path)
+            opened_with = editor.open_file(path)
         self.app.pop_screen()
-        await self._owner._append_note(self._note(path, editor))
+        await self._owner._append_note(self._note(path, opened_with))
 
-    def _note(self, path, editor: str) -> str:
-        if not editor:
+    def _note(self, path, opened_with: str) -> str:
+        if not opened_with:
             return (f'No editor found, so {path} was not opened. Set $VISUAL '
                     f'or $EDITOR and try again.')
-        return (f'Opened {path} in {editor}. To use a different editor, set '
-                f'$VISUAL or $EDITOR.')
+        return (f'Opened {path} in {opened_with}. To use a different editor, '
+                f'set $VISUAL or $EDITOR.')
 
     def action_dismiss(self):
         self.app.pop_screen()

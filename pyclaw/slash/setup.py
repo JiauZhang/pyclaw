@@ -1,9 +1,10 @@
+from chatchat.core.thinking import Thinking
+
 # Session setup commands: how much the model may reason, and the status line.
 EFFORT_HINT = ('effort takes low, medium, high, or auto to leave it to the '
                'model')
 
 def _reasoning(session, mode=None, budget=None, effort=None):
-    from chatchat.core.thinking import Thinking
 
     current = session.thinking
     try:

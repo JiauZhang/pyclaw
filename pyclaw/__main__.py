@@ -1,7 +1,8 @@
 import argparse, asyncio, json, logging, os, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__, __pyclaw_home__
+from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from pyclaw.home import pyclaw_home
 from pyclaw.agents import Session
 from pyclaw.team_builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
@@ -9,6 +10,9 @@ from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
 from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
+
+from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
+from pyclaw.session_store import resolve_session_id
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -33,7 +37,7 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
         stream.setFormatter(logging.Formatter(_LOG_FORMAT))
         root.addHandler(stream)
 
-    log_dir = Path(__pyclaw_home__) / "logs"
+    log_dir = pyclaw_home() / "logs"
     log_dir.mkdir(parents=True, exist_ok=True)
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         file_handler = RotatingFileHandler(
@@ -95,7 +99,6 @@ async def start_server(args):
 
 
 def _cli_session(args):
-    from pyclaw.session_store import resolve_session_id
     key = ["cli", os.getcwd()]
     resume_id = getattr(args, "resume", None)
     if resume_id:
@@ -127,7 +130,6 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
         if problem:
             raise ValueError(problem)
     session = Session(team, session_id=session_id, resume_from=resume_from)
-    from chatchat.hooks.events import register_runtime_handler
 
     from .events import open_stream
 
@@ -206,7 +208,6 @@ async def run_headless(args):
 
 
 def run_tui(args):
-    from chatchat.hooks.events import clear_runtime_sinks
     clear_runtime_sinks()
     log_path = setup_logging(console=False)
     config = load_config()

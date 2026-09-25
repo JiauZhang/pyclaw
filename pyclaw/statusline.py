@@ -3,6 +3,10 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from pyclaw import config
+from pyclaw.config import load
+from pyclaw.session_store import transcript_path
+from pyclaw.version import __version__
 
 STATUS_LINE_TIMEOUT_SECONDS = 5.0
 STATUS_LINE_DEBOUNCE_SECONDS = 0.3
@@ -13,7 +17,6 @@ _CONFIG_MTIME: float | None = None
 
 def _sync_config() -> None:
     global _CONFIG_MTIME
-    from pyclaw import config
     try:
         mtime = config.__config_file__.stat().st_mtime
     except OSError:
@@ -25,7 +28,6 @@ def _sync_config() -> None:
 
 
 def user_command() -> str:
-    from pyclaw.config import load
     _sync_config()
     entry = load().get('statusLine')
     if not entry or entry.get('type') != 'command':
@@ -41,8 +43,6 @@ def context_percentages(used: int, size: int) -> tuple[int, int]:
 
 
 def build_payload(session) -> dict:
-    from pyclaw.session_store import transcript_path
-    from pyclaw.version import __version__
     usage = session.usage
     window = session.context_window
     last = session.last_usage

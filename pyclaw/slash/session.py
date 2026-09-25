@@ -3,10 +3,12 @@ from pyclaw.tui.formatting import _plural
 
 from pyclaw.slash.usage import _cost_of
 
+from pyclaw.cost import format_cost
+from pyclaw import session_store
+from pyclaw.version import __version__
+
 
 def _status(session, session_key: str) -> str:
-    from pyclaw.cost import format_cost
-    from pyclaw.version import __version__
     usage = session.usage
     lines = [f'pyclaw: {__version__}',
              f'Session: {session_key or session.name}',
@@ -64,9 +66,8 @@ def _handle_agents(session) -> str:
     return '\n'.join(lines)
 
 def _handle_resume(session, arg: str) -> str:
-    from pyclaw.session_store import list_sessions
     if not arg:
-        sessions = list_sessions()
+        sessions = session_store.list_sessions()
         if not sessions:
             return 'No saved sessions.'
         lines = ['Saved sessions:']

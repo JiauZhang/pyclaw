@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 from pyclaw.tui import keys
@@ -129,7 +130,6 @@ class PromptMixin:
         if not text:
             return
         if text.startswith("/"):
-            from pyclaw.slash import handle_slash
 
             reply = await handle_slash(text, self._session,
                                        terminal=self._terminal)

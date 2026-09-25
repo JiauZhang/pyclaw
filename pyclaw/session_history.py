@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from pyclaw.session_store import (
+    rename_session,
+    title_of,
+    create_branch,
+    load_transcript)
+
 
 class HistoryMixin:
 
@@ -54,18 +60,15 @@ class HistoryMixin:
         return result
 
     def rename(self, title: str) -> str:
-        from pyclaw.session_store import rename_session
 
         return rename_session(self.conv_session_id, title)
 
     @property
     def title(self) -> str:
-        from pyclaw.session_store import title_of
 
         return title_of(self.conv_session_id)
 
     def branch(self, title: str = '') -> dict:
-        from pyclaw.session_store import create_branch, load_transcript
 
         fork = create_branch(self.conv_session_id, title)
         messages = load_transcript(fork['id'])

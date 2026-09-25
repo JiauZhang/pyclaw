@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from pyclaw.home import pyclaw_home
 
 METRICS = ('tool_calls', 'tool_ms', 'lines_added', 'lines_removed', 'api_ms',
            'requests', 'hooks', 'hook_ms', 'denials')
@@ -11,7 +12,6 @@ FIELDS = ('input', 'output', 'total', 'cached', 'turns')
 
 
 def _directory() -> Path:
-    from pyclaw import pyclaw_home
     return pyclaw_home() / 'usage'
 
 

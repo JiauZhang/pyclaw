@@ -4,10 +4,12 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
-from pyclaw.tui import keys, ui
 from textual.screen import Screen
-from pyclaw.tui.components import _PagerScroll
 from textual.widgets import Static
+
+from pyclaw.slash import COMMANDS
+from pyclaw.tui import keys, ui
+from pyclaw.tui.components import _PagerScroll
 
 
 class HelpScreen(Screen):
@@ -18,11 +20,9 @@ class HelpScreen(Screen):
                 Binding('?', 'dismiss', 'Close')]
 
     def _body(self) -> str:
-        from pyclaw.slash import COMMANDS
-        from pyclaw.tui.app import PyClawApp
         lines = ["[bold]Shortcuts[/bold]"]
         seen = set()
-        for entry in PyClawApp.BINDINGS:
+        for entry in keys.app_bindings():
             if isinstance(entry, Binding):
                 key, action, description = (entry.key, entry.action,
                                             entry.description)

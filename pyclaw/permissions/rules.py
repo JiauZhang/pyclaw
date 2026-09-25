@@ -8,6 +8,8 @@ from conippets import json
 
 from pyclaw.permissions.bash_rules import bash_rule_matches
 
+from pyclaw.home import pyclaw_home
+
 BASH_TOOL = 'Bash'
 
 
@@ -97,7 +99,6 @@ def _path_rule(tool_name: str, target, cwd) -> str | None:
         return None
     return f'{tool_name}(./{rel})'
 def _user_settings_file() -> Path:
-    from pyclaw import pyclaw_home
     return pyclaw_home() / 'settings.json'
 
 

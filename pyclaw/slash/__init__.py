@@ -11,6 +11,8 @@ from pyclaw.slash.text import _copy, _export
 from pyclaw.slash.usage import (_context, _handle_cost, _handle_model,
                                 _stats_lines, _usage_lines)
 
+from pyclaw import agent_memory
+
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
@@ -181,14 +183,12 @@ async def handle_slash(text: str, session, session_key: str = '',
             return 'Compaction is not available for this session.'
         return await compactor()
     if cmd == 'memory':
-        from pyclaw.agent_memory import (load_project_memory, rule_set,
-                                         _user_memory_file)
         cwd = getattr(session, 'cwd', None) or '.'
-        lines = [f'user: {_user_memory_file()}',
+        lines = [f'user: {agent_memory._user_memory_file()}'
                  f'project: {Path(cwd) / "AGENTS.md"}']
-        memory = load_project_memory(cwd)
+        memory = agent_memory.load_project_memory(cwd)
         lines.append('loaded: yes' if memory else 'loaded: nothing found')
-        for rule in rule_set(cwd).all():
+        for rule in agent_memory.rule_set(cwd).all():
             lines.append(f'rule for {", ".join(rule.globs)}: {rule.path}')
         return '\n'.join(lines)
     if cmd == 'clear':

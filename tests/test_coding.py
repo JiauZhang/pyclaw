@@ -12,6 +12,7 @@ from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import agents as agents_mod
 from pyclaw.agents import Session
+from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
 from pyclaw.permissions.bash_rules import (bash_rule_matches,
@@ -1621,8 +1622,6 @@ def test_a_teammate_approval_request_names_that_teammate():
 
 
 def test_a_built_team_gives_every_agent_type_a_place_for_notes(tmp_path):
-    from pyclaw import pyclaw_home
-
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
         return team.agent_memory

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from conippets import jsonl
 
-from . import pyclaw_home
+from pyclaw.home import pyclaw_home
 
 
 def _logs_dir() -> Path:

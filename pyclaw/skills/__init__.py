@@ -2,12 +2,13 @@ from pathlib import Path
 
 from chatchat.core.skills import SkillRegistry
 
+from pyclaw.home import pyclaw_home
+from pyclaw.plugins import discover_skills
+
 skill_roots: list[str] = []
 
 
 def discover_registry(cwd, extra=None) -> SkillRegistry:
-    from pyclaw import pyclaw_home
-    from pyclaw.plugins import discover_skills
     roots = [(Path(cwd) / '.pyclaw' / 'skills', 'project'),
              (pyclaw_home() / 'skills', 'user')]
     contributed = list(extra if extra is not None else skill_roots)

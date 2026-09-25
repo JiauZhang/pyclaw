@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pyclaw.tui.formatting import duration
 from pyclaw.tui.theme import ASTERISK
+from chatchat.core.cron_schedule import find_missed, SchedulerLock
+from pyclaw.cron import run
 
 
 class DeliveryMixin:
@@ -23,7 +25,6 @@ class DeliveryMixin:
         self._render_readouts()
 
     def _missed_prompts(self, now=None) -> list:
-        from chatchat.core.cron_schedule import find_missed
 
         store = getattr(self._team, 'cron', None)
         if store is None:
@@ -40,9 +41,7 @@ class DeliveryMixin:
             + ', '.join(str(task['prompt'])[:40] for task in missed))
 
     def _start_cron(self):
-        from chatchat.core.cron_schedule import SchedulerLock
 
-        from pyclaw.cron import run
         store = getattr(self._team, 'cron', None)
         if store is None:
             return

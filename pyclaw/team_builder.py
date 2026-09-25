@@ -11,12 +11,15 @@ from chatchat.core.cron_schedule import CronStore
 from chatchat.core.thinking import Thinking
 from chatchat.tool import ToolContext
 
-from . import pyclaw_home, task_registry
+from pyclaw import task_registry
+from pyclaw.home import pyclaw_home
 from .plugins import discover_tools
 from .skills import discover_registry
 from .tools import tools as base_tools
 from .permissions import PermissionController, PermissionMode, parse_mode
 from .tools import BUILTIN_TOOLS
+from chatchat.core.agent_memory import AgentMemory
+from chatchat.core.skills import SkillRegistry
 
 _name_counter = itertools.count()
 
@@ -39,7 +42,6 @@ def _resolve_tools(tools):
 def _resolve_skills(skills, cwd):
     if skills is None:
         return discover_registry(cwd)
-    from chatchat.core.skills import SkillRegistry
     return SkillRegistry.load([(Path(root), 'plugin') for root in skills])
 
 
@@ -100,7 +102,6 @@ def thinking_from_config() -> Thinking:
 
 
 def _agent_memory(cwd: str):
-    from chatchat.core.agent_memory import AgentMemory
     workspace = Path(cwd) / '.pyclaw'
     return AgentMemory(
         roots={'user': pyclaw_home() / 'agent-memory',
