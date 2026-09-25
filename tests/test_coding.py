@@ -917,8 +917,21 @@ def test_build_team_tools_differ_by_mode():
     multi = asyncio.run(names(use_team=True))
     assert "Agent" in single and "Agent" in multi
     assert "TaskStop" in single and "TaskStop" in multi
+    assert "TaskOutput" in single and "TaskOutput" in multi
     assert "SendMessage" not in single
     assert {"SendMessage", "TeamCreate", "TeamDelete"} <= multi
+
+
+def test_a_team_tool_is_offered_once_even_when_the_pool_has_the_same_name():
+    async def main():
+        with tempfile.TemporaryDirectory() as d:
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            names = [t["name"] for t in team.tool_schemas(team.tool_context)]
+            return names
+
+    names = asyncio.run(main())
+    for name in ("TaskOutput", "TaskStop"):
+        assert names.count(name) == 1, name
 
 
 def test_dont_ask_persists_allow():
