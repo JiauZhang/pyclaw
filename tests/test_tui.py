@@ -4829,6 +4829,37 @@ def test_the_diff_command_says_so_when_nothing_has_changed(tmp_path):
     assert 'Nothing has been changed' in asyncio.run(scenario())
 
 
+def test_the_memory_command_opens_the_picker_and_hands_the_file_to_the_editor(
+        monkeypatch, tmp_path):
+    from pyclaw import editor
+    from pyclaw.tui.screens import MemoryScreen
+
+    user_file = tmp_path / 'pyclaw-home' / 'AGENTS.md'
+    monkeypatch.setattr('pyclaw.agent_memory._user_memory_file',
+                        lambda: user_file)
+    opened = []
+    monkeypatch.setattr(editor, 'open_file',
+                        lambda path: opened.append(path) or 'vi')
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: _FakeTeam()).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            await _submit_and_wait(pilot, '/memory')
+            assert isinstance(app.screen, MemoryScreen)
+            body = str(app.screen.query_one('#mm-body').content)
+            await pilot.press('enter')
+            await pilot.pause()
+            return opened, body, app.screen
+
+    opened, body, screen = asyncio.run(scenario())
+    assert 'Memory files' in body
+    assert opened == [user_file]
+    assert user_file.exists()
+    assert not isinstance(screen, MemoryScreen)
+
+
 def test_the_task_panel_lists_live_work_and_stops_the_selected_row():
     async def scenario():
         async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:

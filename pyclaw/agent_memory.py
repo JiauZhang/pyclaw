@@ -53,3 +53,18 @@ def load_instruction_files(cwd: str) -> list[dict]:
 def load_project_memory(cwd: str) -> str:
     return '\n\n'.join(item['content']
                        for item in load_instruction_files(cwd))
+
+
+def memory_targets(cwd: str) -> list[tuple[str, Path]]:
+    current = Path(cwd).resolve()
+    targets: list[tuple[str, Path]] = [('User', _user_memory_file())]
+    for directory in [current, *current.parents]:
+        candidate = directory / 'AGENTS.md'
+        if candidate.exists():
+            targets.append(('Project', candidate))
+            break
+    else:
+        targets.append(('Project', current / 'AGENTS.md'))
+    targets += [(SCOPES[rule.scope], Path(rule.path))
+                for rule in rule_set(cwd).all()]
+    return targets

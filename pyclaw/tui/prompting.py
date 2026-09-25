@@ -8,8 +8,8 @@ from textual.widgets import Input, Static
 from pyclaw.slash import handle_slash, suggest as slash_suggest
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.formatting import _direct_message
-from pyclaw.tui.screens import (DiffScreen, PermissionsScreen, RewindScreen,
-                                TasksScreen)
+from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
+                                RewindScreen, TasksScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
 
@@ -67,6 +67,12 @@ class PromptMixin:
                 await self._append_block(escape(view['text']))
                 return
             self.push_screen(DiffScreen(view))
+            return
+        if text == '/memory':
+            self.query_one("#input", Input).value = ""
+            await self._append_user(text)
+            cwd = getattr(self._session, 'cwd', None) or '.'
+            self.push_screen(MemoryScreen(self, cwd))
             return
         if text in ('/tasks', '/bashes'):
             self.query_one("#input", Input).value = ""
