@@ -4,6 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from pyclaw.tui import keys
 from textual.binding import Binding
+from pyclaw.tui import ui
 from textual.screen import Screen
 from textual.widgets import Static
 
@@ -38,11 +39,10 @@ class TaskDetailScreen(Screen):
                                   state=data['state'],
                                   subagent=data['subagent'], now=data['now'])
         lines.append('')
-        closing = keys.hint('dismiss', 'closes')
-        lines.append('[dim]' + keys.hints(
-            ('stop_selected', 'stops it'), ('dismiss', 'closes')) + '[/]'
-            if data['row'].get('stoppable')
-            else f'[dim]{closing}[/]')
+        pairs = [('dismiss', 'closes')]
+        if data['row'].get('stoppable'):
+            pairs.insert(0, ('stop_selected', 'stops it'))
+        lines += ui.footer(*pairs)
         self.query_one("#td-body", Static).update('\n'.join(lines))
 
     def _refresh(self):

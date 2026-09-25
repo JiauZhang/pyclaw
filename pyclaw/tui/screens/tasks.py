@@ -4,6 +4,7 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.binding import Binding
+from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui import keys
@@ -38,21 +39,16 @@ class TasksScreen(Screen):
     def _draw(self):
         rows = self._owner._task_rows()
         self._selected = max(0, min(self._selected, len(rows) - 1))
-        lines = ['[bold]Background tasks[/bold]']
+        lines = ui.heading('Background tasks')
         if not rows:
-            lines.append('[dim]nothing running[/]')
-        for index, row in enumerate(rows):
-            marker = POINTER if index == self._selected else ' '
-            text = f'{marker} {row["label"]} · {row["detail"]}'
-            if not row['stoppable']:
-                text += '  (already finished)'
-            escaped = escape(text)
-            lines.append(f'[#B1B9F9]{escaped}[/]' if index == self._selected
-                         else f'  [dim]{escaped}[/]')
-        lines.append('[dim]' + keys.hints(
-            ('stop_selected', 'stops the selected'),
-            ('stop_all', 'stops them all'), ('open', 'views'),
-            ('dismiss', 'closes')) + '[/]')
+            lines.append(ui.aside('nothing running'))
+        labels = [row['label'] + ' · ' + row['detail']
+                  + ('' if row['stoppable'] else '  (already finished)')
+                  for row in rows]
+        lines += ui.rows(labels, self._selected)
+        lines += ui.footer(('stop_selected', 'stops the selected'),
+                           ('stop_all', 'stops them all'), ('open', 'views'),
+                           ('dismiss', 'closes'))
         self.query_one("#tk-body", Static).update('\n'.join(lines))
 
     def _move(self, delta: int):

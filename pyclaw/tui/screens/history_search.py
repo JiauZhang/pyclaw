@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
 from pyclaw.tui import keys
+from pyclaw.tui import ui
 from textual.screen import Screen
 from textual.widgets import Input, Static
 
@@ -49,13 +50,8 @@ class HistorySearchScreen(Screen):
         self._selected = min(self._selected, len(matches) - 1)
         start = max(0, min(self._selected - 3, len(matches) - 7))
         window = matches[start:start + 7]
-        lines = []
-        for i, text in enumerate(window):
-            index = start + i
-            row = escape(text)
-            lines.append(f"[#B1B9F9]{row}[/]"
-                         if index == self._selected else f"[dim]{row}[/]")
-        widget.update("\n".join(lines))
+        widget.update("\n".join(
+            ui.rows(window, self._selected - start)))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self._selected = 0

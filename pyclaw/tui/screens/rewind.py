@@ -5,6 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.binding import Binding
 from pyclaw.tui import keys
+from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui.formatting import _plural, _summarize
 from pyclaw.tui.theme import POINTER
@@ -66,16 +67,9 @@ class RewindScreen(Screen):
 
     def _draw(self):
         rows, selected = self._rows()
-        lines = []
-        for index, row in enumerate(rows):
-            text = escape(row)
-            if index == selected:
-                lines.append(f'[#B1B9F9]{POINTER} {text}[/]')
-            elif index == 0:
-                lines.append(f'[bold]{text}[/bold]')
-            else:
-                lines.append(f'  [dim]{text}[/]')
-        lines.append('[dim]enter chooses · esc backs out[/]')
+        lines = [ui.marked(f'[bold]{escape(rows[0])}[/]', selected=False)]
+        lines += ui.rows(rows[1:], selected - 1)
+        lines += ui.footer(('choose', 'chooses'), ('dismiss', 'backs out'))
         self.query_one("#rw-body", Static).update('\n'.join(lines))
 
     def _move(self, delta: int):

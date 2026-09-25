@@ -6,6 +6,7 @@ from rich.markup import escape
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import VerticalScroll
 from textual.binding import Binding
+from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER
@@ -43,16 +44,13 @@ class MemoryScreen(Screen):
     def _draw(self):
         rows = self._targets()
         self._selected = max(0, min(self._selected, len(rows) - 1))
-        lines = ['[bold]Memory files[/bold]']
-        for index, (scope, path) in enumerate(rows):
-            marker = POINTER if index == self._selected else ' '
-            state = '' if path.exists() else '  (not created yet)'
-            text = escape(f'{marker} {scope} · {path}{state}')
-            lines.append(f'[#B1B9F9]{text}[/]' if index == self._selected
-                         else f'  [dim]{text}[/]')
-        lines.append('[dim]' + keys.hints(
-            ('open', 'edits the selected file'),
-            ('dismiss', 'closes')) + '[/]')
+        lines = ui.heading('Memory files')
+        labels = [f'{scope} · {path}'
+                  + ('' if path.exists() else '  (not created yet)')
+                  for scope, path in rows]
+        lines += ui.rows(labels, self._selected)
+        lines += ui.footer(('open', 'edits the selected file'),
+                           ('dismiss', 'closes'))
         self.query_one("#mm-body", Static).update('\n'.join(lines))
 
     def _move(self, delta: int):

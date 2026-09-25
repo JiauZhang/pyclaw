@@ -4,7 +4,7 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll
-from pyclaw.tui import keys
+from pyclaw.tui import keys, ui
 from textual.screen import Screen
 from pyclaw.tui.components import _PagerScroll
 from textual.widgets import Static
@@ -49,8 +49,7 @@ class HelpScreen(Screen):
         for item in COMMANDS:
             lines.append(f"  /{escape(item['name'])}  "
                          f"[dim]{escape(item['desc'])}[/]")
-        lines.append("")
-        lines.append(f"[dim]{keys.hint('dismiss', 'to close')}[/]")
+        lines += ui.footer(('dismiss', 'to close'))
         return "\n".join(lines)
 
     def compose(self) -> ComposeResult:

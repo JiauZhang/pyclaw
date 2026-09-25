@@ -6,8 +6,8 @@ from pyclaw.tui import keys
 from rich.markup import escape
 
 from pyclaw import agent_defs
-from pyclaw.tui.agent_form import (_POINTER, AGENT_LOCATIONS,
-                                   AGENT_NAV)
+from pyclaw.tui.agent_form import AGENT_LOCATIONS, AGENT_NAV
+from pyclaw.tui.theme import POINTER
 
 
 class AgentListMixin:
@@ -70,7 +70,7 @@ class AgentListMixin:
     def _row(self, entry, position) -> str:
         is_built_in = entry.scope in agent_defs.READ_ONLY_SCOPES
         chosen = not is_built_in and self._pos == position
-        marker = '' if is_built_in else (f'{_POINTER} ' if chosen else '  ')
+        marker = '' if is_built_in else (f'{POINTER} ' if chosen else '  ')
         model = agent_defs.model_display(entry.defn, self._session.model)
         text = f'{marker}{entry.agent_type} \u00b7 {model}'
         if entry.shadowed_by:

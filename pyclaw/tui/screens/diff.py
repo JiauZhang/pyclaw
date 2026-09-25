@@ -5,6 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from pyclaw.tui import keys
 from textual.binding import Binding
+from pyclaw.tui import ui
 from textual.screen import Screen
 from textual.widgets import Static
 
@@ -46,7 +47,7 @@ class DiffScreen(Screen):
                 lines.append(f'[dim]{escape(line)}[/]')
             else:
                 lines.append(escape(line) or '')
-        lines += ['', f'[dim]{keys.hint("dismiss", "closes")}[/]']
+        lines += ui.footer(('dismiss', 'closes'))
         self.query_one("#diff-body", Static).update('\n'.join(lines))
 
     def action_dismiss(self):

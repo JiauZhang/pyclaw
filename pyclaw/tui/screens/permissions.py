@@ -5,6 +5,7 @@ from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.binding import Binding
 from pyclaw.tui import keys
+from pyclaw.tui import ui
 from textual.screen import Screen
 from textual.widgets import Static
 
@@ -71,10 +72,8 @@ class PermissionsScreen(Screen):
             lines.append('[bold]Rules[/bold] '
                          '[#9A9A9A](up/down to move, d to remove)[/]')
             for index, (behavior, rule, source) in enumerate(rules):
-                marker = '\u203a' if index == self._selected else ' '
-                body = escape(f'  {marker} [{behavior}] {rule}  ({source})')
-                lines.append(f'[reverse]{body}[/]' if index == self._selected
-                             else body)
+                lines.append(ui.row(f'[{behavior}] {rule}  ({source})',
+                                    selected=index == self._selected))
         self.query_one('#permissions-body', Static).update('\n'.join(lines))
 
     def action_dismiss(self):

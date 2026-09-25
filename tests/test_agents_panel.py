@@ -4,6 +4,7 @@ from chatchat.core.agents import AgentDefinition
 
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.agent_form import AGENT_STEPS, _CHECKED, _UNCHECKED
+from pyclaw.tui.theme import POINTER
 from pyclaw.tui.agents_panel import AgentsScreen
 
 from test_tui import _FakeTeam, _flatten
@@ -133,11 +134,11 @@ def test_navigation_wraps_and_skips_built_in_rows(monkeypatch, tmp_path):
             assert screen._selected().agent_type == 'two'
             await pilot.press('down')
             body = _plain(_body(screen))
-            assert any(line.startswith('›') and 'New agent' in line
+            assert any(line.startswith(POINTER) and 'New agent' in line
                        for line in body.splitlines())
             assert screen._selected() is None
             built_in = _plain(_body(screen)).split('Bundled with PyClaw')[1]
-            assert '›' not in built_in
+            assert POINTER not in built_in
     asyncio.run(scenario())
 
 

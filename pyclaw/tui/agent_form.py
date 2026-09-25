@@ -7,9 +7,9 @@ from textual.widgets import Input
 from chatchat.core.agents import AgentDefinition
 
 from pyclaw import agent_defs
+from pyclaw.tui.theme import POINTER
 
 
-_POINTER = '\u203a'
 _CHECKED = '\u2612'
 _UNCHECKED = '\u2610'
 _WARN = '\u26a0'
@@ -68,7 +68,7 @@ class AgentFormMixin:
     def _options(self, labels, pos, indent=2) -> list:
         lines = []
         for index, label in enumerate(labels):
-            marker = f'{_POINTER} ' if index == pos else ' ' * indent
+            marker = f'{POINTER} ' if index == pos else ' ' * indent
             text = escape(f'{marker}{label}')
             lines.append(f'[{self.app.brand}]{text}[/]' if index == pos
                          else text)
