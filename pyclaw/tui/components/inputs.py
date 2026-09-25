@@ -78,6 +78,9 @@ class _ToolBlock(Static):
             self._frame = char
             self._draw()
 
+    def redraw(self):
+        self._draw()
+
     def set_waiting_permission(self, waiting: bool):
         if self._waiting_permission == waiting:
             return

@@ -179,14 +179,20 @@ class EventRouterMixin:
                     block.add_progress(rows, uses)
         elif msg.get('role') == 'user':
             content = msg.get('content')
-            if isinstance(content, list):
-                for b in content:
-                    if isinstance(b, dict) and b.get('type') == 'tool_result':
-                        st['tools'] += 1
-                        uid = b.get('tool_use_id', '')
-                        tname = st['tool_names'].get(uid, 'tool')
-                        st['last_tool'] = (f"{tname}: "
-                                           f"{_summarize(b.get('content', ''))}")
+            if not isinstance(content, list):
+                return
+            counted = False
+            for b in content:
+                if isinstance(b, dict) and b.get('type') == 'tool_result':
+                    st['tools'] += 1
+                    uid = b.get('tool_use_id', '')
+                    tname = st['tool_names'].get(uid, 'tool')
+                    st['last_tool'] = (f"{tname}: "
+                                       f"{_summarize(b.get('content', ''))}")
+                    counted = True
+            block = self._spawn_block(name) if counted else None
+            if block is not None:
+                block.redraw()
     async def _drive(self):
         if self._driving:
             return

@@ -3925,6 +3925,34 @@ def test_a_group_row_tracks_its_agent_and_closes_when_it_answers():
     assert 'Done' in done.splitlines()[1]
 
 
+def test_a_group_row_counts_a_tool_result_the_moment_it_lands():
+    """The result draws its own count: waiting for the next spinner tick leaves
+    a stale number on the row whenever that tick is late."""
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._spin_timer.stop()
+            await _spawn(app, pilot, 'a1')
+            await _spawn(app, pilot, 'a2')
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'tool_use_id': 'a1', 'subagent_type': 'Explore'}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'assistant', 'content': [
+                    {'type': 'tool_use', 'id': 'g1', 'name': 'Grep',
+                     'input': {'pattern': 'p'}}]}}))
+            await app._handle(RuntimeEvent(
+                AGENT_PROGRESS, agent='sub-1',
+                data={'message': {'role': 'user', 'content': [
+                    {'type': 'tool_result', 'tool_use_id': 'g1',
+                     'content': '3 matches'}]}}))
+            return _plain(app._agent_group.content)
+
+    assert '1 tool call' in asyncio.run(scenario()).splitlines()[1]
+
+
 def test_a_teammate_row_stays_live_while_that_teammate_runs():
     """The spawn acknowledgement arrives as a tool_result, but it is not an
     answer: the teammate is still working, so its row must keep reporting

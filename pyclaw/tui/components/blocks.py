@@ -230,6 +230,9 @@ class _AgentMember:
                                                         int(tool_uses)))
         self._group.redraw()
 
+    def redraw(self):
+        self._group.redraw()
+
     def end_progress(self):
         self._group.state(self.uid)['settled'] = True
         self._group.redraw()
