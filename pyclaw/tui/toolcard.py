@@ -63,7 +63,7 @@ def agent_group_label(name: str, tool_input) -> tuple[str, str]:
         label = f'@{teammate}'
         detail = str(data.get('subagent_type') or '')
     else:
-        label = tool_label(name, tool_input) if name == 'create_agent' else name
+        label = tool_label(name, tool_input) if name == 'Agent' else name
         detail = str(data.get('prompt') or data.get('description') or '')
     return label, _summarize(detail, MAX_USE_ARG_CHARS)
 

@@ -615,7 +615,7 @@ STATUSLINE_PROMPT = 'Set up my status line from my shell PS1 configuration'
 def _handle_statusline(arg: str) -> tuple:
     prompt = arg or STATUSLINE_PROMPT
     return ('Setting up the status line…',
-            f'Create an agent with create_agent, subagent_type '
+            f'Create an agent with the Agent tool, subagent_type '
             f'"statusline-setup" and the prompt "{prompt}"')
 
 

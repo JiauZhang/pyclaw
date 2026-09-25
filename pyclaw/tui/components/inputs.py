@@ -107,7 +107,7 @@ class _ToolBlock(Static):
         self._draw()
 
     def _trail_rows(self, full: bool = False) -> list[str]:
-        if self._name != 'create_agent':
+        if self._name != 'Agent':
             return []
         if full:
             shown, hidden = self._progress, 0
@@ -174,7 +174,7 @@ class _ToolBlock(Static):
         return _content_width(self, len(RESULT_PREFIX))
 
     def _is_teammate_spawn(self) -> bool:
-        return self._name == 'create_agent' and bool(teammate_name(self._input))
+        return self._name == 'Agent' and bool(teammate_name(self._input))
 
     def _agent_summary(self) -> str | None:
         return (self._meta or {}).get('agent_summary')

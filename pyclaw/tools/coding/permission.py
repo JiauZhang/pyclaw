@@ -16,10 +16,10 @@ from .shell_rules import (bash_rule_matches, is_dangerous_removal,
 
 BASH_TOOL = 'Bash'
 
-AUTO_TOOLS = frozenset({'create_agent', 'send_message', 'task_stop',
-                        'use_skill', 'team_create', 'team_delete',
-                        'structured_output', 'ask_user',
-                        'cron_create', 'cron_list', 'cron_delete'})
+AUTO_TOOLS = frozenset({'Agent', 'SendMessage', 'TaskStop',
+                        'Skill', 'TeamCreate', 'TeamDelete',
+                        'StructuredOutput', 'AskUserQuestion',
+                        'CronCreate', 'CronList', 'CronDelete'})
 
 REJECT_MESSAGE = (
     "The user refused this tool call, so nothing ran; a refused edit left the "

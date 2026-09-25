@@ -906,7 +906,7 @@ def test_build_team_mode_gating():
     assert mode_t == "team" and session_t == "team"
     assert "capable AI assistant" in inst_a
     assert "leader of a task-executing team" in inst_t
-    assert "create_agent" in inst_t and "create_agent" not in inst_a
+    assert "Agent" in inst_t and "Agent" not in inst_a
 
 
 def test_build_team_tools_differ_by_mode():
@@ -917,9 +917,10 @@ def test_build_team_tools_differ_by_mode():
 
     single = asyncio.run(names())
     multi = asyncio.run(names(use_team=True))
-    assert "create_agent" in single and "create_agent" in multi
-    assert "send_message" not in single and "task_stop" not in single
-    assert {"send_message", "task_stop"} <= multi
+    assert "Agent" in single and "Agent" in multi
+    assert "TaskStop" in single and "TaskStop" in multi
+    assert "SendMessage" not in single
+    assert {"SendMessage", "TeamCreate", "TeamDelete"} <= multi
 
 
 def test_dont_ask_persists_allow():
@@ -1282,7 +1283,7 @@ def test_build_team_wires_task_notifications_to_lead():
     assert "<task_ref>b" in texts[0]["content"]
 
 def test_team_tools_never_ask_the_human():
-    """create_agent/send_message/task_stop orchestrate agents this one owns.
+    """Agent/SendMessage/TaskStop orchestrate agents this one owns.
 
     They are absent from the coding tool registry, so decide() used to fall
     through to its "unknown tool" branch and prompt on every single call --
@@ -1301,11 +1302,11 @@ def test_team_tools_never_ask_the_human():
 def test_an_explicit_rule_still_gates_a_team_tool():
     with tempfile.TemporaryDirectory() as d:
         asking = PermissionController(mode="default", cwd=d,
-                                      ask=["create_agent"])
-        assert asking.decide("create_agent", {"prompt": "x"}) == "ask"
+                                      ask=["Agent"])
+        assert asking.decide("Agent", {"prompt": "x"}) == "ask"
         denying = PermissionController(mode="default", cwd=d,
-                                       deny=["create_agent"])
-        assert denying.decide("create_agent", {"prompt": "x"}) == "deny"
+                                       deny=["Agent"])
+        assert denying.decide("Agent", {"prompt": "x"}) == "deny"
 
 
 def test_auto_tools_do_not_leak_into_other_tool_decisions():
@@ -1411,8 +1412,8 @@ def test_a_project_skill_is_offered_and_loads_on_demand():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             schemas = team.tool_schemas(team.tool_context)
             schema = next(schema for schema in schemas
-                          if schema['name'] == 'use_skill')
-            outcome = await team.execute_tool('use_skill',
+                          if schema['name'] == 'Skill')
+            outcome = await team.execute_tool('Skill',
                                               {'skill': 'notes'}, team.lead)
             return schema['description'], outcome.text
 
@@ -1428,7 +1429,7 @@ def test_no_skill_tool_is_offered_when_nothing_is_installed():
             return [schema['name'] for schema in
                     team.tool_schemas(team.tool_context)]
 
-        assert 'use_skill' not in asyncio.run(main())
+        assert 'Skill' not in asyncio.run(main())
 
 
 def test_a_denied_call_is_reported_to_hooks():
@@ -1540,7 +1541,7 @@ def test_the_session_reports_the_team_it_joined(tmp_path):
             session = agents_mod.Session(team, session_id='teamctx')
             before = session.team_context
             await session._team.execute_tool(
-                'team_create', {'team_name': 'parser',
+                'TeamCreate', {'team_name': 'parser',
                                 'description': 'rework'}, team.lead)
             return before, session.team_context
 

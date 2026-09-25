@@ -111,7 +111,7 @@ def test_build_team_offers_every_agent_it_loaded(tmp_path):
     async def main():
         team = build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
         schema = next(t for t in team.tool_schemas(team.tool_context)
-                      if t['name'] == 'create_agent')
+                      if t['name'] == 'Agent')
         return team.agent_defs, schema['description']
 
     defs, description = asyncio.run(main())

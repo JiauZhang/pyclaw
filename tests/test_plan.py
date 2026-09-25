@@ -169,5 +169,5 @@ def test_a_recently_closed_task_outranks_an_old_one(tmp_path):
 
 def test_both_instructions_point_at_the_task_list():
     for instruction in (team_instruction(['Read']), agent_instruction(['Read'])):
-        assert 'task_create' in instruction
-        assert 'task_update' in instruction
+        assert 'TaskCreate' in instruction
+        assert 'TaskUpdate' in instruction

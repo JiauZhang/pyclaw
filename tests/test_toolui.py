@@ -24,11 +24,11 @@ def test_display_names_come_from_the_theme_table():
 
 
 def test_a_spawn_is_labelled_by_its_agent_type():
-    assert tool_label('create_agent', {'subagent_type': 'worker'}) == 'Agent'
-    assert tool_label('create_agent',
+    assert tool_label('Agent', {'subagent_type': 'worker'}) == 'Agent'
+    assert tool_label('Agent',
                       {'subagent_type': 'reviewer'}) == 'reviewer'
-    assert tool_label('create_agent', {}) == 'Agent'
-    assert tool_label('create_agent',
+    assert tool_label('Agent', {}) == 'Agent'
+    assert tool_label('Agent',
                       {'subagent_type': 'general-purpose'}) == 'Agent'
 
 
@@ -54,9 +54,9 @@ def test_unknown_inputs_fall_back_to_the_pair_summary():
 
 
 def test_a_spawn_summarises_its_prompt_and_a_message_its_target():
-    assert tool_args('create_agent', {'prompt': 'do ' + 'x' * 100},
+    assert tool_args('Agent', {'prompt': 'do ' + 'x' * 100},
                      '/tmp/w').endswith('…')
-    assert (tool_args('send_message', {'to': 'bot', 'message': 'hi'},
+    assert (tool_args('SendMessage', {'to': 'bot', 'message': 'hi'},
                       '/tmp/w') == 'bot: hi')
 
 
@@ -67,7 +67,7 @@ def test_result_summaries_count_what_each_tool_produced():
     assert result_summary('Glob', 'a.py\nb.py', 80) == 'Found 2 files'
     assert result_summary('LS', 'src\na.py  (1 bytes)\nsub/', 80) == \
         'Listed 2 entries'
-    assert result_summary('create_agent', 'spawned worker', 80) == 'Done'
+    assert result_summary('Agent', 'spawned worker', 80) == 'Done'
 
 
 def test_generic_results_preview_and_errors_keep_their_first_line():
@@ -99,7 +99,7 @@ def test_collapse_kinds_come_from_each_tool():
         {'search', 'read'}
     assert collapse_kinds('Bash', {'command': 'rm -rf /'}) == {'bash'}
     assert collapse_kinds('Bash', {'command': 'echo hi'}) == set()
-    assert collapse_kinds('create_agent', {'prompt': 'x'}) == set()
+    assert collapse_kinds('Agent', {'prompt': 'x'}) == set()
 
 
 def test_the_read_key_groups_by_path_when_there_is_one():
@@ -109,8 +109,8 @@ def test_the_read_key_groups_by_path_when_there_is_one():
 
 
 def test_only_message_sends_hide_their_card():
-    assert hidden_card('send_message', {'message': 'hi'}) is True
-    assert hidden_card('send_message', {'to': 'bot'}) is False
+    assert hidden_card('SendMessage', {'message': 'hi'}) is True
+    assert hidden_card('SendMessage', {'to': 'bot'}) is False
     assert hidden_card('Bash', {'command': 'ls'}) is False
 
 

@@ -38,7 +38,7 @@ def _message_hidden(name, tool_input):
     return isinstance(data.get('message'), str)
 
 
-register('create_agent', build_tool_ui(label=_spawn_label, args=_spawn_args,
+register('Agent', build_tool_ui(label=_spawn_label, args=_spawn_args,
                                        summary=_spawn_summary))
-register('send_message', build_tool_ui(args=_message_args,
+register('SendMessage', build_tool_ui(args=_message_args,
                                        hidden=_message_hidden))

@@ -1525,7 +1525,7 @@ def test_subagent_agent_square_brackets_do_not_crash():
                     errors.append((ev.kind, type(e).__name__, str(e)))
 
             await h(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "build site 1. **x** [/bold]"},
                 "tool_use_id": "c1"}))
             await h(RuntimeEvent(AGENT_TEXT, agent="teammate",
@@ -3746,7 +3746,7 @@ def test_a_teammate_you_stopped_is_reported_as_stopped_not_done():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "do the thing", "subagent_type": "worker"},
                 "tool_use_id": "c1"}))
             await app._handle(RuntimeEvent(
@@ -3766,7 +3766,7 @@ def test_a_teammate_you_stopped_is_reported_as_stopped_not_done():
 
 
 def _spawn(app, pilot, uid, **input_):
-    data = {'tool': 'create_agent', 'tool_use_id': uid}
+    data = {'tool': 'Agent', 'tool_use_id': uid}
     data['input'] = {'prompt': f'job {uid}', 'subagent_type': 'Explore',
                      **input_}
     return app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent='lead', data=data))
@@ -3957,7 +3957,7 @@ def test_subagent_task_card_reports_done_with_stats():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "look around", "subagent_type": "Explore"},
                 "tool_use_id": "a1"}))
             await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
@@ -3984,7 +3984,7 @@ def test_teammate_spawn_card_has_no_result_line():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "watch the build", "name": "watcher"},
                 "tool_use_id": "a2"}))
             block = app._tools["a2"]
@@ -4073,7 +4073,7 @@ def test_direct_send_message_cards_stay_off_the_transcript():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "send_message",
+                "tool": "SendMessage",
                 "input": {"to": "worker", "message": "please continue"},
                 "tool_use_id": "s1"}))
             await pilot.pause()
@@ -4227,7 +4227,7 @@ def test_the_greeting_records_the_version_and_the_onboarding_seen_count(
 async def _mount_agent_card(app, *, tool_use_id="a1", subagent_type="Explore",
                             prompt="look around"):
     await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-        "tool": "create_agent",
+        "tool": "Agent",
         "input": {"prompt": prompt, "subagent_type": subagent_type},
         "tool_use_id": tool_use_id}))
     await app._handle(RuntimeEvent(AGENT_PROGRESS, agent="sub-1", data={
@@ -4377,7 +4377,7 @@ def test_the_teammate_spawn_card_never_trails_after_it_resolves():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "watch the build", "name": "watcher"},
                 "tool_use_id": "a2"}))
             block = app._tools["a2"]
@@ -4388,7 +4388,7 @@ def test_the_teammate_spawn_card_never_trails_after_it_resolves():
     asyncio.run(scenario())
 
 
-async def _pending_approval(app, pilot, tool_use_id="a1", tool="create_agent",
+async def _pending_approval(app, pilot, tool_use_id="a1", tool="Agent",
                             agent=None):
     """Start a real approval request and hand back its task + prompt."""
     task = asyncio.ensure_future(
@@ -4406,7 +4406,7 @@ def test_a_tool_call_waiting_on_approval_says_so():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "go", "subagent_type": "general-purpose"},
                 "tool_use_id": "a1"}))
             assert "Starting up" in _card(app._tools["a1"])
@@ -4428,7 +4428,7 @@ def test_interrupting_while_an_approval_is_pending_settles_the_call():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "go", "subagent_type": "general-purpose"},
                 "tool_use_id": "a1"}))
             task, prompt = await _pending_approval(app, pilot)
@@ -4455,7 +4455,7 @@ def test_an_approval_cannot_outlive_the_turn_it_belongs_to():
             app = pilot.app
             await pilot.pause()
             await app._handle(RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={
-                "tool": "create_agent",
+                "tool": "Agent",
                 "input": {"prompt": "go", "subagent_type": "general-purpose"},
                 "tool_use_id": "a1"}))
             task, _prompt = await _pending_approval(app, pilot)
@@ -4497,7 +4497,7 @@ def test_a_killed_call_is_not_narrated_twice():
             calls = []
 
             async def chat(text):
-                return 'Error: hook blocked tool "create_agent": nope.'
+                return 'Error: hook blocked tool "Agent": nope.'
 
             async def idle():
                 return True
@@ -4519,7 +4519,7 @@ def test_a_killed_call_is_not_narrated_twice():
 
     assert asyncio.run(run(True)) == []
     assert asyncio.run(run(False)) == [
-        'Error: hook blocked tool "create_agent": nope.']
+        'Error: hook blocked tool "Agent": nope.']
 
 
 def test_a_late_timer_refresh_does_not_paint_into_a_torn_down_dom():

@@ -315,7 +315,7 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Output format for print mode")
     parser.add_argument("--json-schema", type=str, default=None, metavar="SCHEMA",
                         help="JSON Schema the answer has to match (needs --print). "
-                             "The run ends by calling the structured_output tool "
+                             "The run ends by calling the StructuredOutput tool "
                              "with a payload validated against it.")
     parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
