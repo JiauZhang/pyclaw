@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import atexit
+import os
 import secrets
+import signal
 import subprocess
 import tempfile
 import threading
@@ -11,7 +13,6 @@ from pathlib import Path
 from chatchat.tool import ToolResult, tool
 
 from pyclaw import task_registry as tasks
-from pyclaw.tools.bash import _kill
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
@@ -129,13 +130,20 @@ def snapshot() -> list[dict]:
     return sorted(rows, key=lambda row: row['id'])
 
 
+def kill_process(process) -> None:
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except OSError:
+        process.kill()
+
+
 def stop(task_id: str) -> dict | None:
     record = task(task_id)
     if record is None:
         return None
     process = record.payload['process']
     if process.poll() is None:
-        _kill(process)
+        kill_process(process)
         record.payload['killed'] = True
         try:
             process.wait(timeout=5)
@@ -152,7 +160,7 @@ def cleanup_background_tasks():
     for record in tasks.registry().of_kind('shell'):
         process = record.payload['process']
         if process.poll() is None:
-            _kill(process)
+            kill_process(process)
             record.payload['killed'] = True
             try:
                 process.wait(timeout=2)

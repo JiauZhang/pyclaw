@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import signal
 import subprocess
 import tempfile
 from pathlib import Path
@@ -14,6 +13,7 @@ from pyclaw.tui.theme import MAX_COMMAND_CHARS, MAX_COMMAND_LINES
 from pyclaw.tui.toolui import build_tool_ui, register
 
 from pyclaw.permissions.bash_rules import base_command, split_commands
+from pyclaw.tools.background import adopt, kill_process, scratch_path
 
 DEFAULT_TIMEOUT_MS = 120_000
 MAX_TIMEOUT_MS = 600_000
@@ -107,13 +107,6 @@ def _join(head: str, body: str) -> str:
     return f'{head}\n{body}' if body else head
 
 
-def _kill(process) -> None:
-    try:
-        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
-    except OSError:
-        process.kill()
-
-
 DISALLOWED_AUTO_BACKGROUND = frozenset({'sleep'})
 
 
@@ -141,7 +134,6 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
         return 'Error: empty command.'
     limit = get_default_timeout_ms() if not timeout_ms else int(timeout_ms)
     limit = max(1, min(limit, get_max_timeout_ms()))
-    from pyclaw.tools.background import adopt, scratch_path
     output_path = scratch_path()
     try:
         handle = open(output_path, 'wb')
@@ -163,7 +155,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             return (f'{limit}ms passed with the command still running, so it moved '
                     f'to the background as {task_id}. Read its output with '
                     'TaskOutput.')
-        _kill(process)
+        kill_process(process)
         process.wait()
         return _join(f'Error: the command ran past {limit}ms',
                      _clean(_read_output(output_path)))
