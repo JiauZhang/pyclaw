@@ -4861,6 +4861,42 @@ def _task_body(app) -> str:
     return _plain(str(app.screen.query_one('#tk-body', Static).content))
 
 
+def test_a_shell_task_opens_into_a_detail_view_that_can_stop_it():
+    from pyclaw.tui.screens import TaskDetailScreen
+
+    stopped = []
+
+    async def scenario():
+        async with PyClawApp(builder=_SwarmTeam).run_test(size=(100, 40)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            with _fake_shells(), mock.patch.object(
+                    background, 'output_of',
+                    lambda task_id: 'ready on :3000\n'), mock.patch.object(
+                        background, 'stop',
+                        lambda task_id: stopped.append(task_id)):
+                await _submit_and_wait(pilot, '/tasks')
+                rows = app._task_rows()
+                for _ in range(next(index for index, row in enumerate(rows)
+                                    if row['kind'] == 'shell')):
+                    await pilot.press('down')
+                await pilot.press('enter')
+                await pilot.pause()
+                assert isinstance(app.screen, TaskDetailScreen)
+                body = _plain(str(
+                    app.screen.query_one('#td-body', Static).content))
+                await pilot.press('x')
+                await pilot.pause()
+                return body, app.screen
+
+    body, screen = asyncio.run(scenario())
+    assert 'Background shell b1' in body
+    assert 'Command:  npm run dev' in body
+    assert 'ready on :3000' in body
+    assert stopped == ['b1']
+    assert isinstance(screen, TaskDetailScreen)
+
+
 def test_the_diff_command_opens_a_pane_of_the_working_changes(tmp_path):
     from pyclaw.tui.screens import DiffScreen
 

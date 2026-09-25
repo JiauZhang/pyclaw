@@ -1,7 +1,10 @@
 """The task pane is five independent sections; each one is built from its own
 data and joins the others with a single blank line."""
 from pyclaw.tui.task_panel import (agent_tree, panel_text, shell_rows,
-                                   subagent_rows, tool_rows)
+                                   subagent_rows, task_detail_lines,
+                                   tool_rows)
+
+from markup import plain
 
 
 class _Agent:
@@ -73,3 +76,44 @@ def test_empty_sections_are_dropped_and_the_rest_keep_one_gap():
 
 def test_a_blank_line_only_separates_sections_that_exist():
     assert panel_text([[], ['only']]) == 'only'
+
+
+def test_a_shell_detail_shows_status_runtime_command_and_output():
+    lines = task_detail_lines(
+        {'kind': 'shell', 'id': 'b1', 'command': 'npm run dev',
+         'seconds': 12, 'exit': None}, output='ready on :3000\n')
+    body = plain('\n'.join(lines))
+    assert 'Background shell b1' in body
+    assert 'Status:   running' in body
+    assert 'Runtime:  12s' in body
+    assert 'Command:  npm run dev' in body
+    assert 'ready on :3000' in body
+
+
+def test_a_shell_detail_says_so_while_it_has_produced_nothing():
+    lines = task_detail_lines(
+        {'kind': 'shell', 'id': 'b2', 'command': 'sleep 30', 'seconds': 1,
+         'exit': None}, output='')
+    assert lines[-1] == '[dim]nothing yet[/]'
+
+
+def test_an_exited_shell_reports_its_code_and_that_it_was_stopped():
+    lines = task_detail_lines(
+        {'kind': 'shell', 'id': 'b3', 'command': 'pytest', 'seconds': 40,
+         'exit': 1, 'killed': True}, output='1 failed\n')
+    assert 'Status:   exited 1 (stopped)' in plain('\n'.join(lines))
+
+
+def test_a_sub_agent_detail_names_its_type_tools_and_activity():
+    lines = task_detail_lines(
+        {'kind': 'sub-agent', 'label': '@worker', 'detail': 'in the background'},
+        state={'tools': 2, 'last_tool': 'Read: src/a.py', 'started_at': 100.0},
+        subagent={'type': 'Explore', 'tokens': 1200, 'done': False},
+        now=145.0)
+    body = plain('\n'.join(lines))
+    assert 'Sub-agent @worker' in body
+    assert 'Type:     Explore' in body
+    assert 'Runtime:  45s' in body
+    assert '2 tool calls' in body
+    assert '1.2k' in body
+    assert 'Read: src/a.py' in body

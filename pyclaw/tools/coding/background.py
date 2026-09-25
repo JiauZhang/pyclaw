@@ -60,6 +60,10 @@ def _output_path(task_id: str) -> Path:
     return _tasks_dir() / f'{task_id}.output'
 
 
+def output_of(task_id: str) -> str:
+    return _tail(_output_path(task_id))
+
+
 def adopt(command: str, process, output: Path) -> str:
     task_id = _new_task_id()
     _tasks[task_id] = {'command': command, 'process': process,

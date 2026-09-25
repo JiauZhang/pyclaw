@@ -4,5 +4,6 @@ from pyclaw.tui.screens.history_search import HistorySearchScreen
 from pyclaw.tui.screens.memory import MemoryScreen
 from pyclaw.tui.screens.permissions import PermissionsScreen
 from pyclaw.tui.screens.rewind import RewindScreen
+from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui.screens.tasks import TasksScreen
 from pyclaw.tui.screens.transcript import TranscriptScreen

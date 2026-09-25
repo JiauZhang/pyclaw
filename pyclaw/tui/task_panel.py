@@ -76,6 +76,62 @@ def shell_rows(shells: list) -> list[str]:
     return lines
 
 
+def task_detail_lines(row, *, output: str = '', state=None, subagent=None,
+                      now=None) -> list[str]:
+    if row.get('kind') == 'shell':
+        return _shell_detail_lines(row, output)
+    return _agent_detail_lines(row, state or {}, subagent or {}, now)
+
+
+def _shell_detail_lines(row, output: str) -> list[str]:
+    status = ('running' if row.get('exit') is None
+              else f"exited {row['exit']}")
+    if row.get('killed'):
+        status += ' (stopped)'
+    lines = [f"[bold]Background shell[/bold] {escape(str(row.get('id', '')))}",
+             f"  Status:   {status}",
+             f"  Runtime:  {duration(int(row.get('seconds') or 0))}",
+             f"  Command:  "
+             f"{escape(str(row.get('command') or row.get('label') or ''))}",
+             '',
+             '[bold]Output[/bold]']
+    body = (output or '').rstrip('\n')
+    if not body:
+        lines.append('[dim]nothing yet[/]')
+        return lines
+    lines += [escape(line) for line in body.splitlines()]
+    return lines
+
+
+def _agent_detail_lines(row, state: dict, subagent: dict,
+                        now) -> list[str]:
+    kind = 'Teammate' if row.get('kind') == 'teammate' else 'Sub-agent'
+    lines = [f"[bold]{kind}[/bold] {escape(str(row.get('label') or ''))}"]
+    if subagent.get('type'):
+        lines.append(f"  Type:     {escape(str(subagent['type']))}")
+    lines.append(f"  Status:   {escape(str(row.get('detail') or 'idle'))}")
+    started = state.get('started_at')
+    if started and now:
+        lines.append(f"  Runtime:  {duration(int(now - started))}")
+    tools = int(subagent.get('tools') or state.get('tools') or 0)
+    lines.append(f"  Tools:    {_tool_uses(tools)}")
+    tokens = subagent.get('tokens')
+    if tokens is not None:
+        lines.append(f"  Tokens:   {_format_count(int(tokens))}")
+    if state.get('error'):
+        lines += ['', f"[bold]Error[/bold] {escape(str(state['error']))}"]
+    activity = subagent.get('last_tool') or state.get('last_tool')
+    recent = recent_rollup(list(subagent.get('recent')
+                                or state.get('recent') or []))
+    if activity or recent:
+        lines += ['', '[bold]Activity[/bold]']
+        if recent:
+            lines.append(f"  {escape(str(recent))}")
+        if activity:
+            lines.append(f"  {escape(str(activity))}")
+    return lines
+
+
 def tool_rows(schemas: list) -> list[str]:
     lines = [f'[bold]Tools[/bold] {len(schemas)}']
     lines += [f"  {escape(str(tool['name']))}"
@@ -104,6 +160,19 @@ class TaskPanelMixin:
         logger.info("stopped background task %s: %s", row.get('id'), note)
         await self._refresh_agents()
         return note
+
+    def _task_detail(self, row) -> dict:
+        current = next((candidate for candidate in self._task_rows()
+                        if candidate['kind'] == row['kind']
+                        and candidate['id'] == row['id']), None)
+        row = current or row
+        shell = row['kind'] == 'shell'
+        return {'row': row,
+                'output': background.output_of(row['id']) if shell else '',
+                'state': {} if shell else self._state(row['id']),
+                'subagent': {} if shell else dict(
+                    self._subagents.get(row['id'], {})),
+                'now': time.monotonic()}
 
     def _tasks_hint(self) -> str:
         if not self._teammates():

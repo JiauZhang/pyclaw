@@ -4,6 +4,7 @@ from rich.markup import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.screen import Screen
+from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 
@@ -93,6 +94,7 @@ class TasksScreen(Screen):
             return
         row = rows[min(self._selected, len(rows) - 1)]
         if row['kind'] != 'teammate':
+            self.app.push_screen(TaskDetailScreen(self._owner, row))
             return
         self.app.pop_screen()
         await self._owner._view_teammate(row['id'])

@@ -212,6 +212,10 @@ class Session:
                          'detail': (f'running {shell["seconds"]}s'
                                     if shell['exit'] is None
                                     else f'exited {shell["exit"]}'),
+                         'command': shell['command'],
+                         'seconds': shell['seconds'],
+                         'exit': shell['exit'],
+                         'killed': shell['killed'],
                          'stoppable': shell['exit'] is None})
         return rows
 
