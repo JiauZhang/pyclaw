@@ -171,3 +171,49 @@ def test_both_instructions_point_at_the_task_list():
     for instruction in (team_instruction(['Read']), agent_instruction(['Read'])):
         assert 'TaskCreate' in instruction
         assert 'TaskUpdate' in instruction
+
+
+def _built(tmp_path):
+    import asyncio
+
+    from pyclaw.team_builder import build_team
+
+    async def build():
+        return build_team('agnes', 'agnes-2.5-flash', cwd=str(tmp_path))
+
+    return asyncio.run(build())
+
+
+def test_plan_mode_lets_the_model_write_only_the_plan_file(tmp_path):
+    team = _built(tmp_path)
+    gate = team._pyclaw_gate
+    plan = tmp_path / 'plan.md'
+    team.plan_path = plan
+    gate.plan_file = plan
+    gate.mode = gate.mode.plan
+
+    assert gate.decide('Write', {'file_path': str(plan)}) == 'allow'
+    assert gate.decide('Edit', {'file_path': str(plan)}) == 'allow'
+    assert gate.decide('Write', {'file_path': str(tmp_path / 'a.py')}) == 'deny'
+    assert gate.decide('Edit', {'file_path': str(tmp_path / 'a.py')}) == 'deny'
+
+
+def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
+    import asyncio
+
+    team = _built(tmp_path)
+    team.ask_user = lambda agent, questions: []
+    gate = team._pyclaw_gate
+    assert gate.mode.value == 'default'
+
+    asyncio.run(team.execute_tool('EnterPlanMode', {}, team.lead))
+
+    assert gate.mode.value == 'plan'
+    assert team.hooks.permission_mode == 'plan'
+
+
+def test_the_plan_file_lives_under_the_pyclaw_home(tmp_path):
+    team = _built(tmp_path)
+    assert team.plan_path is not None
+    assert str(team.plan_path).startswith(str(tmp_path / 'pyclaw-home'))
+    assert team._pyclaw_gate.plan_file == team.plan_path

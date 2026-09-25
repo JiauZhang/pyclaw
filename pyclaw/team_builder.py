@@ -15,7 +15,8 @@ from . import pyclaw_home
 from .plugins import discover_tools
 from .skills import discover_registry
 from .tools import tools as base_tools
-from .tools.coding import CODING_TOOLS, PermissionController, PermissionMode
+from .tools.coding import (CODING_TOOLS, PermissionController, PermissionMode,
+                           parse_mode)
 
 _name_counter = itertools.count()
 
@@ -174,6 +175,14 @@ def build_team(
         gate.move_to(cwd)
 
     team._cwd_changed = _follow_worktree
+
+    def _plan_mode(mode):
+        gate.mode = parse_mode(mode)
+        team.hooks.permission_mode = gate.mode.value
+
+    team._plan_mode_changed = _plan_mode
+    team.plan_path = pyclaw_home() / 'plans' / f'{team.name}.md'
+    gate.plan_file = team.plan_path
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
     team.set_instruction_files(load_instruction_files(cwd))

@@ -19,6 +19,7 @@ BASH_TOOL = 'Bash'
 AUTO_TOOLS = frozenset({'Agent', 'SendMessage', 'TaskStop',
                         'Skill', 'TeamCreate', 'TeamDelete',
                         'StructuredOutput', 'AskUserQuestion',
+                        'EnterPlanMode', 'ExitPlanMode',
                         'CronCreate', 'CronList', 'CronDelete'})
 
 REJECT_MESSAGE = (
@@ -218,6 +219,7 @@ class PermissionController:
                  ask=(), deny=(), request=None, tools=None):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
+        self.plan_file = None
         self._by_name = {t.name: t for t in (tools or ())}
         self._layers: list[tuple[str, str, str]] = []
         self._layer_files = {
@@ -396,6 +398,9 @@ class PermissionController:
         if target is None:
             return 'ask'
         if mode is PermissionMode.plan:
+            if self.plan_file is not None \
+                    and Path(target) == Path(self.plan_file).resolve():
+                return 'allow'
             return 'deny'
         if inside and mode is PermissionMode.accept_edits:
             return 'allow'
