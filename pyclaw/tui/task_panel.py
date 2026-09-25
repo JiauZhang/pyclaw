@@ -8,7 +8,7 @@ import time
 from rich.markup import escape
 from textual.containers import VerticalScroll
 
-from pyclaw.tools.coding import background
+from pyclaw.tools import background
 from pyclaw.tui.formatting import _format_count, _summarize, duration
 from pyclaw.tui.plan import plan_lines, recent_completions
 from pyclaw.tui.theme import RESULT_GLYPH

@@ -15,8 +15,8 @@ from . import pyclaw_home
 from .plugins import discover_tools
 from .skills import discover_registry
 from .tools import tools as base_tools
-from .tools.coding import (CODING_TOOLS, PermissionController, PermissionMode,
-                           parse_mode)
+from .permissions import PermissionController, PermissionMode, parse_mode
+from .tools import BUILTIN_TOOLS
 
 _name_counter = itertools.count()
 
@@ -128,7 +128,7 @@ def build_team(
     from .agent_memory import (load_instruction_files, load_project_memory,
                                rule_set)
     registry = _resolve_skills(skills, cwd)
-    coding_tools = list(CODING_TOOLS)
+    coding_tools = list(BUILTIN_TOOLS)
     coding_names = {t.name for t in coding_tools}
     candidates = coding_tools + [t for t in _resolve_tools(tools)
                                  if t.name not in coding_names]
@@ -205,7 +205,7 @@ def build_team(
         and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory)
         != 'none']
 
-    from .tools.coding import background as _background
+    from .tools import background as _background
 
     def _notify_task_finished(task_id, command, code, killed):
         status = ('killed' if killed

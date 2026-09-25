@@ -23,7 +23,7 @@ from chatchat.tool import ToolContext
 from pyclaw import agents, banner, config, statusline, welcome
 from pyclaw import session_store
 from pyclaw.session_store import save_transcript
-from pyclaw.tools.coding import background
+from pyclaw.tools import background
 from pyclaw.tui import app as tui
 from pyclaw.tui import status_line
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
@@ -243,12 +243,12 @@ class _GateTeam(_FakeTeam):
 
     def __init__(self):
         super().__init__()
-        from pyclaw.tools.coding import PermissionController
+        from pyclaw.permissions import PermissionController
         self._tmp = tempfile.TemporaryDirectory()
-        from pyclaw.tools.coding import CODING_TOOLS
+        from pyclaw.tools import BUILTIN_TOOLS
         self._pyclaw_gate = PermissionController(mode="default",
                                                  cwd=self._tmp.name,
-                                                 tools=CODING_TOOLS)
+                                                 tools=BUILTIN_TOOLS)
         from chatchat.hooks.manager import HookManager
         self.hooks = HookManager(self)
 

@@ -9,7 +9,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
 from textual.widgets import Input, Static
-from pyclaw.tools.coding.permission import BASH_TOOL, PermissionChoice
+from pyclaw.permissions import BASH_TOOL, PermissionChoice
 
 from pyclaw.tui.theme import (ACCEPT_FEEDBACK_HINT, ANSWER_HINT, BULLET,
                               OPTION_PAGE_SIZE, POINTER,

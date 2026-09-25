@@ -23,3 +23,12 @@ def relative(cwd, p) -> str:
         return str(Path(p).resolve().relative_to(workspace(cwd)))
     except ValueError:
         return str(p)
+
+
+SKIP_DIRS = frozenset({'.git', '.hg', '.svn', '__pycache__', 'node_modules',
+                       '.venv', 'venv', 'dist', 'build', '.tox', '.idea',
+                       '.pyclaw'})
+
+
+def skipped(path) -> bool:
+    return any(part in SKIP_DIRS for part in Path(path).parts)

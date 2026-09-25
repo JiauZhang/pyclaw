@@ -12,18 +12,19 @@ from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import agents as agents_mod
 from pyclaw.agents import Session
+from pyclaw.permissions import PermissionController, next_mode, parse_mode
+from pyclaw.permissions import gate as perm
+from pyclaw.permissions.bash_rules import (bash_rule_matches,
+                                           is_dangerous_removal, is_read_only,
+                                           parse_bash_rule, suggested_rule)
+from pyclaw.permissions.gate import (REJECT_MESSAGE,
+                                     REJECT_MESSAGE_WITH_REASON_PREFIX,
+                                     SUBAGENT_REJECT_MESSAGE,
+                                     SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
+                                     PermissionChoice)
 from pyclaw.team_builder import build_team
-from pyclaw.tools.coding import (CODING_TOOLS, PermissionController,
-                                 background, next_mode, parse_mode,
-                                 permission as perm, shell)
-from pyclaw.tools.coding.permission import (REJECT_MESSAGE,
-                                            REJECT_MESSAGE_WITH_REASON_PREFIX,
-                                            SUBAGENT_REJECT_MESSAGE,
-                                            SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
-                                            PermissionChoice)
-from pyclaw.tools.coding.shell_rules import (bash_rule_matches,
-                                             is_dangerous_removal, is_read_only,
-                                             parse_bash_rule, suggested_rule)
+from pyclaw.tools import BUILTIN_TOOLS, background
+from pyclaw.tools import bash as shell
 
 
 def _tools(d, files=None):
@@ -35,7 +36,7 @@ def _tools(d, files=None):
         call.tool = tool
         return call
 
-    return {t.name: bound(t) for t in CODING_TOOLS}
+    return {t.name: bound(t) for t in BUILTIN_TOOLS}
 
 
 def test_coding_tools_are_shared_singletons():
@@ -58,7 +59,7 @@ def _all_properties(schema: dict) -> dict:
 
 def test_tool_text_respects_the_budget_and_documents_every_parameter():
     ctx = ToolContext(cwd=Path("/w"))
-    for tool in CODING_TOOLS:
+    for tool in BUILTIN_TOOLS:
         text = tool.describe(ctx)
         assert len(text) <= 350, (tool.name, len(text))
         assert "claude" not in text.lower()
@@ -67,13 +68,13 @@ def test_tool_text_respects_the_budget_and_documents_every_parameter():
 
 
 def test_read_warns_about_the_line_prefix_that_edit_must_not_copy():
-    text = dict((t.name, t) for t in CODING_TOOLS)["Read"].describe(
+    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Read"].describe(
         ToolContext(cwd=Path("/w")))
     assert "line number" in text and "tab" in text
 
 
 def test_grep_states_the_regex_dialect_and_its_line_scope():
-    text = dict((t.name, t) for t in CODING_TOOLS)["Grep"].describe(
+    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Grep"].describe(
         ToolContext(cwd=Path("/w")))
     assert "Python re" in text and "newline" in text
 
@@ -94,7 +95,7 @@ def test_read_caps_long_files_at_the_line_count_it_promises():
         out = _text(_tools(d)["Read"](file_path="long.txt"))
         assert "showing 1-2000" in out and "2100 lines" in out
         assert "2000\tl1999" in out and "2001\tl2000" not in out
-        assert "2000" in dict((t.name, t) for t in CODING_TOOLS)[
+        assert "2000" in dict((t.name, t) for t in BUILTIN_TOOLS)[
             "Read"].describe(ToolContext(cwd=Path("/w")))
 
 
@@ -201,25 +202,25 @@ def test_mode_parse_and_cycle():
 
 def test_decide_matrix():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
+        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS)
         assert g.decide("Read", {"file_path": "a.txt"}) == "allow"
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Write", {"file_path": "../x"}) == "ask"
         assert g.decide("Read", {"file_path": "../x"}) == "ask"
         assert g.decide("datetime", {}) == "ask"
 
-        plan = PermissionController(mode="plan", cwd=d, tools=CODING_TOOLS)
+        plan = PermissionController(mode="plan", cwd=d, tools=BUILTIN_TOOLS)
         assert plan.decide("Edit", {"file_path": "a.txt"}) == "deny"
         assert plan.decide("Read", {"file_path": "../x"}) == "allow"
 
         ae = PermissionController(mode="acceptEdits", cwd=d,
-                                 tools=CODING_TOOLS)
+                                 tools=BUILTIN_TOOLS)
         assert ae.decide("Edit", {"file_path": "a.txt"}) == "allow"
 
 
 def test_decide_mode_override_per_call():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
+        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS)
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Edit", {"file_path": "a.txt"},
                         mode="acceptEdits") == "allow"
@@ -232,7 +233,7 @@ def test_decide_mode_override_per_call():
 
 
 def test_coding_tools_declare_their_permissions_capabilities():
-    by_name = {t.name: t for t in CODING_TOOLS}
+    by_name = {t.name: t for t in BUILTIN_TOOLS}
     assert {n for n, t in by_name.items() if t.read_only} == {
         "Read", "Glob", "Grep"}
     assert by_name["Edit"].get_path({"file_path": "a.py"}) == "a.py"
@@ -245,7 +246,7 @@ def test_coding_tools_declare_their_permissions_capabilities():
 def test_the_gate_asks_the_tool_what_it_addresses():
     with tempfile.TemporaryDirectory() as d:
         Path(d, "src").mkdir()
-        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS)
+        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS)
         assert g.decide("Grep", {"pattern": "../secret"}) == "allow"
         assert g.decide("Grep", {"pattern": "x", "path": "../secret"}) == "ask"
         assert g.suggested_rule("Grep", {"pattern": "a|b"}) is None
@@ -355,13 +356,13 @@ def test_deny_removes_tool_and_precedence():
 
 def test_non_bash_tool_rules_match_their_path_argument():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, tools=CODING_TOOLS,
+        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS,
                                  deny=["Read(./secret.txt)"])
         assert g.decide("Read", {"file_path": "secret.txt"}) == "deny"
         assert g.decide("Read", {"file_path": "notes.txt"}) == "allow"
 
         scoped = PermissionController(mode="default", cwd=d,
-                                      tools=CODING_TOOLS,
+                                      tools=BUILTIN_TOOLS,
                                       allow=["Edit(./src/**)"])
         assert scoped.decide("Edit", {"file_path": "src/a.py"}) == "allow"
         assert scoped.decide("Edit", {"file_path": "other/a.py"}) == "ask"
@@ -941,7 +942,7 @@ def test_dont_ask_persists_allow():
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once,
-                                 tools=CODING_TOOLS)
+                                 tools=BUILTIN_TOOLS)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
         assert "Edit(./a.txt)" in g._allow
         assert g.decide("Edit", {"file_path": "a.txt"}) == "allow"
@@ -980,7 +981,7 @@ def test_tools_return_structured_meta():
 
 
 def test_suggested_rule_uses_the_addressed_path():
-    g = PermissionController(mode="default", cwd="/w", tools=CODING_TOOLS)
+    g = PermissionController(mode="default", cwd="/w", tools=BUILTIN_TOOLS)
     assert g.suggested_rule("Edit", {"file_path": "a.txt"}) == "Edit(./a.txt)"
     assert g.suggested_rule("Read", {"file_path": "./docs/x.md"}
                             ) == "Read(./docs/x.md)"
@@ -1215,7 +1216,7 @@ def test_task_output_unknown_task():
 
 
 def test_background_tools_registered_as_coding_tools():
-    names = {t.name for t in CODING_TOOLS}
+    names = {t.name for t in BUILTIN_TOOLS}
     assert {"TaskOutput", "TaskStop"} <= names
 
 
@@ -1303,7 +1304,7 @@ def test_team_tools_never_ask_the_human():
     which in a fresh cwd meant the human had to approve each delegation.
     Team tools are always allowed.
     """
-    from pyclaw.tools.coding.permission import AUTO_TOOLS
+    from pyclaw.permissions import AUTO_TOOLS
 
     with tempfile.TemporaryDirectory() as d:
         gate = PermissionController(mode="default", cwd=d)
@@ -1325,7 +1326,7 @@ def test_an_explicit_rule_still_gates_a_team_tool():
 def test_auto_tools_do_not_leak_into_other_tool_decisions():
     with tempfile.TemporaryDirectory() as d:
         gate = PermissionController(mode="default", cwd=d,
-                                    tools=CODING_TOOLS)
+                                    tools=BUILTIN_TOOLS)
         assert gate.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert gate.decide("Bash", {"command": "rm -rf /"}) == "ask"
         assert gate.decide("Read", {"file_path": "a.txt"}) == "allow"

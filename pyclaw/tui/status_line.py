@@ -12,7 +12,7 @@ from textual.containers import Horizontal
 from textual.widgets import Input, Static
 
 from pyclaw import banner, statusline
-from pyclaw.tools.coding import background
+from pyclaw.tools import background
 from pyclaw.tui.formatting import (_display_cwd, _fit, _format_count,
                                    _token_rate, duration)
 from pyclaw.tui.readout import (_agent_tokens, context_meter, context_note,

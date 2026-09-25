@@ -6,7 +6,7 @@ from chatchat.tool import ToolResult, tool
 
 from pyclaw.tui.toolui import build_tool_ui, is_memory_path, path_args, register
 
-from .paths import relative, resolve
+from pyclaw.tools.paths import relative, resolve
 
 
 def _read_text(path) -> tuple[str | None, str | None]:

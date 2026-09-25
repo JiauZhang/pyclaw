@@ -45,8 +45,8 @@ class _AgentsTeam(_FakeTeam):
 
 
 def _tools():
-    from pyclaw.tools.coding import CODING_TOOLS
-    return list(CODING_TOOLS)
+    from pyclaw.tools import BUILTIN_TOOLS
+    return list(BUILTIN_TOOLS)
 
 
 def _home(monkeypatch, tmp_path):

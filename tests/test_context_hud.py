@@ -224,7 +224,7 @@ def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
 
 
 def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
-    from pyclaw.tools.coding import background
+    from pyclaw.tools import background
 
     monkeypatch.setattr(
         background, 'snapshot',
@@ -252,7 +252,7 @@ def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
 
 
 def test_stopping_a_shell_row_kills_that_shell(monkeypatch):
-    from pyclaw.tools.coding import background
+    from pyclaw.tools import background
     stopped = []
     monkeypatch.setattr(background, 'stop',
                         lambda task_id: stopped.append(task_id))

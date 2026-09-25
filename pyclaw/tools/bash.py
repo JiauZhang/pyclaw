@@ -13,7 +13,7 @@ from pyclaw.tui.formatting import _clip_lines
 from pyclaw.tui.theme import MAX_COMMAND_CHARS, MAX_COMMAND_LINES
 from pyclaw.tui.toolui import build_tool_ui, register
 
-from .shell_rules import base_command, split_commands
+from pyclaw.permissions.bash_rules import base_command, split_commands
 
 DEFAULT_TIMEOUT_MS = 120_000
 MAX_TIMEOUT_MS = 600_000
@@ -141,7 +141,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
         return 'Error: empty command.'
     limit = get_default_timeout_ms() if not timeout_ms else int(timeout_ms)
     limit = max(1, min(limit, get_max_timeout_ms()))
-    from .background import adopt, scratch_path
+    from pyclaw.tools.background import adopt, scratch_path
     output_path = scratch_path()
     try:
         handle = open(output_path, 'wb')

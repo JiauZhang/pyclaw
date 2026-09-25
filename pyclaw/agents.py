@@ -18,7 +18,7 @@ from chatchat.hooks.events import (
 from .session_store import (_session_dir, append_conv, close_session_logger,
                             load_transcript, save_transcript)
 from .team_builder import _dispatch_event, configured_context_window
-from .tools.coding import parse_mode
+from .permissions import parse_mode
 
 _sessions_by_root: dict[str, 'Session'] = {}
 
@@ -187,7 +187,7 @@ class Session:
         return self._team.hooks.configured()
 
     def task_rows(self) -> list:
-        from pyclaw.tools.coding import background
+        from pyclaw.tools import background
         rows = []
         lead = self._team.lead
         teammates = [agent for agent in self._team.agents.values()
@@ -220,7 +220,7 @@ class Session:
         return rows
 
     async def stop_task(self, row: dict) -> str:
-        from pyclaw.tools.coding import background
+        from pyclaw.tools import background
         if row['kind'] == 'shell':
             background.stop(row['id'])
             return f'Stopped the shell {row["id"]}.'
@@ -471,7 +471,7 @@ class Session:
     async def run_bash(self, command: str) -> dict:
         import subprocess
 
-        from .tools.coding.shell import get_default_timeout_ms
+        from .tools.bash import get_default_timeout_ms
 
         cwd = self.cwd
         limit = get_default_timeout_ms() / 1000

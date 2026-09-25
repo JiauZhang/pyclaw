@@ -11,7 +11,7 @@ from pyclaw.agent_defs import (BUILT_IN, AgentEntry, agent_count, discover,
                                relative_path, remove_agent, tool_buckets,
                                validate, validate_type, write_agent)
 from pyclaw.team_builder import build_team
-from pyclaw.tools.coding import CODING_TOOLS
+from pyclaw.tools import BUILTIN_TOOLS
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def user_agents(tmp_path, monkeypatch):
     return user
 
 
-ALL_TOOLS = list(CODING_TOOLS)
+ALL_TOOLS = list(BUILTIN_TOOLS)
 
 
 def _write_agent(root: Path, filename: str, text: str):
@@ -75,7 +75,7 @@ def test_load_agent_defs_parses_and_resolves_tools():
         _write_agent(agents_dir, 'reviewer.md', REVIEWER)
         _write_agent(agents_dir, 'researcher.md', WILDCARD)
         _write_agent(agents_dir, 'planner.md', NO_TOOLS)
-        all_tools = list(CODING_TOOLS)
+        all_tools = list(BUILTIN_TOOLS)
         defs = {x.agent_type: x for x in load_agent_defs(d, all_tools=all_tools)}
         assert set(defs) >= {'reviewer', 'researcher', 'planner'}
         assert {t.name for t in defs['reviewer'].tools} <= {t.name for t in all_tools}

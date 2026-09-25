@@ -7,7 +7,7 @@ from pyclaw.team_builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
 from pyclaw.cli import stop_server
-from pyclaw.tools.coding.permission import split_rules
+from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
 
 _LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

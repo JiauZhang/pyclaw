@@ -11,7 +11,7 @@ from pathlib import Path
 
 from chatchat.tool import ToolResult, tool
 
-from .shell import _kill
+from pyclaw.tools.bash import _kill
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1

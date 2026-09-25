@@ -4,7 +4,7 @@ import asyncio
 
 from pyclaw import __main__
 from pyclaw.team_builder import build_team
-from pyclaw.tools.coding.permission import split_rules
+from pyclaw.permissions import split_rules
 
 
 def test_one_value_can_carry_several_comma_separated_rules():
