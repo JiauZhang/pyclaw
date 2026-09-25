@@ -76,6 +76,17 @@ def load_transcript(session_id) -> list:
             for entry in load_entries(session_id)]
 
 
+def session_meta(session_id) -> dict:
+    path = _session_dir(session_id) / "meta.json"
+    if not path.exists():
+        return {}
+    try:
+        meta = json.loads(path.read_text(encoding="utf-8"))
+    except ValueError:
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
 def list_sessions() -> list:
     root = _logs_dir()
     if not root.exists():
@@ -88,6 +99,8 @@ def list_sessions() -> list:
         if not path.exists():
             continue
         sessions.append({'id': entry.name,
+                         'title': str(session_meta(entry.name).get('title')
+                                      or ''),
                          'messages': len(load_entries(entry.name)),
                          'modified': path.stat().st_mtime})
     sessions.sort(key=lambda item: item['modified'], reverse=True)
@@ -179,6 +192,61 @@ def record_meta(session_id, meta: dict) -> None:
     path.write_text(
         json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
+
+
+def rename_session(session_id, title: str) -> str:
+    title = ' '.join(str(title or '').split())
+    if not title:
+        raise ValueError('a conversation needs a name')
+    record_meta(session_id, {"title": title})
+    return title
+
+
+def title_of(session_id) -> str:
+    return str(session_meta(session_id).get('title') or '')
+
+
+def first_prompt(session_id) -> str:
+    for entry in load_transcript(session_id):
+        if entry.get('role') != 'user':
+            continue
+        content = entry.get('content')
+        if isinstance(content, str) and content.strip():
+            return ' '.join(content.split())[:100]
+    return 'Branched conversation'
+
+
+def branch_title(base: str, taken) -> str:
+    if f'{base} (Branch)' not in taken:
+        return f'{base} (Branch)'
+    number = 2
+    while f'{base} (Branch {number})' in taken:
+        number += 1
+    return f'{base} (Branch {number})'
+
+
+def create_branch(session_id, title: str = '') -> dict:
+    """Copy this conversation into a new session that carries on from here."""
+    entries = load_entries(session_id)
+    if not entries:
+        raise ValueError('there is no conversation to branch')
+    fork_id = uuid.uuid4().hex
+    records = []
+    parent = None
+    for entry in entries:
+        record = dict(entry)
+        record['uuid'] = uuid.uuid4().hex
+        record['parentUuid'] = parent
+        record['forkedFrom'] = {'sessionId': str(session_id),
+                                'uuid': entry.get('uuid')}
+        parent = record['uuid']
+        records.append(record)
+    _write_records(transcript_path(fork_id), records)
+    taken = {item['title'] for item in list_sessions() if item['title']}
+    effective = branch_title(
+        ' '.join(str(title or '').split()) or first_prompt(session_id), taken)
+    record_meta(fork_id, {'title': effective, 'forked_from': str(session_id)})
+    return {'id': fork_id, 'title': effective, 'messages': len(records)}
 
 
 def append_conv(session_id, role, content, *, reasoning_content=None, topic=None,

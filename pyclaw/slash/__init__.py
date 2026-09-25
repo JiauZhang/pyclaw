@@ -1,11 +1,11 @@
 import difflib
 from pathlib import Path
 
-from pyclaw.slash.session import (_handle_agents, _handle_hooks,
-                                  _handle_permissions, _handle_plan,
+from pyclaw.slash.session import (_handle_agents, _handle_branch,
+                                  _handle_hooks, _handle_permissions,
+                                  _handle_plan, _handle_rename,
                                   _handle_resume, _handle_rewind,
-                                  _handle_skills, _handle_tasks,
-                                  _status)
+                                  _handle_skills, _handle_tasks, _status)
 from pyclaw.slash.setup import _handle_effort, _handle_statusline
 from pyclaw.slash.text import _copy, _export
 from pyclaw.slash.usage import (_context, _handle_cost, _handle_model,
@@ -15,6 +15,10 @@ COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
     {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
+    {'name': 'rename', 'desc': 'Name this conversation, so /resume is readable',
+     'hint': '[name]'},
+    {'name': 'branch', 'desc': 'Carry on in a copy of this conversation from '
+                               'here', 'hint': '[name]'},
     {'name': 'rewind', 'desc': 'Put the files and conversation back to an '
                                'earlier turn',
      'hint': '[n] [code|conversation]'},
@@ -193,6 +197,10 @@ async def handle_slash(text: str, session, session_key: str = '',
         return 'Conversation history cleared. Started a new session.'
     if cmd == 'resume':
         return _handle_resume(session, arg)
+    if cmd == 'rename':
+        return _handle_rename(session, arg)
+    if cmd == 'branch':
+        return _handle_branch(session, arg)
     if cmd == 'rewind':
         return _handle_rewind(session, arg)
     if cmd in ('tasks', 'bashes'):

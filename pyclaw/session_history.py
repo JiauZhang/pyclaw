@@ -52,3 +52,27 @@ class HistoryMixin:
         if result['messages']:
             self.save_transcript()
         return result
+
+    def rename(self, title: str) -> str:
+        from pyclaw.session_store import rename_session
+
+        return rename_session(self.conv_session_id, title)
+
+    @property
+    def title(self) -> str:
+        from pyclaw.session_store import title_of
+
+        return title_of(self.conv_session_id)
+
+    def branch(self, title: str = '') -> dict:
+        from pyclaw.session_store import create_branch, load_transcript
+
+        fork = create_branch(self.conv_session_id, title)
+        messages = load_transcript(fork['id'])
+        self._team.restore(messages)
+        self._team.reset_rules()
+        self._team.begin_new_session('branch')
+        self.conv_session_id = fork['id']
+        self.resume_from = None
+        fork['messages'] = len(messages)
+        return fork

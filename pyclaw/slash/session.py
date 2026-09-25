@@ -71,7 +71,9 @@ def _handle_resume(session, arg: str) -> str:
             return 'No saved sessions.'
         lines = ['Saved sessions:']
         for item in sessions[:20]:
-            lines.append(f"  {item['id']}  ({item['messages']} messages)")
+            name = f"  {item['title']}" if item.get('title') else ''
+            lines.append(f"  {item['id']}  ({item['messages']} messages)"
+                         + name)
         lines.append('Use /resume <id> to continue one of them.')
         return '\n'.join(lines)
     resumed = getattr(session, 'resume_session', None)
@@ -79,6 +81,31 @@ def _handle_resume(session, arg: str) -> str:
     if not count:
         return f'No transcript found for session: {arg}'
     return f'Resumed {count} messages from {arg}.'
+
+def _handle_rename(session, arg: str) -> str:
+    current = getattr(session, 'title', '')
+    if not arg:
+        return (f'This conversation is called "{current}".'
+                if current else
+                'This conversation has no name yet; /rename <name> gives it '
+                'one.')
+    try:
+        title = session.rename(arg)
+    except ValueError as exc:
+        return f'Error: {exc}'
+    return f'This conversation is now called "{title}".'
+
+
+def _handle_branch(session, arg: str) -> str:
+    before = session.conv_session_id
+    try:
+        fork = session.branch(arg)
+    except ValueError as exc:
+        return f'Error: {exc}'
+    return (f'Branched conversation into "{fork["title"]}" '
+            f'({fork["messages"]} messages). You are now in the branch.\n'
+            f'To go back to the original: /resume {before}')
+
 
 async def _handle_plan(session, arg: str):
     if arg == 'open':

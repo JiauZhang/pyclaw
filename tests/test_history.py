@@ -155,8 +155,10 @@ def test_slash_resume_lists_and_loads_a_saved_session():
     async def main():
         session = _session(_answer, "fresh")
 
+        session_store.rename_session("old", "the parser thread")
         listed = await slash.handle_slash("/resume", session)
         assert "old" in listed
+        assert "the parser thread" in listed
 
         out = await slash.handle_slash("/resume old", session)
         assert "Resumed 2 messages" in out
@@ -165,3 +167,86 @@ def test_slash_resume_lists_and_loads_a_saved_session():
         assert session.conv_session_id != "old"
 
     asyncio.run(main())
+
+
+async def _talked_session(session_id='talk'):
+    """A session that has one exchange behind it, on disk."""
+    session = _session(_answer, session_id)
+    await session.chat('hi')
+    return session
+
+
+def test_renaming_names_the_conversation_for_the_resume_list():
+    async def main():
+        session = await _talked_session()
+        session.rename('  parser   work  ')
+        return session.title, session_store.list_sessions()
+
+    title, sessions = asyncio.run(main())
+    assert title == 'parser work'
+    assert sessions[0]['title'] == 'parser work'
+
+
+def test_a_conversation_cannot_be_named_nothing():
+    async def main():
+        session = await _talked_session()
+        try:
+            session.rename('   ')
+        except ValueError as exc:
+            return str(exc)
+
+    assert 'name' in asyncio.run(main())
+
+
+def test_branching_copies_the_conversation_and_moves_into_it():
+    async def main():
+        session = await _talked_session()
+        original = session.conv_session_id
+        fork = session.branch()
+        return original, fork, session.conv_session_id, session_store.load_entries(fork['id'])
+
+    original, fork, current, entries = asyncio.run(main())
+    assert current == fork['id'] != original
+    assert fork['messages'] == len(entries) > 0
+    assert fork['title'] == 'hi (Branch)'
+    assert all(entry['forkedFrom']['sessionId'] == original
+               for entry in entries)
+    assert session_store.load_entries(original)
+
+
+def test_a_second_branch_of_the_same_conversation_is_numbered():
+    async def main():
+        session = await _talked_session()
+        session.branch()
+        return session.branch('parser work')
+
+    fork = asyncio.run(main())
+    assert fork['title'] == 'parser work (Branch)'
+
+
+def test_branching_nothing_refuses():
+    async def main():
+        session = _session(_answer, 'empty')
+        session._team.lead.messages = []
+        try:
+            session.branch()
+        except ValueError as exc:
+            return str(exc)
+
+    assert 'no conversation' in asyncio.run(main())
+
+
+def test_the_rename_and_branch_commands_reach_the_session():
+    async def main():
+        from pyclaw import slash
+        session = await _talked_session()
+        renamed = await slash.handle_slash('/rename parser work', session)
+        branched = await slash.handle_slash('/branch', session)
+        named = await slash.handle_slash('/branch the other way', session)
+        return renamed, branched, named
+
+    renamed, branched, named = asyncio.run(main())
+    assert 'parser work' in renamed
+    assert 'You are now in the branch' in branched
+    assert '/resume talk' in branched
+    assert '"the other way (Branch)"' in named
