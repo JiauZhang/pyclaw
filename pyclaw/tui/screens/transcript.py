@@ -65,7 +65,7 @@ class TranscriptScreen(Screen):
 
     @staticmethod
     def _thinking_entry(text: str) -> str:
-        return (f"[#9A9A9A]{ASTERISK} Thinking\u2026[/]\n"
+        return (f"[dim]{ASTERISK} Thinking\u2026[/]\n"
                 + _hang(RESULT_HANG, escape(text)))
 
     def _entries(self) -> list[str]:

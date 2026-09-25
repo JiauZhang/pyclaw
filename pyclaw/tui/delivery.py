@@ -11,7 +11,7 @@ class DeliveryMixin:
     async def _finish_work(self):
         self._discard_think()
         elapsed = self._elapsed_seconds()
-        text = (f"[#9A9A9A]{ASTERISK} {self._turn_past} for "
+        text = (f"[dim]{ASTERISK} {self._turn_past} for "
                 f"{duration(elapsed)}[/]")
         if self._work_block is None or self._work_block.parent is None:
             self._work_block = await self._append_block(text)

@@ -48,7 +48,7 @@ class ActionMixin:
             self._processing = None
         if not rejected:
             await self._append_block(
-                f"[#9A9A9A]{INTERRUPTED_TEXT}[/]")
+                f"[dim]{INTERRUPTED_TEXT}[/]")
     def action_redraw(self):
         self.refresh()
     def action_toggle_transcript(self):

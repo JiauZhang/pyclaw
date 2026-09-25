@@ -63,14 +63,14 @@ class PermissionsScreen(Screen):
         mode = getattr(self._session, 'permission_mode', 'default')
         bypass = bool(getattr(self._session, 'bypass_available', False))
         lines = [f'[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]',
-                 f'[#9A9A9A]bypass available: {bypass} · '
+                 f'[dim]bypass available: {bypass} · '
                  f'{keys.hint("cycle_permission", "cycles")} · '
                  f'/permissions <mode> switches[/]', '']
         if not rules:
-            lines.append('[#9A9A9A]No permission rules.[/]')
+            lines.append('[dim]No permission rules.[/]')
         else:
             lines.append('[bold]Rules[/bold] '
-                         '[#9A9A9A](up/down to move, d to remove)[/]')
+                         '[dim](up/down to move, d to remove)[/]')
             for index, (behavior, rule, source) in enumerate(rules):
                 lines.append(ui.row(f'[{behavior}] {rule}  ({source})',
                                     selected=index == self._selected))

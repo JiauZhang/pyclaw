@@ -154,7 +154,7 @@ def mode_pill(session, *, background: bool) -> str:
     perm = session.permission_mode
     if perm not in MODE_SYMBOLS:
         return ''
-    pill = (f"[{MODE_COLORS.get(perm, '#9A9A9A')}]{MODE_SYMBOLS[perm]} "
+    pill = (f"[{MODE_COLORS.get(perm, '$text-muted')}]{MODE_SYMBOLS[perm]} "
             f"{MODE_TITLES[perm]} on[/]")
     if not background:
         pill += f" [dim]({keys.hint('cycle_permission', 'to cycle')})[/]"

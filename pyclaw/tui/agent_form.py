@@ -61,9 +61,9 @@ class AgentFormMixin:
         lines = ['[bold]Agents[/bold]']
         if self._mode == 'create':
             lines = ['[bold]New agent[/bold]']
-        lines.append(f'[#9A9A9A]{escape(subtitle)}[/#9A9A9A]')
+        lines.append(f'[dim]{escape(subtitle)}[/]')
         if note:
-            lines.append(f'[#9A9A9A]{escape(str(note))}[/#9A9A9A]')
+            lines.append(f'[dim]{escape(str(note))}[/]')
         return lines + ['']
     def _options(self, labels, pos, indent=2) -> list:
         lines = []
@@ -74,7 +74,7 @@ class AgentFormMixin:
                          else text)
         return lines
     def _footer(self, hint: str) -> list:
-        return ['', f'[#9A9A9A]{escape(hint)}[/#9A9A9A]']
+        return ['', f'[dim]{escape(hint)}[/]']
     def _problem(self) -> list:
         if not self._error:
             return []
@@ -100,7 +100,7 @@ class AgentFormMixin:
             self._target.agent_type, title='Change tools')
     def _tools_lines(self, subtitle: str, title=None) -> list:
         lines = [f'[bold]{escape(title or "New agent")}[/bold]',
-                 f'[#9A9A9A]{escape(subtitle)}[/#9A9A9A]', '']
+                 f'[dim]{escape(subtitle)}[/]', '']
         labels = []
         for kind, label, payload in self._tool_items():
             if kind in ('continue', 'toggle'):
@@ -115,7 +115,7 @@ class AgentFormMixin:
         chosen = len([n for n in self._names if n in self._selected_tools])
         selected = ('Every tool picked' if chosen == len(self._names)
                     else f'{chosen} of {len(self._names)} picked')
-        lines += ['', f'[#9A9A9A]{escape(selected)}[/#9A9A9A]']
+        lines += ['', f'[dim]{escape(selected)}[/]']
         return lines + self._footer(
             f'{keys.hint("open", "toggles")} \u00b7 '
             f'{keys.display("prev")}{keys.display("next")} move \u00b7 '
@@ -137,8 +137,8 @@ class AgentFormMixin:
         lines += [f'[bold]{label}[/bold]: {escape(str(value))}'
                   for label, value in rows]
         if warnings:
-            lines += ['', '[bold][#9A9A9A]Warnings:[/#9A9A9A][/bold]']
-            lines += [f'[#9A9A9A] \u2022 {escape(w)}[/#9A9A9A]'
+            lines += ['', '[bold][dim]Warnings:[/][/bold]']
+            lines += [f'[dim] \u2022 {escape(w)}[/]'
                       for w in warnings]
         if errors:
             lines += ['', '[bold][#FF6B80]Errors:[/#FF6B80][/bold]']

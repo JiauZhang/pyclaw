@@ -27,11 +27,11 @@ class AgentListMixin:
             lines = self._header('Nothing defined yet')
             lines += self._options(['New agent'], self._pos, indent=0)
             lines += ['',
-                      '[#9A9A9A]No subagents yet. A subagent is a role PyClaw '
+                      '[dim]No subagents yet. A subagent is a role PyClaw '
                       'can hand a job to.[/]',
-                      '[#9A9A9A]Each one brings its own context, prompt and '
+                      '[dim]Each one brings its own context, prompt and '
                       'tool set.[/]',
-                      '[#9A9A9A]Ideas: code reviewer, simplifier, security '
+                      '[dim]Ideas: code reviewer, simplifier, security '
                       'reviewer, tech lead.[/]']
         else:
             count = agent_defs.agent_count(self._entries)
@@ -47,24 +47,24 @@ class AgentListMixin:
                 if not group:
                     continue
                 if scope == agent_defs.CLI:
-                    lines.append('[bold][#9A9A9A]'
+                    lines.append('[bold][dim]'
                                  f'{escape(agent_defs.SCOPE_LABELS[scope])}'
-                                 '[/#9A9A9A][/bold]')
+                                 '[/][/bold]')
                     lines += [self._row(e, -1) for e in group]
                     continue
                 where = (None if scope == agent_defs.CLI
                          else agent_defs.agents_dir(scope, self._cwd))
                 where = '' if where is None else f' ({escape(str(where))})'
-                lines.append('[bold][#9A9A9A]'
+                lines.append('[bold][dim]'
                              f'{escape(agent_defs.SCOPE_LABELS[scope])}'
-                             f'{where}[/#9A9A9A][/bold]')
+                             f'{where}[/][/bold]')
                 for entry in group:
                     position += 1
                     lines.append(self._row(entry, position))
         built_ins = [e for e in self._entries
                      if e.scope == agent_defs.BUILT_IN]
         if built_ins:
-            lines += ['', '[bold][#9A9A9A]Bundled with PyClaw[/#9A9A9A][/bold]']
+            lines += ['', '[bold][dim]Bundled with PyClaw[/][/bold]']
             lines += [self._row(e, -1) for e in built_ins]
         return lines + self._footer(AGENT_NAV)
     def _row(self, entry, position) -> str:
@@ -83,16 +83,16 @@ class AgentListMixin:
         return text
     def _render_menu(self) -> list:
         lines = self._header(self._target.agent_type)
-        lines += [f'[#9A9A9A]Source: '
-                  f'{escape(self._target.scope)}[/#9A9A9A]', '']
+        lines += [f'[dim]Source: '
+                  f'{escape(self._target.scope)}[/]', '']
         return lines + self._options(
             [label for label, _ in self._menu_options()],
             self._menu_pos) + self._footer(AGENT_NAV)
     def _render_view(self) -> list:
         defn = self._target.defn
         tools = [t.name for t in defn.tools]
-        lines = [f'[#9A9A9A]{escape(agent_defs.relative_path(self._target))}'
-                 f'[/#9A9A9A]', '']
+        lines = [f'[dim]{escape(agent_defs.relative_path(self._target))}'
+                 f'[/]', '']
         lines += ['[bold]Description[/bold] (tells PyClaw when to use this '
                   'agent):',
                   f'  {escape(defn.description or "No description.")}']
@@ -113,14 +113,14 @@ class AgentListMixin:
     def _render_delete(self) -> list:
         lines = self._header('Delete an agent')
         lines += [escape(f'Remove {self._target.agent_type} for good?'),
-                  f'[#9A9A9A]Source: {escape(self._target.scope)}[/#9A9A9A]',
+                  f'[dim]Source: {escape(self._target.scope)}[/]',
                   '']
         return lines + self._options(['Delete it', 'Keep it'],
                                      self._delete_pos) + self._footer(AGENT_NAV)
     def _render_edit_menu(self) -> list:
         lines = self._header(self._target.agent_type)
-        lines += [f'[#9A9A9A]Source: '
-                  f'{escape(self._target.scope)}[/#9A9A9A]', '']
+        lines += [f'[dim]Source: '
+                  f'{escape(self._target.scope)}[/]', '']
         return lines + self._options(['Change tools', 'Change model'],
                                      self._menu_pos) + self._footer(AGENT_NAV)
     def _notes_notice(self) -> str | None:
