@@ -1090,22 +1090,6 @@ def test_a_resized_terminal_gets_meters_of_the_right_length():
     assert "│██░░░│ 34%" in narrow
 
 
-def _hud_row(git: str = '', prepare=None, size: tuple = (80, 40)) -> str:
-    """The HUD line with git's answer pinned to `git`."""
-
-    async def scenario():
-        with mock.patch.object(status_line, 'git_status', lambda cwd: git):
-            async with PyClawApp(builder=_builder).run_test() as pilot:
-                await pilot.pause()
-                await pilot.resize_terminal(*size)
-                if prepare is not None:
-                    prepare(pilot.app)
-                pilot.app._render_readouts()
-                return _plain(str(pilot.app.query_one("#hud").content))
-
-    return asyncio.run(scenario())
-
-
 def test_the_first_row_carries_the_usage_bar_and_its_counts():
     """No context meter here: with no window configured there is nothing for
     the bar to measure against."""

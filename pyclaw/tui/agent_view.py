@@ -45,6 +45,7 @@ class RosterMixin:
     def _teammates(self) -> list:
         found = self._alive_teammates()
         alive = {str(getattr(a, 'name', '')) for a in found}
+        self._prune_lingering(time.monotonic())
         for name, (agent, _) in self._lingering.items():
             if name not in alive:
                 found.append(agent)
@@ -144,6 +145,10 @@ class RosterMixin:
         for name in list(self._spawns):
             if name not in known:
                 self._spawns.pop(name, None)
+        if self._agent_group is not None:
+            # A teammate that left must close its row now, not on the next
+            # spinner tick.
+            self._agent_group.redraw()
         if self._viewing is not None:
             viewed = self._agent_by_name(self._viewing)
             if viewed is None or not _agent_alive(viewed):

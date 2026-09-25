@@ -16,6 +16,12 @@ logger = logging.getLogger(__name__)
 
 class TurnFlowMixin:
 
+    def _prune_lingering(self, now: float):
+        for name in [name for name, (_, deadline) in self._lingering.items()
+                     if now >= deadline]:
+            self._lingering.pop(name, None)
+            self._agent_state.pop(name, None)
+
     def _note_lingering(self):
         alive = {str(getattr(agent, 'name', '')): agent
                  for agent in self._alive_teammates()}
@@ -24,10 +30,7 @@ class TurnFlowMixin:
             if name not in alive and name not in self._lingering:
                 self._lingering[name] = (agent, now + FINISHED_LINGER_SECONDS)
         self._known_teammates = alive
-        for name in [name for name, (_, deadline) in self._lingering.items()
-                     if now >= deadline]:
-            self._lingering.pop(name, None)
-            self._agent_state.pop(name, None)
+        self._prune_lingering(now)
     def _schedule_linger(self):
         if not self._lingering or self._linger_task is not None:
             return
