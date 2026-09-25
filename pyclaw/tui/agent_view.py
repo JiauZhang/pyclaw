@@ -10,7 +10,7 @@ from textual.containers import VerticalScroll
 from textual.widgets import Static
 
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
-from pyclaw.tui.agentview import agent_view_markup
+from pyclaw.tui.agent_markup import agent_view_markup
 from pyclaw.tui.plan import next_task_line
 from pyclaw.tui.readout import _agent_tokens
 from pyclaw.tui.roster import hide_row, leader_row, preview_rows, teammate_row

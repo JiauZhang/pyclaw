@@ -27,7 +27,7 @@ from pyclaw import session_store
 from pyclaw.session_store import save_transcript
 from pyclaw.tools import background
 from pyclaw.tui import app as tui
-from pyclaw.tui import status_line, turn_flow
+from pyclaw.tui import status_rows, turn_flow
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.permission_card import _PermissionPrompt
@@ -861,7 +861,7 @@ def _row2(builder=_builder, prepare=None, git: str = '') -> str:
     """The second readout row with git's answer pinned."""
 
     async def scenario():
-        with mock.patch.object(status_line, 'git_status', lambda cwd: git):
+        with mock.patch.object(status_rows, 'git_status', lambda cwd: git):
             async with PyClawApp(builder=builder).run_test(
                     size=(120, 40)) as pilot:
                 await pilot.pause()

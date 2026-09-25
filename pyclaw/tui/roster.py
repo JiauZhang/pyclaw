@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from rich.markup import escape
 
-from pyclaw.tui.agentview import agent_preview
+from pyclaw.tui.agent_markup import agent_preview
 from pyclaw.tui.formatting import (_format_count, _summarize, _visible_len,
                                    duration)
 from pyclaw.tui.readout import _agent_tokens

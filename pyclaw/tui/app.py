@@ -27,10 +27,10 @@ from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
 from pyclaw.tui.agent_view import RosterMixin
 from pyclaw.tui.delivery import DeliveryMixin
 from pyclaw.tui.event_flow import EventRouterMixin
-from pyclaw.tui.notify import NotifyMixin
+from pyclaw.tui.notification_flow import NotifyMixin
 from pyclaw.tui.scroll_follow import ScrollFollowMixin
 from pyclaw.tui.tool_trace import ToolTraceMixin
-from pyclaw.tui.status_line import StatusMixin
+from pyclaw.tui.status_rows import StatusMixin
 from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
 from pyclaw.tui.transcript import TranscriptMixin
