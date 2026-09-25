@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 import tempfile
 import time
@@ -21,6 +22,7 @@ from chatchat.hooks.events import (
 )
 from chatchat.tool import ToolContext
 from pyclaw import agents, banner, config, statusline, welcome
+from pyclaw import task_registry
 from pyclaw import session_store
 from pyclaw.session_store import save_transcript
 from pyclaw.tools import background
@@ -4851,10 +4853,16 @@ def test_the_rewind_picker_waits_for_a_running_turn():
 
 
 def _fake_shells():
-    return mock.patch.object(
-        background, 'snapshot',
-        lambda: [{'id': 'b1', 'command': 'npm run dev', 'seconds': 12,
-                  'exit': None, 'killed': False}])
+    """A running background shell, registered the way a real one is."""
+    class _Process:
+        def poll(self):
+            return None
+
+    task_registry.registry().register(task_registry.Task(
+        id='b1', kind='shell', label='npm run dev',
+        status=task_registry.RUNNING, started_at=time.monotonic() - 12,
+        payload={'process': _Process(), 'killed': False}))
+    return contextlib.nullcontext()
 
 
 def _task_body(app) -> str:

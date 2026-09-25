@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import atexit
 import secrets
-import string
 import subprocess
 import tempfile
 import threading
@@ -11,15 +10,13 @@ from pathlib import Path
 
 from chatchat.tool import ToolResult, tool
 
+from pyclaw import task_registry as tasks
 from pyclaw.tools.bash import _kill
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
 TASK_DEFAULT_TIMEOUT_MS = 30_000
 TASK_MAX_TIMEOUT_MS = 600_000
-_TASK_ID_ALPHABET = string.ascii_lowercase + string.digits
-
-_tasks: dict = {}
 _notifier = None
 
 
@@ -29,20 +26,22 @@ def set_notifier(cb) -> None:
 
 
 def _watch(task_id: str):
-    task = _tasks.get(task_id)
-    if task is None:
+    record = task(task_id)
+    if record is None:
         return
-    code = task['process'].wait()
+    code = record.payload['process'].wait()
+    killed = bool(record.payload.get('killed'))
+    if record.status not in (tasks.COMPLETED, tasks.FAILED, tasks.KILLED):
+        if killed:
+            record.finish(tasks.KILLED)
+        else:
+            record.finish(tasks.COMPLETED if code == 0 else tasks.FAILED)
     cb = _notifier
     if cb is not None:
         try:
-            cb(task_id, task['command'], code, task['killed'])
+            cb(task_id, record.label, code, killed)
         except Exception:
             pass
-
-
-def _new_task_id() -> str:
-    return 'b' + ''.join(secrets.choice(_TASK_ID_ALPHABET) for _ in range(8))
 
 
 def _tasks_dir() -> Path:
@@ -64,17 +63,26 @@ def output_of(task_id: str) -> str:
     return _tail(_output_path(task_id))
 
 
+def task(task_id: str):
+    record = tasks.registry().get(task_id)
+    return record if record is not None and record.kind == 'shell' else None
+
+
+def _record(task_id: str, command: str, process, output: Path):
+    return tasks.registry().register(tasks.Task(
+        id=task_id, kind='shell', label=command, status=tasks.RUNNING,
+        output=str(output), payload={'process': process, 'killed': False}))
+
+
 def adopt(command: str, process, output: Path) -> str:
-    task_id = _new_task_id()
-    _tasks[task_id] = {'command': command, 'process': process,
-                       'output': output, 'killed': False,
-                       'started': time.monotonic()}
+    task_id = tasks.new_id('shell')
+    _record(task_id, command, process, output)
     threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
 
 def spawn(cwd: str, command: str) -> str:
-    task_id = _new_task_id()
+    task_id = tasks.new_id('shell')
     path = _output_path(task_id)
     handle = open(path, 'ab')
     try:
@@ -83,9 +91,7 @@ def spawn(cwd: str, command: str) -> str:
             start_new_session=True)
     finally:
         handle.close()
-    _tasks[task_id] = {'command': command, 'process': process,
-                       'output': path, 'killed': False,
-                       'started': time.monotonic()}
+    _record(task_id, command, process, path)
     threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
@@ -101,43 +107,58 @@ def _tail(path: Path, limit: int = TASK_OUTPUT_TAIL_CHARS) -> str:
             + text[-limit:])
 
 
+def row(record) -> dict:
+    now = time.monotonic()
+    code = record.payload['process'].poll()
+    return {'kind': 'shell', 'id': record.id, 'label': record.label,
+            'command': record.label, 'seconds': record.seconds(now),
+            'exit': code, 'killed': record.status == tasks.KILLED,
+            'detail': (f'running {record.seconds(now)}s' if code is None
+                       else f'exited {code}'),
+            'stoppable': code is None}
+
+
 def snapshot() -> list[dict]:
     now = time.monotonic()
     rows = []
-    for task_id, task in _tasks.items():
-        code = task['process'].poll()
-        rows.append({'id': task_id, 'command': task['command'],
-                     'seconds': int(now - task['started']),
-                     'exit': code, 'killed': bool(task['killed'])})
+    for record in tasks.registry().of_kind('shell'):
+        rows.append({'id': record.id, 'command': record.label,
+                     'seconds': record.seconds(now),
+                     'exit': record.payload['process'].poll(),
+                     'killed': record.status == tasks.KILLED})
     return sorted(rows, key=lambda row: row['id'])
 
 
 def stop(task_id: str) -> dict | None:
-    task = _tasks.get(task_id)
-    if task is None:
+    record = task(task_id)
+    if record is None:
         return None
-    process = task['process']
+    process = record.payload['process']
     if process.poll() is None:
         _kill(process)
-        task['killed'] = True
+        record.payload['killed'] = True
         try:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
+    if record.status not in (tasks.COMPLETED, tasks.FAILED, tasks.KILLED):
+        record.finish(tasks.KILLED if record.payload['killed']
+                      else (tasks.COMPLETED
+                            if process.poll() == 0 else tasks.FAILED))
     return next((row for row in snapshot() if row['id'] == task_id), None)
 
 
 def cleanup_background_tasks():
-    for task in _tasks.values():
-        process = task['process']
+    for record in tasks.registry().of_kind('shell'):
+        process = record.payload['process']
         if process.poll() is None:
             _kill(process)
-            task['killed'] = True
+            record.payload['killed'] = True
             try:
                 process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 pass
-    _tasks.clear()
+        tasks.registry().forget(record.id)
 
 
 atexit.register(cleanup_background_tasks)
@@ -168,19 +189,19 @@ atexit.register(cleanup_background_tasks)
 )
 def TaskOutput(context, task_id: str, block: bool = True,
                timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
-    task = _tasks.get(task_id)
-    if task is None:
+    record = task(task_id)
+    if record is None:
         return f'Error: no such background task: {task_id}'
     ms = TASK_DEFAULT_TIMEOUT_MS if timeout is None else timeout
     limit = max(1, min(int(ms), TASK_MAX_TIMEOUT_MS)) / 1000
     deadline = time.monotonic() + (limit if block else 0)
     while True:
-        if task['process'].poll() is not None:
+        if record.payload['process'].poll() is not None:
             break
         if time.monotonic() >= deadline:
             break
         time.sleep(TASK_BLOCK_POLL_S)
-    code = task['process'].poll()
+    code = record.payload['process'].poll()
     if code is not None:
         retrieval, status = 'success', 'completed'
     elif block:
@@ -193,7 +214,7 @@ def TaskOutput(context, task_id: str, block: bool = True,
              f'<run_state>{status}</run_state>']
     if code is not None:
         lines.append(f'<return_code>{code}</return_code>')
-    body = _tail(task['output']).rstrip('\n')
+    body = _tail(Path(record.output)).rstrip('\n')
     lines.append(body if body.strip() else '(no output yet)')
     meta = {'status': status}
     if code is not None:

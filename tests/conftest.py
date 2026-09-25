@@ -10,6 +10,14 @@ def _isolated_runtime_sinks():
 
 
 @pytest.fixture(autouse=True)
+def _empty_task_registry():
+    from pyclaw.task_registry import registry
+    registry().clear()
+    yield
+    registry().clear()
+
+
+@pytest.fixture(autouse=True)
 def _no_config_writes(monkeypatch):
     from pyclaw import config
     monkeypatch.setattr(config, 'save', lambda value: None)

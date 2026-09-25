@@ -3,6 +3,7 @@ transcript the next request sends actually is."""
 import asyncio
 import re
 import tempfile
+import time
 
 from chatchat.client import MockClient
 from chatchat.team import Team
@@ -224,14 +225,26 @@ def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
 
 
 def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
+    from pyclaw import task_registry
     from pyclaw.tools import background
 
-    monkeypatch.setattr(
-        background, 'snapshot',
-        lambda: [{'id': 'b1', 'command': 'npm run dev', 'seconds': 12,
-                  'exit': None, 'killed': False},
-                 {'id': 'b2', 'command': 'pytest', 'seconds': 4,
-                  'exit': 1, 'killed': False}])
+    class _Running:
+        def poll(self):
+            return None
+
+    class _Exited:
+        def poll(self):
+            return 1
+
+    now = time.monotonic()
+    registry = task_registry.registry()
+    registry.register(task_registry.Task(
+        id='b1', kind='shell', label='npm run dev', started_at=now - 12,
+        payload={'process': _Running(), 'killed': False}))
+    done = registry.register(task_registry.Task(
+        id='b2', kind='shell', label='pytest', started_at=now - 4,
+        payload={'process': _Exited(), 'killed': False}))
+    done.finish(task_registry.COMPLETED, now=now)
 
     async def main():
         team = _team()
@@ -251,7 +264,25 @@ def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
     assert rows[2]['stoppable'] is False
 
 
+def test_a_stopped_teammate_keeps_a_row_that_says_so():
+    async def main():
+        team = _team()
+        team.create_agent('worker', instruction='do work')
+        session = agents.Session(team, session_id='hud')
+        row = next(entry for entry in session.task_rows()
+                   if entry['id'] == 'worker')
+        text = await session.stop_task(row)
+        return text, session.task_rows()
+
+    text, rows = asyncio.run(main())
+    assert 'Stopped @worker' in text
+    assert [row['id'] for row in rows] == ['worker']
+    assert rows[0]['detail'] == 'stopped'
+    assert rows[0]['stoppable'] is False
+
+
 def test_stopping_a_shell_row_kills_that_shell(monkeypatch):
+    from pyclaw import task_registry
     from pyclaw.tools import background
     stopped = []
     monkeypatch.setattr(background, 'stop',

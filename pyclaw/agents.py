@@ -186,44 +186,73 @@ class Session:
     def hook_rows(self) -> list:
         return self._team.hooks.configured()
 
-    def task_rows(self) -> list:
-        from pyclaw.tools import background
-        rows = []
+    def _sync_agent_tasks(self) -> dict:
+        from pyclaw import task_registry as tasks
+
+        registry = tasks.registry()
         lead = self._team.lead
-        teammates = [agent for agent in self._team.agents.values()
-                     if agent is not lead and not getattr(agent, '_internal',
-                                                          False)
-                     and getattr(agent, 'is_running', True)]
-        for agent in sorted(teammates, key=lambda a: str(a.name)):
-            rows.append({'kind': 'teammate', 'id': str(agent.name),
-                         'label': f'@{agent.name}',
-                         'detail': 'working' if agent.busy else 'idle',
-                         'stoppable': True})
-        for agent_id in self._team.background:
-            agent = self._team.agents.get(agent_id)
-            if agent is None:
+        seen = {}
+        for agent in self._team.agents.values():
+            if agent is lead:
                 continue
-            rows.append({'kind': 'sub-agent', 'id': str(agent.name),
-                         'label': f'@{agent.name}',
-                         'detail': 'in the background', 'stoppable': True})
-        for shell in background.snapshot():
-            rows.append({'kind': 'shell', 'id': shell['id'],
-                         'label': shell['command'],
-                         'detail': (f'running {shell["seconds"]}s'
-                                    if shell['exit'] is None
-                                    else f'exited {shell["exit"]}'),
-                         'command': shell['command'],
-                         'seconds': shell['seconds'],
-                         'exit': shell['exit'],
-                         'killed': shell['killed'],
-                         'stoppable': shell['exit'] is None})
+            if agent.agent_id in self._team.background:
+                kind, detail = 'sub-agent', 'in the background'
+            else:
+                if getattr(agent, '_internal', False):
+                    continue
+                if not getattr(agent, 'is_running', True):
+                    continue
+                kind = 'teammate'
+                detail = ('working' if getattr(agent, 'busy', False)
+                          else 'idle')
+            name = str(agent.name)
+            seen[name] = kind
+            record = registry.get(name)
+            if record is None:
+                registry.register(tasks.Task(
+                    id=name, kind=kind, label=f'@{name}',
+                    status=tasks.RUNNING, detail=detail))
+            elif not tasks.is_terminal(record.status):
+                record.kind = kind
+                record.detail = detail
+        for record in (registry.of_kind('teammate')
+                       + registry.of_kind('sub-agent')):
+            if record.id not in seen and not tasks.is_terminal(record.status):
+                record.finish(tasks.COMPLETED)
+        return seen
+
+    def task_rows(self) -> list:
+        from pyclaw import task_registry as tasks
+        from pyclaw.tools import background
+
+        registry = tasks.registry()
+        registry.sweep()
+        seen = self._sync_agent_tasks()
+        rows = []
+        order = {'teammate': 0, 'sub-agent': 1, 'shell': 2}
+        listed = sorted(registry.visible(),
+                        key=lambda record: (order.get(record.kind, 9),
+                                            record.started_at))
+        for record in listed:
+            if record.kind == 'shell':
+                rows.append(background.row(record))
+                continue
+            rows.append({'kind': record.kind, 'id': record.id,
+                         'label': record.label, 'detail': record.detail,
+                         'stoppable': record.id in seen})
         return rows
 
     async def stop_task(self, row: dict) -> str:
+        from pyclaw import task_registry as tasks
         from pyclaw.tools import background
+
         if row['kind'] == 'shell':
             background.stop(row['id'])
             return f'Stopped the shell {row["id"]}.'
+        record = tasks.registry().get(row['id'])
+        if record is not None and not tasks.is_terminal(record.status):
+            record.detail = 'stopped'
+            record.finish(tasks.KILLED)
         agent = next((candidate for candidate in self._team.agents.values()
                       if str(getattr(candidate, 'name', '')) == row['id']),
                      None)

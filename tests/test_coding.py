@@ -23,6 +23,7 @@ from pyclaw.permissions.gate import (REJECT_MESSAGE,
                                      SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
                                      PermissionChoice)
 from pyclaw.team_builder import build_team
+from pyclaw import task_registry
 from pyclaw.tools import BUILTIN_TOOLS, background
 from pyclaw.tools import bash as shell
 
@@ -1126,14 +1127,15 @@ def test_bash_run_in_background_returns_immediately():
     assert match, out
     task_id = match.group(1)
     assert "output goes to" in out
-    assert task_id in background._tasks
-    task = background._tasks[task_id]
+    task = background.task(task_id)
+    assert task is not None
     for _ in range(50):
-        if task["process"].poll() is not None:
+        if task.payload["process"].poll() is not None:
             break
         time.sleep(0.1)
-    assert task["process"].poll() == 0
-    assert "bg-done-42" in task["output"].read_text(encoding="utf-8")
+    assert task.payload["process"].poll() == 0
+    assert "bg-done-42" in Path(task.output).read_text(encoding="utf-8")
+    assert task.status == task_registry.COMPLETED
 
 
 def test_task_output_blocks_until_completion():
@@ -1171,16 +1173,16 @@ def test_task_stop_kills_process_group():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 30", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
-    task = background._tasks[task_id]
+    task = background.task(task_id)
     text = _text(_tools("/tmp")["TaskStop"](task_id=task_id))
     assert f"Stopped {task_id}" in text
     assert "sleep 30" in text
     for _ in range(30):
-        if task["process"].poll() is not None:
+        if task.payload["process"].poll() is not None:
             break
         time.sleep(0.1)
-    assert task["process"].poll() is not None
-    assert task["killed"] is True
+    assert task.payload["process"].poll() is not None
+    assert task.status == task_registry.KILLED
 
 
 def test_a_stopped_task_stays_readable():
@@ -1201,11 +1203,10 @@ def test_background_tasks_cleanup_kills_all():
     bash = _tools("/tmp")["Bash"]
     bash(command="sleep 30", run_in_background=True)
     bash(command="sleep 30", run_in_background=True)
-    tasks = list(background._tasks.values())
+    records = background.snapshot()
     background.cleanup_background_tasks()
-    for task in tasks:
-        assert task["process"].poll() is not None
-    assert background._tasks == {}
+    for row in records:
+        assert background.task(row["id"]) is None
 
 
 def test_task_output_unknown_task():
@@ -1339,7 +1340,7 @@ def test_a_background_shell_is_listed_with_its_state():
         assert rows[task_id]['command'] == 'sleep 3'
         assert rows[task_id]['exit'] is None
         assert rows[task_id]['seconds'] >= 0
-        background._tasks[task_id]['process'].wait()
+        background.task(task_id).payload['process'].wait()
         done = {row['id']: row for row in background.snapshot()}
         assert done[task_id]['exit'] == 0
     finally:
