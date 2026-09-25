@@ -21,7 +21,7 @@ from chatchat.hooks.events import (
     emit,
 )
 from chatchat.tool import ToolContext
-from pyclaw import agents, banner, config, statusline, welcome
+from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
 from pyclaw import session_store
 from pyclaw.session_store import save_transcript
@@ -4762,7 +4762,7 @@ class _RewindTeam(_FakeTeam):
 
 
 async def _open_rewind(pilot):
-    from pyclaw.agents import Session
+    from pyclaw.session import Session
     with mock.patch.object(Session, 'save_transcript', lambda self: None):
         await _submit_and_wait(pilot, '/rewind')
         return pilot.app.screen

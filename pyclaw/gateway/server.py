@@ -14,7 +14,7 @@ import uvicorn
 
 from pyclaw.version import __version__
 
-from ..agents import Session
+from ..session import Session
 from ..session_store import (append_conv, record_meta, resolve_session_id,
                              session_logger)
 from ..team_builder import IM_EXTRA, build_team

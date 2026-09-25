@@ -3,7 +3,7 @@ from pathlib import Path
 
 from textual.content import Content
 
-from pyclaw import agents, session_store, welcome
+from pyclaw import session_store, welcome
 
 
 def _markup_is_valid(lines):

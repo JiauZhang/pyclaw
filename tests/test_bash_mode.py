@@ -3,7 +3,7 @@ import asyncio
 from chatchat.core.thinking import Thinking
 from chatchat.tool import ToolContext
 
-from pyclaw.agents import Session
+from pyclaw.session import Session
 
 
 class _Lead:

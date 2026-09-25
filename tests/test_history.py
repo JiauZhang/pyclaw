@@ -5,7 +5,7 @@ import pytest
 from chatchat.client import MockClient
 from chatchat.core.team import Team
 
-from pyclaw import __main__, agents
+from pyclaw import __main__, session as session_mod
 from pyclaw import session_store
 from pyclaw.session_store import load_entries, load_transcript, save_transcript, transcript_path
 
@@ -22,7 +22,7 @@ async def _answer(messages, tools=None, *, stream_cb=None):
 def _session(handler, session_id):
     team = Team("t1", client_factory=lambda inst, model=None:
                 MockClient(handler=handler, model=model))
-    return agents.Session(team, session_id=session_id)
+    return session_mod.Session(team, session_id=session_id)
 
 
 def test_transcript_roundtrip():

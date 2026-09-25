@@ -92,7 +92,7 @@ def test_cost_of_a_recorded_row_uses_the_configured_rates():
 def _history(tmp_path, monkeypatch):
     from chatchat.client import MockClient
 
-    from pyclaw.agents import Session
+    from pyclaw.session import Session
 
     usage = {'prompt_tokens': 1000, 'completion_tokens': 100,
              'prompt_tokens_details': {'cached_tokens': 400}}

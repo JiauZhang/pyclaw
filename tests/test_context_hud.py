@@ -8,7 +8,8 @@ import time
 from chatchat.client import MockClient
 from chatchat.core.team import Team
 
-from pyclaw import agents, banner, config
+from pyclaw import banner, config
+from pyclaw import session as session_mod
 from pyclaw.team_builder import build_team
 from pyclaw.tui.readout import (CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS,
                                 context_meter, git_label, usage_hud,
@@ -38,7 +39,7 @@ def _team(usage=None):
 
 
 def _session(usage=None):
-    return agents.Session(_team(usage), session_id='hud')
+    return session_mod.Session(_team(usage), session_id='hud')
 
 
 def test_context_window_comes_from_config(monkeypatch):
@@ -74,7 +75,7 @@ def test_the_context_reading_is_the_number_the_api_reported():
 
     async def main():
         team = _team(usage)
-        session = agents.Session(team, session_id='hud')
+        session = session_mod.Session(team, session_id='hud')
         await session.chat('hi')
         reported = session.used_context
         team.lead.messages.append({'role': 'user', 'content': 'x' * 400})
@@ -86,7 +87,7 @@ def test_the_context_reading_is_the_number_the_api_reported():
 
 def test_the_context_reading_is_zero_until_the_api_reports_one():
     async def main():
-        return agents.Session(_team(), session_id='hud').used_context
+        return session_mod.Session(_team(), session_id='hud').used_context
 
     assert asyncio.run(main()) == 0
 
@@ -249,7 +250,7 @@ def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
     async def main():
         team = _team()
         worker = team.create_agent('worker', instruction='do work')
-        session = agents.Session(team, session_id='hud')
+        session = session_mod.Session(team, session_id='hud')
         rows = session.task_rows()
         await team.stop_agent(worker)
         return rows
@@ -268,7 +269,7 @@ def test_a_stopped_teammate_keeps_a_row_that_says_so():
     async def main():
         team = _team()
         team.create_agent('worker', instruction='do work')
-        session = agents.Session(team, session_id='hud')
+        session = session_mod.Session(team, session_id='hud')
         row = next(entry for entry in session.task_rows()
                    if entry['id'] == 'worker')
         text = await session.stop_task(row)
@@ -301,7 +302,7 @@ def test_stopping_a_teammate_row_stops_that_agent(monkeypatch):
     async def main():
         team = _team()
         worker = team.create_agent('worker', instruction='do work')
-        session = agents.Session(team, session_id='hud')
+        session = session_mod.Session(team, session_id='hud')
         text = await session.stop_task({'kind': 'teammate', 'id': 'worker',
                                         'label': '@worker'})
         return text, session.task_rows(), worker
@@ -329,7 +330,7 @@ def test_a_background_sub_agent_is_a_stoppable_row():
         team = Team('hud', client_factory=lambda inst, model=None: MockClient(
             handler=slow))
         await team.spawn_background_subagent('look into it', team.lead)
-        session = agents.Session(team, session_id='hud')
+        session = session_mod.Session(team, session_id='hud')
         rows = session.task_rows()
         text = await session.stop_task(rows[0])
         await asyncio.sleep(0)

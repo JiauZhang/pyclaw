@@ -7,7 +7,7 @@ import pytest
 from conippets import jsonl
 
 from pyclaw import session_store
-from pyclaw.agents import Session as RealSession
+from pyclaw.session import Session as RealSession
 from pyclaw.session_store import (_session_dir, append_conv,
                                   close_session_logger, record_meta,
                                   resolve_session_id, session_logger)

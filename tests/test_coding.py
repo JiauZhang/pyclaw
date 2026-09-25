@@ -10,8 +10,8 @@ from chatchat.core.agents import AgentDefinition
 from chatchat.core.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
-from pyclaw import agents as agents_mod
-from pyclaw.agents import Session
+from pyclaw import session as session_mod
+from pyclaw.session import Session
 from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
@@ -865,7 +865,7 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
         seen = []
 
         async def main():
-            from pyclaw.agents import Session
+            from pyclaw.session import Session
             from pyclaw.team_builder import build_team
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             team.hooks.on('PreToolUse', fn=lambda inp: seen.append(
@@ -896,8 +896,8 @@ def test_build_team_mode_gating():
         with tempfile.TemporaryDirectory() as d:
             single = build_team("agnes", "agnes-2.5-flash", cwd=d)
             teams = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
-            s_single = agents_mod.Session(single, session_id="ga")
-            s_team = agents_mod.Session(teams, session_id="gt")
+            s_single = session_mod.Session(single, session_id="ga")
+            s_team = session_mod.Session(teams, session_id="gt")
             return (single._pyclaw_mode, s_single.mode,
                     teams._pyclaw_mode, s_team.mode,
                     single.lead.instruction, teams.lead.instruction)
@@ -1112,7 +1112,7 @@ def test_session_remove_rule(tmp_path):
             local.parent.mkdir(parents=True)
             json.write(local, {"permissions": {"allow": ["Bash(git push:*)"]}})
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            session = agents_mod.Session(team, session_id="s")
+            session = session_mod.Session(team, session_id="s")
             return session.remove_rule("Bash(git push:*)")
 
     assert asyncio.run(main()) is True
@@ -1512,7 +1512,7 @@ def test_changing_a_setting_reports_the_config_change():
             team.hooks.register(
                 'ConfigChange', '*',
                 fn=lambda inp: seen.append(inp['source']) or True)
-            session = agents_mod.Session(team, session_id='cfg')
+            session = session_mod.Session(team, session_id='cfg')
             await session.note_config_change('config')
             return session.task_rows()
 
@@ -1555,7 +1555,7 @@ def test_the_session_reports_the_team_it_joined(tmp_path):
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d,
                               use_team=True)
-            session = agents_mod.Session(team, session_id='teamctx')
+            session = session_mod.Session(team, session_id='teamctx')
             before = session.team_context
             await session._team.execute_tool(
                 'TeamCreate', {'team_name': 'parser',
@@ -1581,7 +1581,7 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
 
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
-        session = agents_mod.Session(team, session_id='wtree')
+        session = session_mod.Session(team, session_id='wtree')
         before = Path(team._pyclaw_gate.cwd)
         await team.enter_worktree('side')
         return team, session, before

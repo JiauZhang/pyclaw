@@ -15,7 +15,7 @@ from textual.widgets import Input, Static
 from chatchat.hooks.events import (register_hook_event_handler,
                                     register_runtime_handler)
 from pyclaw import __version__, banner, config, statusline, welcome
-from pyclaw.agents import Session
+from pyclaw.session import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
 
 from pyclaw import events

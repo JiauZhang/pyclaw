@@ -3,7 +3,7 @@ from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
 from pyclaw.home import pyclaw_home
-from pyclaw.agents import Session
+from pyclaw.session import Session
 from pyclaw.team_builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config

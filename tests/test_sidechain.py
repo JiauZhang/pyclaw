@@ -5,7 +5,7 @@ from chatchat.client import MockClient
 from chatchat.core.team import Team
 
 from pyclaw.home import pyclaw_home
-from pyclaw.agents import Session
+from pyclaw.session import Session
 from pyclaw.session_store import _logs_dir
 
 
