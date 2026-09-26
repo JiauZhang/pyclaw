@@ -22,6 +22,37 @@ Open your browser and navigate to:
 http://127.0.0.1:12321/chat
 ```
 
+## Terminal UI
+
+The main way to use PyClaw is the terminal UI, run from the directory you want
+it to work in:
+
+```shell
+pyclaw tui --provider agnes --model agnes-3.0-flash --use-team
+```
+
+| Flag | Description |
+|------|-------------|
+| `--use-team` | Multi-agent mode with named teammates |
+| `--agents JSON` | Agent definitions, overriding the `.pyclaw/agents` files |
+| `--worktree [NAME]` | Do the run in its own git worktree under `.pyclaw/worktrees` |
+| `-c`, `-r SESSION_ID` | Continue the last session here / resume one by id |
+| `--permission-mode` | `default`, `acceptEdits` or `plan` |
+| `--allowed-tools`, `--disallowed-tools`, `--ask` | Permission rules, e.g. `Bash(git push:*)` |
+| `--tools` | The only tools this run has; everything else is refused |
+
+In the prompt: `enter` sends, `shift+enter` or a trailing `\` starts another
+line, `up` edits what you queued, `esc`/`ctrl+c` stop the current work, `?`
+lists the shortcuts, `ctrl+o` opens the full transcript, `ctrl+t` the task
+list, `shift+tab` cycles the permission mode.
+
+Skills are slash commands: `/doctor`, `/review`, `/security-review`,
+`/commit-push-pr`, `/debug`, plus your own `~/.pyclaw/skills`. A skill's prompt
+is what the terminal writes for itself, so it never appears in the input box or
+the queue preview.
+
+Stop a running gateway with `pyclaw stop`.
+
 ## Command Line Options
 
 ```shell
