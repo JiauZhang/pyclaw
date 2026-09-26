@@ -196,7 +196,9 @@ def _wildcard_regex(pattern: str) -> re.Pattern:
     i = 0
     while i < len(core):
         ch = core[i]
-        if ch == '\\' and i + 1 < len(core):
+        if ch == '\\' and i + 1 < len(core) and core[i + 1] in ('*', '\\'):
+            # Only `\*` and `\\` mean something to a rule: a backslash the
+            # shell put there (`\( `) is part of the command and stays literal.
             out.append(re.escape(core[i + 1]))
             i += 2
             continue

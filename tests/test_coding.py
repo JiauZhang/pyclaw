@@ -1736,7 +1736,21 @@ COMPOUND_FROM_A_REAL_SESSION = [
     'pytest -q 2>&1 | tail -2',
     'git commit -am x && git push',
     'git status --short && git stash list | head',
+    'find . -type f \\( -name "*.py" -o -name "Makefile" \\) | head -50',
+    'find pyclaw tests -type f -name "*.py" -exec cat {} + | wc -l',
+    'grep -rn "def _write" . | head -5; ls tests',
+    'python3 -m py_compile examples/git_ssh.py && echo OK',
 ]
+
+
+def test_a_command_wider_than_the_cap_is_asked_about_again():
+    """Five rules is the most one approval writes, so a nine-part command is
+    not fully covered by them: the wide case is left to ask again rather than
+    saving a pile of rules nobody meant to allow."""
+    command = ' && '.join(f'tool{i} sub{i}' for i in range(9))
+    rules = suggested_rules(command)
+    assert len(rules) == 5
+    assert not bash_allowed_by(rules, command)
 
 
 def test_a_saved_rule_still_covers_the_command_it_came_from():
