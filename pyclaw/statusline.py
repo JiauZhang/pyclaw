@@ -85,7 +85,7 @@ def build_payload(session) -> dict:
         'workspace': {
             'current_dir': os.getcwd(),
             'project_dir': session.cwd,
-            'added_dirs': [],
+            'added_dirs': [str(path) for path in session.working_dirs[1:]],
         },
         'version': str(__version__),
         'usage': {

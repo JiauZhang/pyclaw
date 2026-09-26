@@ -38,6 +38,10 @@ class ReadoutMixin:
     def worktree(self) -> dict | None:
         worktree = self._team.worktree
         return None if worktree is None else dict(worktree)
+    @property
+    def working_dirs(self) -> list:
+        gate = self._gate
+        return gate.working_dirs() if gate is not None else [self._team.tool_context.cwd]
     def worktree_changes(self) -> dict | None:
         """What the worktree holds that the branch it came from does not. None
         when git cannot say."""

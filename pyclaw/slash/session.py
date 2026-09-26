@@ -16,6 +16,9 @@ def _status(session, session_key: str) -> str:
              'Name: none yet, /rename gives this conversation one',
              f'Directory: {getattr(session, "cwd", "")}',
              f'Mode: {session.mode}']
+    extra = [str(path) for path in session.working_dirs[1:]]
+    if extra:
+        lines.append('Also working in: ' + ', '.join(extra))
     team = getattr(session, 'team_context', None)
     if team:
         lines.append(f'Team: {team["name"]}')
@@ -102,6 +105,20 @@ def _handle_resume(session, arg: str) -> str:
         return f'Session "{arg}" has nothing recorded to come back to.'
     name = f'"{target["title"]}"' if target['title'] else target['id']
     return f'Resumed {count} messages from {name}.'
+
+def _handle_add_dir(session, arg: str) -> str:
+    dirs = session.working_dirs
+    if not arg.strip():
+        extra = ', '.join(str(path) for path in dirs[1:])
+        return (f'Working through: {dirs[0]}'
+                + (f'\nAlso: {extra}' if extra else ''))
+    try:
+        target = session.add_dir(arg)
+    except ValueError as exc:
+        return f'Error: {exc}'
+    return (f'{target} is a working directory for this session, so files under '
+            f'it can be read and written like the project itself.')
+
 
 def _handle_debug(session, arg: str) -> tuple:
     """The debug skill, asked for by name: logging goes on from here, and what

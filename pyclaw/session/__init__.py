@@ -367,6 +367,13 @@ class Session(HistoryMixin, ReadoutMixin):
     async def leave_worktree(self, keep: bool) -> str:
         return await self._team.exit_worktree(keep=keep, discard=not keep)
 
+    def add_dir(self, path) -> Path:
+        """Widen what this session may reach, and tell the tools that work
+        through the same list the permission gate consults."""
+        target = self._gate.add_dir(path)
+        self._team.tool_context.extra_dirs = tuple(self._gate.extra_dirs)
+        return target
+
 
     def _member_names(self) -> set:
         return {agent.name for agent in self._team.agents.values()}

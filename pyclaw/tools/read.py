@@ -45,7 +45,7 @@ _TEXT_ERROR = "Invalid UTF-8"
 )
 def Read(context, file_path: str, offset: int | None = None,
          limit: int | None = None) -> str:
-    path = resolve(context.cwd, file_path)
+    path = resolve(context.cwd, file_path, context.extra_dirs)
     if path is None:
         return f'Error: path is outside the workspace: {file_path}'
     if not path.is_file():

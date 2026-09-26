@@ -141,7 +141,9 @@ def build_team(
     gate = PermissionController(mode=permission_mode, cwd=cwd,
                                 allow=allowed_tools or (),
                                 ask=ask or (), deny=refused,
-                                tools=candidates)
+                                tools=candidates,
+                                extra_dirs=config.load().get(
+                                    'additionalDirectories') or ())
     resolved = [t for t in candidates if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get('timeout', 120)
@@ -154,7 +156,8 @@ def build_team(
         provider=provider,
         model=model,
         tools=resolved,
-        tool_context=ToolContext(cwd=Path(cwd).resolve()),
+        tool_context=ToolContext(cwd=Path(cwd).resolve(),
+                                 extra_dirs=tuple(gate.extra_dirs)),
         lead_instruction=inst,
         thinking=thinking or thinking_from_config(),
         model_timeout=model_timeout,

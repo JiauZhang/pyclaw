@@ -45,7 +45,7 @@ async def Grep(context, pattern: str, path: str | None = None,
         rx = re.compile(pattern)
     except re.error as e:
         return f'Error: invalid regex: {e}'
-    base = resolve(context.cwd, path) if path else workspace(context.cwd)
+    base = resolve(context.cwd, path, context.extra_dirs) if path else workspace(context.cwd)
     if base is None:
         return f'Error: path is outside the workspace: {path}'
     if not base.is_dir():

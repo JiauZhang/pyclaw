@@ -7,15 +7,22 @@ def workspace(cwd) -> Path:
     return Path(cwd).resolve()
 
 
-def resolve(cwd, p) -> Path | None:
-    base = workspace(cwd)
+def roots(cwd, extra=()) -> list[Path]:
+    """Every directory the session is allowed to work in: the one it started
+    in, plus any added with /add-dir."""
+    return [workspace(cwd)] + [Path(extra_one).resolve()
+                               for extra_one in (extra or ())]
+
+
+def resolve(cwd, p, extra=()) -> Path | None:
     path = Path(p)
     if not path.is_absolute():
-        path = base / path
+        path = workspace(cwd) / path
     resolved = path.resolve()
-    if not resolved.is_relative_to(base):
-        return None
-    return resolved
+    for base in roots(cwd, extra):
+        if resolved.is_relative_to(base):
+            return resolved
+    return None
 
 
 def relative(cwd, p) -> str:

@@ -1964,3 +1964,66 @@ def test_only_a_call_that_throws_work_away_is_marked_destructive():
     assert is_destructive('ExitWorktree', 'remove') is False
     assert is_destructive('EnterWorktree', {'name': 'x'}) is False
     assert is_destructive('Edit', {'file_path': 'a.py'}) is False
+
+
+def test_an_added_directory_reaches_every_root_check(tmp_path):
+    from pyclaw.permissions import PermissionController
+
+    elsewhere = tmp_path / 'other'
+    elsewhere.mkdir()
+    gate = PermissionController(mode='default', cwd=tmp_path / 'project',
+                                tools=BUILTIN_TOOLS)
+    (tmp_path / 'project').mkdir()
+    target = elsewhere / 'notes.md'
+    assert gate.decide('Read', {'file_path': str(target)}) == 'ask'
+    assert gate.add_dir(elsewhere) == elsewhere.resolve()
+    assert gate.decide('Read', {'file_path': str(target)}) == 'allow'
+    assert gate.decide('Edit', {'file_path': str(target)}) == 'ask'
+    accepting = PermissionController(mode='acceptEdits',
+                                     cwd=tmp_path / 'project',
+                                     tools=BUILTIN_TOOLS,
+                                     extra_dirs=(elsewhere,))
+    assert accepting.decide('Edit', {'file_path': str(target)}) == 'allow'
+
+
+def test_a_directory_can_only_be_added_once_and_must_be_a_directory(tmp_path):
+    from pyclaw.permissions import PermissionController
+
+    project = tmp_path / 'project'
+    project.mkdir()
+    nested = project / 'docs'
+    nested.mkdir()
+    a_file = tmp_path / 'a.txt'
+    a_file.write_text('x', encoding='utf-8')
+    gate = PermissionController(mode='default', cwd=project, tools=BUILTIN_TOOLS)
+
+    for bad, why in (('', 'a directory is needed'),
+                     (str(tmp_path / 'nope'), 'was not found'),
+                     (str(a_file), 'is not a directory'),
+                     (str(nested), 'already reachable')):
+        try:
+            gate.add_dir(bad)
+        except ValueError as exc:
+            assert why in str(exc), bad
+        else:
+            raise AssertionError(f'{bad!r} was accepted')
+    assert gate.extra_dirs == []
+
+
+def test_a_tool_reads_and_writes_through_an_added_directory(tmp_path):
+    from chatchat.tool import ToolContext
+    from pyclaw.tools import BUILTIN_TOOLS
+
+    project = tmp_path / 'project'
+    project.mkdir()
+    elsewhere = tmp_path / 'elsewhere'
+    elsewhere.mkdir()
+    (elsewhere / 'notes.md').write_text('from the other directory\n',
+                                        encoding='utf-8')
+    read = next(t for t in BUILTIN_TOOLS if t.name == 'Read')
+    allowed = asyncio.run(read(ToolContext(cwd=project, extra_dirs=(elsewhere,)),
+                               file_path=str(elsewhere / 'notes.md')))
+    assert 'from the other directory' in str(allowed)
+    refused = asyncio.run(read(ToolContext(cwd=project),
+                               file_path=str(elsewhere / 'notes.md')))
+    assert 'from the other directory' not in str(refused)

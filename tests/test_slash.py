@@ -32,6 +32,7 @@ def _fake_session(**kwargs):
         context_messages = 0
         lead_instruction = "You solve the task."
         instruction_files = [{"path": "AGENTS.md", "content": "# rules"}]
+        working_dirs = ["/work/project"]
         schemas = [{"name": "Read", "description": "read a file",
                     "input_schema": {"type": "object"}}]
 
@@ -824,3 +825,29 @@ def test_the_export_names_itself_after_the_first_prompt(tmp_path):
     name = filename_for(session.transcript(),
                         when=datetime(2026, 5, 4, 9, 30, 12))
     assert name == '2026-05-04-093012-fix-the-parser-please.md'
+
+
+def test_add_dir_names_the_directory_it_took_and_the_ones_it_refused(tmp_path):
+    from pyclaw.session import Session
+    from pyclaw.team.builder import build_team
+
+    project = tmp_path / 'project'
+    project.mkdir()
+    elsewhere = tmp_path / 'elsewhere'
+    (elsewhere / 'inner').mkdir(parents=True)
+
+    async def main():
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(project))
+        session = Session(team, session_id='add-dir')
+        added = await _call(f"/add-dir {elsewhere}", session)
+        again = await _call(f"/add-dir {elsewhere / 'inner'}", session)
+        listed = await _call("/add-dir", session)
+        return added, again, listed, session
+
+    added, again, listed, session = asyncio.run(main())
+    assert 'working directory for this session' in added
+    assert 'already reachable' in again
+    assert str(elsewhere.resolve()) in listed
+    assert session._team.tool_context.extra_dirs == (elsewhere.resolve(),)
+    status = _strip(asyncio.run(_call("/status", session)))
+    assert 'Also working in: ' in status

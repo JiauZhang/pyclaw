@@ -55,7 +55,7 @@ def _diff(rel: str, before: str, after: str) -> str:
     },
 )
 def Write(context, file_path: str, content: str) -> str:
-    path = resolve(context.cwd, file_path)
+    path = resolve(context.cwd, file_path, context.extra_dirs)
     if path is None:
         return f'Error: path is outside the workspace: {file_path}'
     if path.exists() and path.is_dir():
@@ -113,7 +113,7 @@ def Edit(context, file_path: str, old_string: str, new_string: str,
 
 def _replace(context, file_path: str, old_string: str, new_string: str,
              replace_all: bool = False) -> str:
-    path = resolve(context.cwd, file_path)
+    path = resolve(context.cwd, file_path, context.extra_dirs)
     if path is None:
         return f'Error: path is outside the workspace: {file_path}'
     text, err = _read_text(path)

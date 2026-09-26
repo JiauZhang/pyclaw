@@ -1,7 +1,8 @@
 import difflib
 from pathlib import Path
 
-from pyclaw.slash.session import (_handle_agents, _handle_branch, _handle_debug,
+from pyclaw.slash.session import (_handle_add_dir, _handle_agents,
+                                  _handle_branch, _handle_debug,
                                   _handle_hooks, _handle_permissions,
                                   _handle_plan, _handle_rename,
                                   _handle_resume, _handle_rewind,
@@ -27,6 +28,8 @@ COMMANDS = [
      'hint': '[n] [code|conversation]'},
     {'name': 'diff', 'desc': 'Show what has changed in the working tree',
      'hint': ''},
+    {'name': 'add-dir', 'desc': 'Work with files in another directory as well',
+     'hint': '<path>'},
     {'name': 'tasks', 'aliases': ('bashes',),
      'desc': 'List what is running in the background', 'hint': ''},
     {'name': 'skills', 'desc': 'List the skills PyClaw can load on demand',
@@ -215,6 +218,8 @@ async def handle_slash(text: str, session, session_key: str = '',
         return _handle_hooks(session, arg)
     if cmd == 'debug':
         return _handle_debug(session, arg)
+    if cmd == 'add-dir':
+        return _handle_add_dir(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':

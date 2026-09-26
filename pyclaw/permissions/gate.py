@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,9 +85,10 @@ class PermissionChoice:
 class PermissionController:
 
     def __init__(self, *, mode: str = 'default', cwd, allow=(),
-                 ask=(), deny=(), request=None, tools=None):
+                 ask=(), deny=(), request=None, tools=None, extra_dirs=()):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
+        self.extra_dirs = [Path(path).resolve() for path in (extra_dirs or ())]
         self.plan_file = None
         self._by_name = {t.name: t for t in (tools or ())}
         self._layers: list[tuple[str, str, str]] = []
@@ -124,6 +126,32 @@ class PermissionController:
         self._layer_files['project'] = (
             self.cwd / '.pyclaw' / 'settings.json')
         self._layer_files['local'] = _local_settings_file(self.cwd)
+
+    def working_dirs(self) -> list[Path]:
+        return [self.cwd, *self.extra_dirs]
+
+    def add_dir(self, path) -> Path:
+        """Take in another directory for the rest of this session. It has to be
+        a directory that exists and is not already inside one the session can
+        reach, or the same files would be named by two roots."""
+        raw = str(path or '').strip()
+        if not raw:
+            raise ValueError('a directory is needed')
+        target = Path(os.path.expanduser(raw))
+        if not target.is_absolute():
+            target = self.cwd / target
+        target = target.resolve()
+        if not target.exists():
+            raise ValueError(f'{target} was not found')
+        if not target.is_dir():
+            raise ValueError(f'{target} is not a directory — did you mean '
+                             f'{target.parent}?')
+        for working in self.working_dirs():
+            if target.is_relative_to(working):
+                raise ValueError(f'{target} is already reachable through '
+                                 f'{working}')
+        self.extra_dirs.append(target)
+        return target
 
     def settings_files(self) -> dict:
         """Where the rules come from, so a report can say which file to edit."""
@@ -237,7 +265,8 @@ class PermissionController:
 
     def _in_workspace(self, tool_name: str, input) -> bool:
         target = self.path_of(tool_name, input)
-        return target is None or resolve(self.cwd, target) is not None
+        return target is None or resolve(self.cwd, target,
+                                         self.extra_dirs) is not None
 
     def _rememberable(self, tool_name: str, tool_input) -> bool:
         if tool_name == BASH:

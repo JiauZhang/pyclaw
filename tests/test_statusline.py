@@ -25,6 +25,7 @@ class _StatusSession:
     title = ''
     worktree = None
     elapsed_seconds = 90
+    working_dirs = []
 
     def __init__(self, cwd=None):
         self.cwd = cwd or os.getcwd()
@@ -206,3 +207,14 @@ def test_the_padding_comes_from_the_same_settings_entry():
     _write_config({'statusLine': {'type': 'command', 'command': 'echo x',
                                  'padding': 'wide'}})
     assert user_padding() == 0
+
+
+def test_the_payload_lists_the_directories_the_session_reaches_into():
+    class _Two(_StatusSession):
+        working_dirs = ['/work/project', '/shared/lib']
+
+    session = _Two('/work/project')
+    payload = build_payload(session)
+    assert payload['workspace']['project_dir'] == '/work/project'
+    assert payload['workspace']['added_dirs'] == ['/shared/lib']
+    assert build_payload(_StatusSession())['workspace']['added_dirs'] == []
