@@ -244,16 +244,24 @@ class PromptMixin:
                          else f"[dim]{row}[/]")
         widget.update('\n'.join(lines))
     def action_prompt_prev(self):
+        prompt = self.query_one("#input", _PromptInput)
         if len(self._suggest_items) > 1:
             self.action_suggest_prev()
+            return
+        if not prompt.on_first_line:
+            prompt.action_cursor_up()
             return
         if self._pop_queued():
             self._render_status()
             return
         self._history_step(-1)
     def action_prompt_next(self):
-        if self._suggest_items:
+        prompt = self.query_one("#input", _PromptInput)
+        if len(self._suggest_items) > 1:
             self.action_suggest_next()
+            return
+        if not prompt.on_last_line:
+            prompt.action_cursor_down()
             return
         self._history_step(1)
     def _history_step(self, delta: int):

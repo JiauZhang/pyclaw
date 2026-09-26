@@ -95,6 +95,14 @@ class _PromptInput(TextArea):
     async def action_scroll_page_down(self) -> None:
         await self.app.action_conv_page_down()
 
+    @property
+    def on_first_line(self) -> bool:
+        return self.cursor_location[0] == 0
+
+    @property
+    def on_last_line(self) -> bool:
+        return self.cursor_location[0] == self.document.end[0]
+
     def check_consume_key(self, key: str, character: str | None) -> bool:
         app = self.app
         if key == 'k' and getattr(app, '_view_selection', '') \

@@ -5721,6 +5721,32 @@ def test_a_wide_command_names_every_rule_it_would_save():
     assert single._rule == 'Bash(git status:*)'
 
 
+def test_the_arrows_move_the_caret_before_they_reach_into_history():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = app.query_one(_PromptInput)
+            prompt.focus()
+            app._history = ["something older"]
+            prompt.value = "one\ntwo\nthree"
+            prompt.cursor_position = len(prompt.value)
+            await pilot.press("up")
+            await pilot.pause()
+            moved_to = prompt.cursor_location
+            await pilot.press("up")
+            await pilot.pause()
+            top = prompt.cursor_location
+            await pilot.press("up")
+            await pilot.pause()
+            return moved_to, top, prompt.value
+
+    moved_to, top, value = asyncio.run(scenario())
+    assert moved_to == (1, 3)
+    assert top == (0, 3)
+    assert value == "something older"
+
+
 def test_a_rule_list_takes_the_navigation_aliases():
     async def scenario():
         async with PyClawApp(builder=_GateTeam).run_test(size=(90, 30)) as pilot:
