@@ -382,9 +382,7 @@ class Session(HistoryMixin, ReadoutMixin):
         return {agent.name for agent in self._team.agents.values()}
 
     def _in_scope(self, ev) -> bool:
-        if ev.kind == AGENT_PROGRESS:
-            return True
-        return ev.agent == '' or ev.agent in self._member_names()
+        return str(getattr(ev, 'team', '')) == str(self._team.name)
 
     def _bind(self, on_event: Callable):
         self._unbind()

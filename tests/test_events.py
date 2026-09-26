@@ -128,3 +128,26 @@ def test_opening_a_stream_throws_away_the_days_it_no_longer_needs(monkeypatch,
     mod.open_stream(at=datetime(2026, 5, 4, 9, 0), session='s1').close()
     assert kept.exists()
     assert not stale.exists()
+
+
+def test_a_session_only_sees_events_from_its_own_team():
+    """Two conversations in one process both own an agent called 'lead', so
+    membership by name alone lets one of them watch the other work."""
+    from types import SimpleNamespace
+
+    from chatchat.hooks.events import AGENT_TEXT, RuntimeEvent
+
+    from pyclaw.session import Session
+
+    def session(team_name):
+        agents = {'lead': SimpleNamespace(name='lead')}
+        return SimpleNamespace(_team=SimpleNamespace(name=team_name,
+                                                     agents=agents))
+
+    mine = session('pyclaw-1')
+    assert Session._in_scope(mine, RuntimeEvent(
+        AGENT_TEXT, agent='lead', team='pyclaw-1',
+        data={'delta': 'here'})) is True
+    assert Session._in_scope(mine, RuntimeEvent(
+        AGENT_TEXT, agent='lead', team='pyclaw-2',
+        data={'delta': 'there'})) is False

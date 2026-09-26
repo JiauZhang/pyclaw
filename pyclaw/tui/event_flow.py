@@ -44,6 +44,8 @@ class EventRouterMixin:
             finally:
                 self._queue.task_done()
     def _on_event(self, ev):
+        if str(getattr(ev, 'team', '')) != str(self._team.name):
+            return
         if ev.agent and ev.agent not in self._member_names():
             if ev.kind != AGENT_PROGRESS:
                 return

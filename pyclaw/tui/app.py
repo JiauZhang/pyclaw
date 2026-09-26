@@ -296,7 +296,10 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._unreg = register_runtime_handler(self._on_event)
         self._events = events.open_stream(
             session=str(self._session.conv_session_id))
-        self._unreg_events = register_runtime_handler(self._events)
+        team_name = str(self._team.name)
+        self._unreg_events = register_runtime_handler(
+            lambda ev: str(getattr(ev, 'team', '')) == team_name
+            and self._events(ev))
         if self._hook_events:
             self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
         self._tasks_pane = Static("", markup=True)

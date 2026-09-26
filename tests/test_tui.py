@@ -21,6 +21,15 @@ from chatchat.hooks.events import (
     emit,
 )
 from chatchat.tool import ToolContext
+
+
+_real_emit = emit
+
+
+def emit(kind, *, team="t", **fields):
+    """A double emits the way a real agent does: from inside its own team, so
+    listeners can tell which conversation an event belongs to."""
+    _real_emit(kind, team=team, **fields)
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
 from pyclaw.session import store as session_store
