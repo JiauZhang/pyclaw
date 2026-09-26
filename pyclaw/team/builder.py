@@ -174,8 +174,18 @@ def build_team(
     gate.agent_memory = team.agent_memory
     team._pyclaw_gate = gate
 
+    def _roots_of(cwd):
+        """What the session reads about the directory it works in: the
+        instruction files, the project memory and the rules beside them."""
+        team.set_instruction_files(agent_memory.load_instruction_files(cwd))
+        memory = agent_memory.load_project_memory(cwd)
+        team.set_lead_instruction(inst + (f'\n\n{memory}' if memory else ''))
+        team.rules = agent_memory.rule_set(cwd)
+
     def _follow_worktree(cwd):
         gate.move_to(cwd)
+        os.chdir(cwd)
+        _roots_of(cwd)
 
     team._cwd_changed = _follow_worktree
 
@@ -187,10 +197,7 @@ def build_team(
     team.lead_session_id = conversation_id
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
-    team.set_instruction_files(agent_memory.load_instruction_files(cwd))
-    memory = agent_memory.load_project_memory(cwd)
-    if memory:
-        team.set_lead_instruction(team.lead.instruction + '\n\n' + memory)
+    _roots_of(cwd)
 
     for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)

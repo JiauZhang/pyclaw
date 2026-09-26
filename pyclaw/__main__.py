@@ -227,7 +227,7 @@ def run_tui(args):
     session_id, resume_from = _cli_session(args)
     hook_events = bool(args.include_hook_events
                        or config.get("includeHookEvents"))
-    PyClawApp(builder=lambda: build_team(
+    app = PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
         allowed_tools=args.allowed_tools, ask=args.ask,
         disallowed_tools=args.disallowed_tools, base_tools=args.tools,
@@ -235,7 +235,10 @@ def run_tui(args):
         conversation_id=session_id),
         session_id=session_id,
         resume=_cli_resume(args),
-        resume_from=resume_from, hook_events=hook_events).run()
+        resume_from=resume_from, hook_events=hook_events)
+    app.run()
+    if app._exit_note:
+        print(app._exit_note)
 
 
 async def run_channel_rebind(args):

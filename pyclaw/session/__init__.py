@@ -23,8 +23,8 @@ from pyclaw.usage_history import conversation_totals, record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
 from .store import (_session_path, append_conv, follow_conversation,
-                    adopt_artifacts, history_dir, load_transcript, plan_file,
-                    save_transcript)
+                    adopt_artifacts, history_dir, load_transcript,
+                    load_worktree, plan_file, save_transcript, save_worktree)
 from pyclaw.team.builder import (_dispatch_event, checkpoints_enabled,
                                  configured_context_window)
 from pyclaw.permissions import parse_mode
@@ -113,8 +113,21 @@ class Session(HistoryMixin, ReadoutMixin):
         self._unreg = None
         self._bind_gen = 0
         self._gate = getattr(entity, '_pyclaw_gate', None)
+        self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
         _sessions_by_root[entity.name] = self
+
+    def _watch_worktree(self, team) -> None:
+        """Every move of the session directory is the worktree changing under
+        it, and that is what a later resuming conversation reads back."""
+        moved = team._cwd_changed
+
+        def _note(cwd):
+            if moved is not None:
+                moved(cwd)
+            save_worktree(self.conv_session_id, team.worktree)
+
+        team._cwd_changed = _note
 
     @property
     def conv_session_id(self) -> str:
@@ -181,6 +194,7 @@ class Session(HistoryMixin, ReadoutMixin):
         if messages:
             self._team.restore(messages)
             self._carry_totals(source)
+            self._restore_worktree(source)
         return len(messages)
 
     def _carry_totals(self, source_id) -> None:
@@ -339,7 +353,19 @@ class Session(HistoryMixin, ReadoutMixin):
         self.conv_session_id = resumed
         self._adopt_history()
         self.resume_from = None
+        self._restore_worktree(session_id)
         return len(messages)
+
+    def _restore_worktree(self, source_id) -> None:
+        """A conversation that was working inside a worktree comes back to it,
+        with the directory and the rules that go with that directory."""
+        saved = load_worktree(source_id)
+        if saved:
+            self._team.worktree = saved
+            self._team.set_cwd(saved['path'])
+
+    async def leave_worktree(self, keep: bool) -> str:
+        return await self._team.exit_worktree(keep=keep, discard=not keep)
 
 
     def _member_names(self) -> set:

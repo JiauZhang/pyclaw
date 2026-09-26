@@ -25,7 +25,9 @@ def _status(session, session_key: str) -> str:
         lines.append(f'Team: {team["name"]}')
     worktree = getattr(session, 'worktree', None)
     if worktree:
-        lines.append(f'Worktree: {worktree["branch"]} at {worktree["path"]}')
+        lines.append('Worktree: ' + (f'{worktree["branch"]} at '
+                                     if worktree['branch'] else '')
+                     + str(worktree['path']))
     lines += [f'Provider: {session.provider}',
               f'Model: {session.model}',
               f'Reasoning: {session.thinking.label()}',

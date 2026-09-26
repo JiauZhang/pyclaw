@@ -8,3 +8,4 @@ from pyclaw.tui.screens.sessions import SessionsScreen
 from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui.screens.tasks import TasksScreen
 from pyclaw.tui.screens.transcript import TranscriptScreen
+from pyclaw.tui.screens.worktree import WorktreeExitScreen

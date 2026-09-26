@@ -202,6 +202,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._work_block: Static | None = None
         self._turn_started_at = 0.0
         self._hud_started = time.monotonic()
+        self._exit_note = ''
         self._git = ''
         self._statusline_cmd = ""
         self._statusline_text = ""

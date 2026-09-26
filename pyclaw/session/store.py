@@ -266,6 +266,34 @@ def title_of(session_id) -> str:
     return str(session_meta(session_id).get('title') or '')
 
 
+WORKTREE_FIELDS = ('name', 'path', 'branch', 'origin', 'root',
+                   'origin_branch', 'origin_head', 'hook_based', 'resumed')
+WORKTREE_PATHS = ('path', 'origin', 'root')
+
+
+def save_worktree(session_id, record: dict | None) -> None:
+    """Which worktree a conversation is working in, so coming back to the
+    conversation can move the session there again."""
+    stored = None
+    if record:
+        stored = {key: (str(value) if isinstance(value, Path) else value)
+                  for key, value in record.items()
+                  if key in WORKTREE_FIELDS and value is not None}
+    record_meta(session_id, {'worktree': stored})
+
+
+def load_worktree(session_id) -> dict | None:
+    saved = session_meta(session_id).get('worktree')
+    if not isinstance(saved, dict):
+        return None
+    path = Path(str(saved.get('path') or ''))
+    if not path.is_dir():
+        return None
+    return {key: (path if key == 'path'
+                  else Path(str(value)) if key in WORKTREE_PATHS else value)
+            for key, value in saved.items()}
+
+
 def plans_dir() -> Path:
     return pyclaw_home() / 'plans'
 

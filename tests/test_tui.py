@@ -68,6 +68,7 @@ class _FakeTeam:
     compact_threshold = 0
     auto_compact = False
     worktree = None
+    _cwd_changed = None
 
     def total_metrics(self):
         from chatchat.runtime.metrics import Metrics

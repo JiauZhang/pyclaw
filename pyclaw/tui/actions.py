@@ -5,7 +5,7 @@ import asyncio
 from textual.widgets import Input
 
 from pyclaw.tui.screens import (HistorySearchScreen, HelpScreen,
-                                TranscriptScreen)
+                                TranscriptScreen, WorktreeExitScreen)
 from pyclaw.tui.theme import INTERRUPTED_TEXT
 
 
@@ -80,4 +80,12 @@ class ActionMixin:
     async def action_quit(self):
         if self._spin_timer is not None:
             self._spin_timer.stop()
+        session = self._session
+        worktree = session.worktree if session is not None else None
+        if worktree is not None:
+            changes = session.worktree_changes()
+            if changes is None or changes['files'] or changes['commits']:
+                self.push_screen(WorktreeExitScreen(self, changes))
+                return
+            self._exit_note = await session.leave_worktree(keep=False)
         self.exit()

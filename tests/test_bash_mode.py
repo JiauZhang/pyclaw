@@ -18,6 +18,8 @@ class _Team:
     thinking = Thinking('off')
     provided_tools = []
     _pyclaw_mode = 'agent'
+    _cwd_changed = None
+    worktree = None
 
     def __init__(self, cwd):
         self.lead = _Lead()

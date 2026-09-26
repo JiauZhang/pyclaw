@@ -4,6 +4,8 @@ from pyclaw.team import defs as agent_defs
 from pyclaw.team.builder import configured_context_window
 from pyclaw.tools import background
 
+from chatchat.team.worktrees import changes
+
 from pyclaw import task_registry as tasks
 
 
@@ -30,6 +32,13 @@ class ReadoutMixin:
     def worktree(self) -> dict | None:
         worktree = self._team.worktree
         return None if worktree is None else dict(worktree)
+    def worktree_changes(self) -> dict | None:
+        """What the worktree holds that the branch it came from does not. None
+        when git cannot say."""
+        worktree = self.worktree
+        if worktree is None:
+            return None
+        return changes(worktree['path'], worktree.get('origin_head') or '')
     @property
     def team_context(self) -> dict | None:
         context = self._team.team_context
