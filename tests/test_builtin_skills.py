@@ -72,7 +72,7 @@ def test_asking_for_debug_turns_logging_on_and_sends_the_log_to_the_model(
     assert os.environ.get('PYCLAW_DEBUG') == '1'
     assert all(handler.level == logging.DEBUG
                for handler in logging.getLogger().handlers)
-    assert prompt and 'recorded' in note
+    assert prompt and note == 'Running /debug…'
     assert str(session_store.conversation_log('conv-asking')) in prompt
     assert 'ERROR the tool failed' in prompt
     assert '## The problem' in prompt and 'the tool failed' in prompt
@@ -139,3 +139,110 @@ def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path,
     assert gate.decide('Read', {'file_path': os.path.expanduser('~/.zshrc')}) == 'allow'
     assert gate.decide('Edit', {'file_path': config}) == 'allow'
     assert gate.decide('Edit', {'file_path': os.path.expanduser('~/.bashrc')}) == 'ask'
+
+
+def _in_repo(tmp_path, files=None):
+    """A real git repository with a change staged but not committed."""
+    import subprocess
+
+    root = tmp_path / 'repo'
+    root.mkdir()
+    for args in (['init', '-q'], ['config', 'user.email', 't@example.com'],
+                 ['config', 'user.name', 'test']):
+        subprocess.run(['git', *args], cwd=root, check=True)
+    (root / 'a.py').write_text('print(1)\n', encoding='utf-8')
+    subprocess.run(['git', 'add', 'a.py'], cwd=root, check=True)
+    subprocess.run(['git', 'commit', '-qm', 'first'], cwd=root, check=True)
+    for name, body in (files or {}).items():
+        (root / name).write_text(body, encoding='utf-8')
+    subprocess.run(['git', 'add', '-A'], cwd=root, check=True)
+    return root
+
+
+def test_the_self_check_skills_are_registered_with_their_own_terms(
+        tmp_path, monkeypatch):
+    _session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-repo')
+    by_name = {skill.name: skill for skill in team.skills.all()}
+    assert {'doctor', 'review', 'security-review',
+            'commit-push-pr'} <= set(by_name)
+    assert by_name['review'].argument_hint.startswith('[pull request')
+    assert 'Bash(gh pr diff:*)' in by_name['review'].allowed_tools
+    assert by_name['doctor'].disable_model_invocation is True
+    assert by_name['commit-push-pr'].disable_model_invocation is True
+    assert by_name['security-review'].disable_model_invocation is False
+
+
+def test_a_skill_the_user_keeps_for_themselves_is_not_offered_to_the_model(
+        tmp_path, monkeypatch):
+    _session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-hidden')
+    listed = team.skills.listing(8_000)
+    offered = {line[2:].split(':')[0] for line in listed.splitlines()
+               if line.startswith('- ')}
+    assert {'review', 'security-review'} <= offered
+    assert not {'doctor', 'commit-push-pr', 'debug'} & offered
+
+
+def test_typing_a_skill_name_runs_it_and_sends_its_prompt(tmp_path, monkeypatch):
+    root = _in_repo(tmp_path, {'b.py': 'import os\n'})
+    monkeypatch.setenv('PYCLAW_DEBUG', '')
+    from pyclaw.team.builder import build_team
+
+    async def main():
+        team = build_team('agnes', 'agnes-2.5-flash', cwd=str(root),
+                          conversation_id='conv-typed')
+        session = Session(team, session_id='conv-typed')
+        return await handle_slash('/review the branch', session)
+
+    note, prompt = asyncio.run(main())
+    assert note == 'Running /review…'
+    assert 'the branch' in prompt
+    assert 'b.py' in prompt
+    assert '## What to look at' in prompt
+
+
+def test_the_security_review_reports_the_change_it_cannot_fit(tmp_path,
+                                                              monkeypatch):
+    root = _in_repo(tmp_path,
+                   {'big.py': 'x = 1\n' * 6_000})
+    monkeypatch.setenv('PYCLAW_DEBUG', '')
+    from pyclaw.team.builder import build_team
+
+    async def main():
+        team = build_team('agnes', 'agnes-2.5-flash', cwd=str(root),
+                          conversation_id='conv-sec')
+        session = Session(team, session_id='conv-sec')
+        return await handle_slash('/security-review', session)
+
+    _note, prompt = asyncio.run(main())
+    assert 'clipped' in prompt
+    assert 'big.py' in prompt
+    assert '## What to look for' in prompt
+    assert '## Reporting' in prompt
+
+
+def test_the_doctor_names_the_files_it_checked(tmp_path, monkeypatch):
+    _session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-doc')
+
+    async def main():
+        session = _session
+        return await handle_slash('/doctor the model looks wrong', session)
+
+    note, prompt = asyncio.run(main())
+    assert 'Running /doctor…' == note
+    assert 'Provider:' in prompt and 'agnes' in prompt
+    assert str(config.__config_file__) in prompt
+    assert 'the model looks wrong' in prompt
+
+
+def test_a_skill_shows_up_where_the_terminal_lists_its_commands(tmp_path,
+                                                                 monkeypatch):
+    from pyclaw.slash import skill_rows, suggest
+
+    session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-palette')
+    rows = skill_rows(session)
+    names = [row['name'] for row in rows]
+    assert 'review' in names and 'commit-push-pr' in names
+    typed = [item['name'] for item in suggest('/secu', rows)]
+    assert 'security-review' in typed
+    assert {'review', 'security-review'} <= {item['name']
+                                             for item in suggest('/', rows)}

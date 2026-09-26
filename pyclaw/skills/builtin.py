@@ -10,6 +10,7 @@ from chatchat.knowledge.skills import Skill
 from pyclaw import config
 from pyclaw.home import pyclaw_home
 from pyclaw.session import store as session_store
+from pyclaw.skills import repo
 from pyclaw.tools.names import GLOB, GREP, READ
 
 TAIL_BYTES = 64 * 1024
@@ -108,3 +109,4 @@ def register_builtin_skills(registry, team) -> None:
         disable_model_invocation=True,
         source='builtin',
         builder=lambda args: _debug_prompt(team, args)))
+    repo.register(registry, team)

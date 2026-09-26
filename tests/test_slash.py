@@ -11,7 +11,9 @@ HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost",
 
 
 class _Bare:
-    pass
+
+    def user_skills(self):
+        return []
 
 
 def _thinking():
@@ -38,6 +40,9 @@ def _fake_session(**kwargs):
 
         def tool_schemas(self):
             return list(self.schemas)
+
+        def user_skills(self):
+            return []
 
         def transcript(self):
             return list(getattr(self, 'messages', []))

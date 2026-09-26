@@ -2,7 +2,7 @@ import difflib
 from pathlib import Path
 
 from pyclaw.slash.session import (_handle_add_dir, _handle_agents,
-                                  _handle_branch, _handle_debug,
+                                  _handle_branch,
                                   _handle_hooks, _handle_permissions,
                                   _handle_plan, _handle_rename,
                                   _handle_resume, _handle_rewind,
@@ -40,9 +40,6 @@ COMMANDS = [
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
-    {'name': 'debug', 'desc': 'Start recording every event and read what this '
-                              'session has run into so far',
-     'hint': '[what went wrong]'},
     {'name': 'context', 'desc': 'Show what the model is sent and how full the '
                                 'window is', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
@@ -103,6 +100,23 @@ This file provides guidance to AI agents when working with code in this reposito
 _USAGE: dict[str, int] = {}
 
 
+def skill_rows(session) -> list[dict]:
+    return [{'name': skill.name,
+             'desc': skill.description,
+             'hint': skill.argument_hint,
+             'aliases': ()}
+            for skill in session.user_skills()]
+
+
+def _skill_help(session) -> str:
+    rows = skill_rows(session)
+    if not rows:
+        return ''
+    return ('\n\nFrom skills, and typed the same way:\n'
+            + '\n'.join(f"  /{row['name']} {row['hint']}".rstrip()
+                        + f"  - {row['desc']}" for row in rows))
+
+
 def _fuzzy_score(query: str, text: str) -> float:
     q, t = query.lower(), text.lower()
     if not q or len(q) > len(t):
@@ -116,7 +130,7 @@ def _fuzzy_score(query: str, text: str) -> float:
         return 0.0
     return difflib.SequenceMatcher(None, q, t).ratio()
 
-def suggest(text: str) -> list[dict]:
+def suggest(text: str, skills=()) -> list[dict]:
     if not text.startswith('/'):
         return []
     query = text[1:]
@@ -129,9 +143,9 @@ def suggest(text: str) -> list[dict]:
         top = used[:5]
         rest = [c for c in COMMANDS if c not in top]
         rest.sort(key=lambda c: c['name'])
-        return top + rest
+        return top + rest + list(skills)
     scored = []
-    for c in COMMANDS:
+    for c in COMMANDS + list(skills):
         name = c['name']
         aliases = list(c.get('aliases', ()))
         exact = name == query
@@ -174,7 +188,7 @@ async def handle_slash(text: str, session, session_key: str = '',
             break
 
     if cmd in ('help', 'h', '?'):
-        return HELP
+        return HELP + _skill_help(session)
     if cmd == 'init':
         cwd = getattr(session, 'cwd', None) or '.'
         existing = Path(cwd) / 'AGENTS.md'
@@ -216,8 +230,6 @@ async def handle_slash(text: str, session, session_key: str = '',
         return _handle_skills(session, arg)
     if cmd == 'hooks':
         return _handle_hooks(session, arg)
-    if cmd == 'debug':
-        return _handle_debug(session, arg)
     if cmd == 'add-dir':
         return _handle_add_dir(session, arg)
     if cmd == 'status':
@@ -247,4 +259,10 @@ async def handle_slash(text: str, session, session_key: str = '',
     if cmd == 'statusline':
         return _handle_statusline(session, arg)
 
-    return (f'Unknown command: /{cmd}.\n\n{HELP}')
+    skill = next((one for one in session.user_skills() if one.name == cmd),
+                 None)
+    if skill is not None:
+        return (f'Running /{cmd}…', skill.render(arg))
+
+    return (f'Unknown command: /{cmd}.\n\n{HELP}'
+            f'{_skill_help(session)}')

@@ -39,6 +39,7 @@ from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.components import (_AgentGroupBlock, _TextBlock,
                                 _ToolBlock)
 from chatchat.tasks.tasks import TaskList
+from chatchat.knowledge.skills import SkillRegistry
 from chatchat.runtime.thinking import Thinking
 from fakes import Usage
 from markup import plain
@@ -69,6 +70,7 @@ class _FakeTeam:
     auto_compact = False
     worktree = None
     _cwd_changed = None
+    skills = SkillRegistry()
 
     def total_metrics(self):
         from chatchat.runtime.metrics import Metrics

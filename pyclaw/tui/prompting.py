@@ -8,7 +8,8 @@ import logging
 from pyclaw.tui.formatting import escape
 from textual.widgets import Input, Static
 
-from pyclaw.slash import handle_slash, suggest as slash_suggest
+from pyclaw.slash import (handle_slash, skill_rows,
+                                suggest as slash_suggest)
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.formatting import _direct_message
 from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
@@ -167,7 +168,8 @@ class PromptMixin:
         items = []
         kind = None
         if value.startswith('/'):
-            items = slash_suggest(value)
+            items = slash_suggest(
+                value, skill_rows(self._session) if self._session else ())
             kind = 'slash'
         else:
             token = _at_token(value[:event.input.cursor_position])

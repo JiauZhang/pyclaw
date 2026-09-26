@@ -1445,14 +1445,19 @@ def test_a_project_skill_is_offered_and_loads_on_demand():
         assert body.startswith('Rewrite the log as bullets.')
 
 
-def test_no_skill_tool_is_offered_when_nothing_is_installed():
+def test_the_skills_that_ship_with_the_program_are_the_only_ones_offered():
     with tempfile.TemporaryDirectory() as d:
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d, skills=[])
-            return [schema['name'] for schema in
-                    team.tool_schemas(team.tool_context)]
+            schemas = team.tool_schemas(team.tool_context)
+            return next((schema['description'] for schema in schemas
+                         if schema['name'] == 'Skill'), '')
 
-        assert 'Skill' not in asyncio.run(main())
+        listed = asyncio.run(main())
+        offered = {line[2:].split(':')[0] for line in listed.splitlines()
+                   if line.startswith('- ')}
+        assert {'review', 'security-review'} <= offered
+        assert not {'debug', 'doctor', 'commit-push-pr'} & offered
 
 
 def test_a_denied_call_is_reported_to_hooks():

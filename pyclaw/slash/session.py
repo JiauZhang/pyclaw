@@ -120,13 +120,6 @@ def _handle_add_dir(session, arg: str) -> str:
             f'it can be read and written like the project itself.')
 
 
-def _handle_debug(session, arg: str) -> tuple:
-    """The debug skill, asked for by name: logging goes on from here, and what
-    the session recorded is handed to the model with a way to read it."""
-    return ('Reading what this session recorded…',
-            session.skill_prompt('debug', arg))
-
-
 def _handle_rename(session, arg: str) -> str:
     current = getattr(session, 'title', '')
     if not arg:

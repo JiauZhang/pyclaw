@@ -32,6 +32,9 @@ class ReadoutMixin:
     def skill_prompt(self, name: str, args: str = '') -> str:
         skill = self._team.skills.get(name)
         return '' if skill is None else skill.render(args)
+    def user_skills(self) -> list:
+        """The skills the terminal can call by name as /skill."""
+        return list(self._team.skills.for_user())
     def skill_problems(self) -> list:
         return list(self._team.skills.problems)
     @property
