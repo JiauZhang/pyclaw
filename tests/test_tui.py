@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import json
 import logging
 import tempfile
 import time
@@ -1414,6 +1415,31 @@ def test_enter_sends_every_line_you_wrote():
     value, processing = asyncio.run(scenario())
     assert value == ""
     assert processing == "one line\nand another"
+
+
+def test_what_a_terminal_turn_leaves_in_the_conversation_log(tmp_path,
+                                                             monkeypatch):
+    """Pinned before the artifact writers are unified: the terminal records the
+    assistant turn with its thinking, and nothing else."""
+    from pyclaw.session import store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+
+    async def scenario():
+        async with PyClawApp(builder=_builder,
+                             session_id='terminal-log').run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(_PromptInput).value = "what is in this folder"
+            await pilot.press("enter")
+            for _ in range(8):
+                await pilot.pause()
+
+    asyncio.run(scenario())
+    rows = [json.loads(line) for line in
+            (tmp_path / 'terminal-log' / 'messages.jsonl')
+            .read_text(encoding='utf-8').splitlines()]
+    assert [row['role'] for row in rows] == ['assistant']
 
 
 def test_subagent_progress_renders_tree_line():
