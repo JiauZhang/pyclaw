@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pyclaw.tui import keys
+from pyclaw.tui.components import _PromptInput
 
 import asyncio
 import logging
@@ -85,7 +86,7 @@ class StatusMixin:
             return f'{seconds}s'
         return f'{seconds // 60}m {seconds % 60}s'
     async def _render_queued(self):
-        inp = self.query_one("#input", Input)
+        inp = self.query_one("#input", _PromptInput)
         waiting = ([] if self._viewing is not None
                    else [item for item in self._peek_queue() if item.editable])
         inp.placeholder = ("up edits what you queued" if waiting
@@ -160,7 +161,7 @@ class StatusMixin:
         if cwd == self._cwd():
             self._git = git_label(status)
     def _prompt_has_text(self) -> bool:
-        return bool(self.query_one("#input", Input).value)
+        return bool(self.query_one("#input", _PromptInput).value)
     def _statusline_state(self) -> tuple:
         s = self._session
         return (_last_assistant_key(s.transcript()), s.permission_mode,

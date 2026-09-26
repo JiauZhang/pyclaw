@@ -7,11 +7,12 @@ import asyncio
 import logging
 
 from pyclaw.tui.formatting import escape
-from textual.widgets import Input, Static
+from textual.widgets import Static, TextArea
 
 from pyclaw.slash import (handle_slash, skill_rows,
                                 suggest as slash_suggest)
 from pyclaw.tui.agents_panel import AgentsScreen
+from pyclaw.tui.components import PromptSubmitted, _PromptInput
 from pyclaw.tui.formatting import _direct_message
 from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
@@ -35,7 +36,7 @@ class PromptMixin:
         await self._append_block(
             RESULT_PREFIX + escape(body).replace('\n', '\n' + RESULT_HANG))
 
-    async def on_input_submitted(self, event: Input.Submitted):
+    async def on_prompt_submitted(self, event: PromptSubmitted):
         text = event.value.strip()
         self._history_index = None
         if text and (not self._history or self._history[-1] != text):
@@ -46,7 +47,7 @@ class PromptMixin:
         if self._viewing is not None and text and not text.startswith('/'):
             agent = self._agent_by_name(self._viewing)
             if agent is not None:
-                self.query_one("#input", Input).value = ""
+                self.query_one("#input", _PromptInput).value = ""
                 agent.submit(text)
                 await self._render_agent_view()
                 self._render_status()
@@ -55,20 +56,20 @@ class PromptMixin:
         if direct is not None:
             target = self._agent_by_name(direct[0])
             if target is not None:
-                self.query_one("#input", Input).value = ""
+                self.query_one("#input", _PromptInput).value = ""
                 await self._send_direct(target, direct[1])
                 return
         if text.startswith('!') and len(text) > 1:
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._run_bash(text[1:].strip())
             return
         if text == '/permissions':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             self.push_screen(PermissionsScreen(self._session))
             return
         if text == '/rewind':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             if self._processing:
                 await self._append_block(escape(
@@ -83,7 +84,7 @@ class PromptMixin:
             self.push_screen(RewindScreen(self))
             return
         if text == '/resume':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             if self._processing:
                 await self._append_block(escape(
                     f'PyClaw is still working. Press {keys.display("escape")} '
@@ -93,7 +94,7 @@ class PromptMixin:
             self.push_screen(SessionsScreen(self))
             return
         if text == '/diff':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             view = self._session.diff()
             if not view['files']:
@@ -102,13 +103,13 @@ class PromptMixin:
             self.push_screen(DiffScreen(view))
             return
         if text == '/memory':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             cwd = getattr(self._session, 'cwd', None) or '.'
             self.push_screen(MemoryScreen(self, cwd))
             return
         if text in ('/tasks', '/bashes'):
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             if not self._task_rows():
                 await self._append_block(escape(
@@ -117,7 +118,7 @@ class PromptMixin:
             self.push_screen(TasksScreen(self))
             return
         if text == '/agents':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             await self._append_user(text)
             self.push_screen(AgentsScreen(self._session))
             return
@@ -125,13 +126,13 @@ class PromptMixin:
             item = self._suggest_items[min(self._suggest_selected,
                                            len(self._suggest_items) - 1)]
             if self._typeahead == 'at':
-                inp = self.query_one("#input", Input)
+                inp = self.query_one("#input", _PromptInput)
                 inp.value = _apply_at(inp.value, item['name'],
                                       item.get('dir', False))
                 inp.cursor_position = len(inp.value)
                 return
             if item.get('hint'):
-                inp = self.query_one("#input", Input)
+                inp = self.query_one("#input", _PromptInput)
                 inp.value = f"/{item['name']} "
                 inp.cursor_position = len(inp.value)
                 self._suggest_items = []
@@ -139,7 +140,7 @@ class PromptMixin:
                 return
             if item['name'].startswith(text[1:].strip().lower()):
                 text = f"/{item['name']}"
-        self.query_one("#input", Input).value = ""
+        self.query_one("#input", _PromptInput).value = ""
         if not text:
             return
         if text.startswith("/"):
@@ -180,16 +181,16 @@ class PromptMixin:
         for item in items:
             if not item.editable:
                 self._pending_inputs.put_nowait(item)
-        inp = self.query_one("#input", Input)
+        inp = self.query_one("#input", _PromptInput)
         inp.value = "\n".join([item.text for item in editable]
                               + ([inp.value] if inp.value else []))
         inp.cursor_position = len(inp.value)
         return True
-    def on_input_changed(self, event: Input.Changed) -> None:
-        value = event.value
+    def on_text_area_changed(self, event: TextArea.Changed) -> None:
+        value = event.text_area.text
         self._render_status()
         if value == '?':
-            self.query_one("#input", Input).value = ""
+            self.query_one("#input", _PromptInput).value = ""
             self.action_toggle_help()
             return
         items = []
@@ -199,7 +200,7 @@ class PromptMixin:
                 value, skill_rows(self._session) if self._session else ())
             kind = 'slash'
         else:
-            token = _at_token(value[:event.input.cursor_position])
+            token = _at_token(value[:event.text_area.cursor_position])
             if token is not None:
                 items = _file_suggest(self._cwd(), token)
                 kind = 'at'
@@ -258,7 +259,7 @@ class PromptMixin:
     def _history_step(self, delta: int):
         if not self._history:
             return
-        inp = self.query_one("#input", Input)
+        inp = self.query_one("#input", _PromptInput)
         if self._history_index is None:
             if delta > 0:
                 return
@@ -283,7 +284,7 @@ class PromptMixin:
         if not self._suggest_items:
             return
         item = self._suggest_items[self._suggest_selected]
-        inp = self.query_one("#input", Input)
+        inp = self.query_one("#input", _PromptInput)
         if self._typeahead == 'at':
             inp.value = _apply_at(inp.value, item['name'],
                                   item.get('dir', False))
@@ -292,7 +293,7 @@ class PromptMixin:
         inp.value = f"/{item['name']} "
         inp.cursor_position = len(inp.value)
     def action_suggest_dismiss(self):
-        self._suggest_dismissed = self.query_one("#input", Input).value
+        self._suggest_dismissed = self.query_one("#input", _PromptInput).value
         self._suggest_items = []
         self._typeahead = None
         self._show_suggest_widget(False)

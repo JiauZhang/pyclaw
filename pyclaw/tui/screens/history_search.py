@@ -9,6 +9,7 @@ from pyclaw.tui import keys
 from pyclaw.tui import ui
 from textual.screen import Screen
 from textual.widgets import Input, Static
+from pyclaw.tui.components import _PromptInput
 
 
 class HistorySearchScreen(Screen):
@@ -85,9 +86,9 @@ class HistorySearchScreen(Screen):
             self.app.pop_screen()
             return
         text = matches[self._selected]
-        inp = self._owner.query_one("#input", Input)
+        inp = self._owner.query_one("#input", _PromptInput)
         inp.value = text
         inp.cursor_position = len(text)
         self.app.pop_screen()
         if execute:
-            await inp.action_submit()
+            inp.submit()

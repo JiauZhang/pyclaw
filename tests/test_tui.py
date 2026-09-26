@@ -37,7 +37,7 @@ from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import (hide_row, leader_row, status_text,
                                teammate_row)
 from pyclaw.tui.screens import HistorySearchScreen
-from pyclaw.tui.components import (_AgentGroupBlock, _TextBlock,
+from pyclaw.tui.components import (_AgentGroupBlock, _PromptInput, _TextBlock,
                                 _ToolBlock)
 from chatchat.tasks.tasks import TaskList
 from chatchat.knowledge.skills import SkillRegistry
@@ -335,7 +335,7 @@ def test_ui_launches_and_renders_panels():
             app = pilot.app
             await pilot.pause()
             assert app.query_one("#conv") is not None
-            assert app.query_one("#input", Input) is not None
+            assert app.query_one("#input", _PromptInput) is not None
             assert "? lists the keys" in str(app.query_one("#status").content)
             tasks = app.query_one("#tasks")
             assert tasks.display is False
@@ -353,7 +353,7 @@ def test_submit_streams_single_block_and_no_duplicate():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hello"
+            app.query_one(_PromptInput).value = "hello"
             await pilot.press("enter")
             await pilot.pause()
             await pilot.pause()
@@ -371,7 +371,7 @@ def test_slash_renders_block():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "/status"
+            app.query_one(_PromptInput).value = "/status"
             await pilot.press("enter")
             await pilot.pause()
             flat = _flatten(app)
@@ -385,7 +385,7 @@ def test_consecutive_reads_collapse_into_one_line():
                 builder=lambda: _ManyReadsTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -415,7 +415,7 @@ def test_transcript_expands_every_tool_call():
                 builder=lambda: _ReadBodyTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -435,7 +435,7 @@ def test_permissions_screen_lists_rules_and_closes():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "/permissions"
+            app.query_one(_PromptInput).value = "/permissions"
             await pilot.press("enter")
             await pilot.pause()
             assert type(app.screen).__name__ == "PermissionsScreen"
@@ -458,7 +458,7 @@ def test_tool_card_resolves_to_done_from_transcript():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -473,7 +473,7 @@ def test_thinking_is_hidden_and_the_turn_ends_with_worked_for():
         async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(5):
                 await pilot.pause()
@@ -1145,7 +1145,7 @@ def test_model_switch_updates_status_bar(monkeypatch):
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "/model newm"
+            app.query_one(_PromptInput).value = "/model newm"
             await pilot.press("enter")
             for _ in range(4):
                 await pilot.pause()
@@ -1203,7 +1203,7 @@ def test_stale_fallback_not_rendered():
         async with PyClawApp(builder=lambda: _StaleTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             await pilot.pause()
             await pilot.pause()
@@ -1215,7 +1215,7 @@ def test_stale_fallback_not_rendered():
 
 async def _submit_and_wait(pilot, text, rounds=4):
     app = pilot.app
-    app.query_one(Input).value = text
+    app.query_one(_PromptInput).value = text
     await pilot.press("enter")
     for _ in range(rounds):
         await pilot.pause()
@@ -1259,7 +1259,7 @@ def test_interrupt_never_writes_the_running_prompt_into_the_input():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "fix the test"
+            app.query_one(_PromptInput).value = "fix the test"
             await pilot.press("enter")
             for _ in range(4):
                 await pilot.pause()
@@ -1267,7 +1267,7 @@ def test_interrupt_never_writes_the_running_prompt_into_the_input():
             await pilot.press("ctrl+c")
             await pilot.pause()
             assert app._processing is None
-            return app.query_one(Input).value
+            return app.query_one(_PromptInput).value
 
     assert asyncio.run(scenario()) == ""
 
@@ -1279,7 +1279,7 @@ def test_up_pulls_queued_messages_into_the_input_and_off_the_queue():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "running now"
+            app.query_one(_PromptInput).value = "running now"
             await pilot.press("enter")
             for _ in range(3):
                 await pilot.pause()
@@ -1287,7 +1287,7 @@ def test_up_pulls_queued_messages_into_the_input_and_off_the_queue():
             await pilot.pause()
             await pilot.press("up")
             await pilot.pause()
-            return (app.query_one(Input).value, app._peek_queue())
+            return (app.query_one(_PromptInput).value, app._peek_queue())
 
     value, queued = asyncio.run(scenario())
     assert value == "and then this"
@@ -1324,7 +1324,7 @@ def test_a_written_for_you_prompt_is_left_out_of_the_queue_preview():
                              meta=True)]
             await app._render_queued()
             await pilot.pause()
-            return app._queued, app.query_one(Input).placeholder
+            return app._queued, app.query_one(_PromptInput).placeholder
 
     queued, placeholder = asyncio.run(scenario())
     assert queued is None
@@ -1338,11 +1338,73 @@ def test_a_written_for_you_prompt_is_left_out_of_the_queue_preview():
             await app._render_queued()
             await pilot.pause()
             return str(app._queued.render()) if app._queued else "", \
-                app.query_one(Input).placeholder
+                app.query_one(_PromptInput).placeholder
 
     painted, placeholder = asyncio.run(typed())
     assert "what I typed" in painted
     assert "queued" in placeholder
+
+
+def test_shift_enter_starts_a_second_line_without_sending():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test(size=(80, 16)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = app.query_one(_PromptInput)
+            prompt.focus()
+            prompt.value = "first line"
+            prompt.cursor_position = len(prompt.value)
+            await pilot.press("shift+enter")
+            await pilot.pause()
+            return prompt.value, prompt.region.height, app._processing
+
+    value, height, processing = asyncio.run(scenario())
+    assert value == "first line\n"
+    assert height == 2
+    assert processing is None
+
+
+def test_a_trailing_backslash_then_enter_starts_a_second_line():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = app.query_one(_PromptInput)
+            prompt.focus()
+            prompt.value = "explain this\\"
+            prompt.cursor_position = len(prompt.value)
+            await pilot.press("enter")
+            await pilot.pause()
+            return prompt.value, app._processing
+
+    value, processing = asyncio.run(scenario())
+    assert value == "explain this\n"
+    assert processing is None
+
+
+def test_enter_sends_every_line_you_wrote():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            prompt = app.query_one(_PromptInput)
+            prompt.focus()
+            prompt.value = "one line\nand another"
+            prompt.cursor_position = len(prompt.value)
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            return prompt.value, app._processing
+
+    value, processing = asyncio.run(scenario())
+    assert value == ""
+    assert processing == "one line\nand another"
 
 
 def test_subagent_progress_renders_tree_line():
@@ -1350,7 +1412,7 @@ def test_subagent_progress_renders_tree_line():
         async with PyClawApp(builder=lambda: _SubTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -1568,7 +1630,7 @@ def test_at_typeahead_shows_files_and_tab_applies():
             app = pilot.app
             app._cwd = lambda: d
             await pilot.pause()
-            inp = app.query_one(Input)
+            inp = app.query_one(_PromptInput)
             inp.value = "@"
             await pilot.pause()
             suggest = app.query_one("#suggest", Static)
@@ -1628,7 +1690,7 @@ def test_ctrl_r_history_picker_tab_accepts_without_submit():
             await pilot.press("tab")
             await pilot.pause()
             assert not isinstance(app.screen, HistorySearchScreen)
-            assert app.query_one("#input", Input).value == "run tests"
+            assert app.query_one("#input", _PromptInput).value == "run tests"
             assert "run tests" not in _flatten(app)
 
     asyncio.run(scenario())
@@ -1639,7 +1701,7 @@ def test_ctrl_s_stash_and_unstash_prompt():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            inp = app.query_one(Input)
+            inp = app.query_one(_PromptInput)
             inp.value = "half written"
             await pilot.press("ctrl+s")
             await pilot.pause()
@@ -1662,7 +1724,7 @@ def test_ctrl_r_history_picker_escape_cancels():
             app = pilot.app
             await pilot.pause()
             app._history = ["run tests"]
-            inp = app.query_one("#input", Input)
+            inp = app.query_one("#input", _PromptInput)
             inp.value = "my draft"
             await pilot.press("ctrl+r")
             await pilot.pause()
@@ -1681,7 +1743,7 @@ def test_at_typeahead_dir_keeps_navigating():
             app = pilot.app
             app._cwd = lambda: d
             await pilot.pause()
-            inp = app.query_one(Input)
+            inp = app.query_one(_PromptInput)
             inp.value = "@src/"
             await pilot.pause()
             suggest = app.query_one("#suggest", Static)
@@ -1759,7 +1821,7 @@ def test_slash_menu_shows_and_tab_completes():
             assert "/model" in str(suggest.content)
             await pilot.press("tab")
             await pilot.pause()
-            inp = app.query_one("#input", Input)
+            inp = app.query_one("#input", _PromptInput)
             assert inp.value == "/model "
             assert inp.cursor_position == len("/model ")
             assert not suggest.display
@@ -1777,12 +1839,12 @@ def test_slash_menu_enter_executes_noarg_and_waits_for_args():
             for _ in range(4):
                 await pilot.pause()
             assert app._session.permission_mode == "plan"
-            assert app.query_one("#input", Input).value == ""
+            assert app.query_one("#input", _PromptInput).value == ""
             await pilot.press(*"/model")
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            inp = app.query_one("#input", Input)
+            inp = app.query_one("#input", _PromptInput)
             assert inp.value == "/model "
             assert inp.cursor_position == len("/model ")
             assert not app.query_one("#suggest", Static).display
@@ -1819,7 +1881,7 @@ def test_ctrl_o_opens_transcript_and_q_exits():
         async with PyClawApp(builder=lambda: _LongToolTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -1845,7 +1907,7 @@ def test_transcript_shows_thinking_of_last_assistant():
         async with PyClawApp(builder=lambda: _ThinkTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -1860,7 +1922,7 @@ def test_tool_card_expands_full_input_output_on_click():
         async with PyClawApp(builder=lambda: _LongToolTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -1895,7 +1957,7 @@ def test_body_and_tools_keep_chronological_order():
         async with PyClawApp(builder=lambda: _SplitTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -1932,7 +1994,7 @@ def test_input_stays_busy_until_lead_actually_idle():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(3):
                 await pilot.pause()
@@ -1982,7 +2044,7 @@ def test_input_free_while_teammate_running():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -2002,7 +2064,7 @@ def test_turn_duration_deferred_until_teammates_settle():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(20):
                 await pilot.pause()
@@ -2100,7 +2162,7 @@ class _GateSwarm(_GateTeam, _SwarmTeam):
 
 
 async def _run_turn(pilot, text="go", rounds=8):
-    pilot.app.query_one(Input).value = text
+    pilot.app.query_one(_PromptInput).value = text
     await pilot.press("enter")
     for _ in range(rounds):
         await pilot.pause()
@@ -2128,7 +2190,7 @@ def test_blank_deltas_do_not_create_empty_blocks():
         async with PyClawApp(builder=lambda: _BlankTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -2411,7 +2473,7 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
                              session_id='conv-logs').run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(6):
                 await pilot.pause()
@@ -2652,7 +2714,7 @@ def test_subagent_output_with_brackets_does_not_break_the_tasks_pane():
                 builder=lambda: _BracketSubTeam()).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "go"
+            app.query_one(_PromptInput).value = "go"
             await pilot.press("enter")
             for _ in range(8):
                 await pilot.pause()
@@ -3078,7 +3140,7 @@ def test_the_suggestion_list_is_not_a_modal_overlay():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one("#input", Input).value = "/"
+            app.query_one("#input", _PromptInput).value = "/"
             await pilot.pause()
             assert app._suggest_items
             assert "autocomplete" in app._overlays
@@ -3187,7 +3249,7 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
             return (app.size.height,
                     app.query_one("#conv").size.height,
                     app.query_one("#footer").size.height,
-                    app.query_one(Input).region.y)
+                    app.query_one(_PromptInput).region.y)
 
     height, conv, footer, input_y = asyncio.run(scenario())
     assert footer == 1
@@ -3211,20 +3273,20 @@ def test_up_and_down_walk_the_prompt_history():
             app = pilot.app
             await pilot.pause()
             for text in ("first", "second"):
-                app.query_one(Input).value = text
+                app.query_one(_PromptInput).value = text
                 await pilot.press("enter")
                 for _ in range(3):
                     await pilot.pause()
-            app.query_one(Input).value = "draft"
+            app.query_one(_PromptInput).value = "draft"
             await pilot.press("up")
             await pilot.pause()
-            newest = app.query_one(Input).value
+            newest = app.query_one(_PromptInput).value
             await pilot.press("up")
             await pilot.pause()
-            older = app.query_one(Input).value
+            older = app.query_one(_PromptInput).value
             await pilot.press("down", "down")
             await pilot.pause()
-            return newest, older, app.query_one(Input).value
+            return newest, older, app.query_one(_PromptInput).value
 
     newest, older, restored = asyncio.run(scenario())
     assert newest == "second"
@@ -3242,7 +3304,7 @@ def test_question_mark_opens_the_shortcut_panel():
             opened = type(app.screen).__name__
             body = "".join(str(w.content)
                            for w in app.screen.query_one("#help").children)
-            assert app.query_one(Input).value == ""
+            assert app.query_one(_PromptInput).value == ""
             await pilot.press("escape")
             await pilot.pause()
             return opened, body, type(app.screen).__name__
@@ -3351,7 +3413,7 @@ def test_permission_screen_keeps_its_own_arrow_keys():
         async with PyClawApp(builder=_GateTeam).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "/permissions"
+            app.query_one(_PromptInput).value = "/permissions"
             await pilot.press("enter")
             await pilot.pause()
             await pilot.press("down")
@@ -3371,7 +3433,7 @@ def test_escape_interrupts_a_running_turn():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = "hi"
+            app.query_one(_PromptInput).value = "hi"
             await pilot.press("enter")
             for _ in range(3):
                 await pilot.pause()
@@ -3649,12 +3711,12 @@ def test_input_while_viewing_goes_to_the_viewed_teammate():
             await pilot.pause()
             await pilot.press("enter")
             await pilot.pause()
-            app.query_one(Input).value = "please hurry"
+            app.query_one(_PromptInput).value = "please hurry"
             await pilot.press("enter")
             await pilot.pause()
             assert team.submitted == ["please hurry"]
             assert app._processing is None
-            assert app.query_one(Input).value == ""
+            assert app.query_one(_PromptInput).value == ""
     asyncio.run(scenario())
 
 
@@ -3920,7 +3982,7 @@ def test_typing_k_still_reaches_the_input():
             await pilot.pause()
             await pilot.press("k")
             await pilot.pause()
-            assert app.query_one(Input).value == "k"
+            assert app.query_one(_PromptInput).value == "k"
     asyncio.run(scenario())
 
 
@@ -3930,7 +3992,7 @@ def test_at_name_sends_a_direct_message_to_the_teammate():
             app = pilot.app
             team = app._team
             await pilot.pause()
-            app.query_one(Input).value = "@worker hurry up"
+            app.query_one(_PromptInput).value = "@worker hurry up"
             await pilot.press("enter")
             await pilot.pause()
             assert team.worker.inbox.written == [("lead", "hurry up")]
@@ -4247,7 +4309,7 @@ def test_enter_while_selecting_confirms_instead_of_submitting():
             await _run_turn(pilot)
             await pilot.press("shift+down")
             await pilot.pause()
-            app.query_one(Input).value = "not a prompt"
+            app.query_one(_PromptInput).value = "not a prompt"
             await pilot.press("enter")
             await pilot.pause()
             assert app._pending_inputs.empty()
@@ -4292,7 +4354,7 @@ def test_queued_messages_are_hidden_while_viewing_a_teammate():
             assert app._viewing == "worker"
             assert app._queued is None
             assert "Press up to edit queued messages" not in str(
-                app.query_one(Input).placeholder)
+                app.query_one(_PromptInput).placeholder)
     asyncio.run(scenario())
 
 
@@ -4695,10 +4757,10 @@ def test_an_approval_cannot_outlive_the_turn_it_belongs_to():
             assert (await task).value == "denied"
             # Nothing is left to approve, so the next Enter is an ordinary
             # submit instead of a stray approval of a dead turn.
-            app.query_one(Input).value = "still here"
+            app.query_one(_PromptInput).value = "still here"
             await pilot.press("enter")
             await pilot.pause()
-            assert app.query_one(Input).value == ""
+            assert app.query_one(_PromptInput).value == ""
             assert app._approvals == []
     asyncio.run(scenario())
 
@@ -5179,7 +5241,7 @@ def test_enter_does_not_run_a_command_the_user_did_not_type():
         async with PyClawApp(builder=_builder).run_test(size=(100, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = '/tsks'
+            app.query_one(_PromptInput).value = '/tsks'
             await pilot.pause()
             await pilot.press('enter')
             await pilot.pause()
@@ -5393,7 +5455,7 @@ def test_the_question_card_keeps_the_prompt_history_out_of_its_way():
             await pilot.press("up")
             await pilot.pause()
             focused = card._focused
-            typed = app.query_one("#input", Input).value
+            typed = app.query_one("#input", _PromptInput).value
             await pilot.press("enter")
             for _ in range(3):
                 await pilot.pause()
@@ -5675,7 +5737,7 @@ def test_the_resume_picker_lists_named_conversations_and_continues_one(
                              session_id='picker').run_test(size=(90, 30)) as pilot:
             app = pilot.app
             await pilot.pause()
-            app.query_one(Input).value = '/resume'
+            app.query_one(_PromptInput).value = '/resume'
             await pilot.press('enter')
             await pilot.pause()
             screen = app.screen

@@ -114,10 +114,11 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
                margin: 0 1; padding: 0 1; }
     #tasks { display: none; height: auto; max-height: 12; background: $background;
              border-top: round $permission; margin: 0 1; padding: 0 1; }
-    #prompt { height: 3; border-top: round $prompt-border;
+    #prompt { height: auto; border-top: round $prompt-border;
               border-bottom: round $prompt-border; }
     #prompt-pointer { width: 2; height: 1; color: $brand; }
-    #input { height: 1; width: 1fr; border: none; padding: 0;
+    #input { height: auto; max-height: 8; min-height: 1; width: 1fr;
+               border: none; padding: 0;
              background: $background; color: $text; }
     #footer { height: 1; }
     #statusline { height: auto; width: 1fr; color: $inactive; padding: 0 1;
@@ -312,7 +313,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         if self._resume:
             self._session.restore_transcript()
             await self._render_history()
-        self.query_one(Input).focus()
+        self.query_one(_PromptInput).focus()
         self._statusline_cmd = statusline.user_command()
         await self._refresh_git()
         self._render_status()

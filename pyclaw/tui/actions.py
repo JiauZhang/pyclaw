@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 
-from textual.widgets import Input
+from pyclaw.tui.components import _PromptInput
 
 from pyclaw.tui.screens import (HistorySearchScreen, HelpScreen,
                                 TranscriptScreen, WorktreeExitScreen)
@@ -59,7 +59,7 @@ class ActionMixin:
         if self._history:
             self.push_screen(HistorySearchScreen(self))
     def action_stash(self):
-        inp = self.query_one("#input", Input)
+        inp = self.query_one("#input", _PromptInput)
         text = inp.value
         if text.strip():
             self._stashed = text

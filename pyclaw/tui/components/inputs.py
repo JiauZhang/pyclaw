@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pyclaw.tui.formatting import escape
+from textual import events
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import Input, Markdown, Static
+from textual.message import Message
+from textual.widgets import Input, Markdown, Static, TextArea
 
 from pyclaw import banner
 
@@ -32,7 +34,66 @@ class _LogoBlock(Static):
         super().__init__("\n".join(lines), markup=True, classes="logo", **kw)
 
 
-class _PromptInput(Input):
+MAX_PROMPT_LINES = 8
+
+
+class PromptSubmitted(Message):
+    """Enter was pressed without asking for another line."""
+
+    def __init__(self, prompt: "_PromptInput") -> None:
+        super().__init__()
+        self.value = prompt.value
+
+
+class _PromptInput(TextArea):
+    """The prompt takes as many lines as you write. Enter sends, unless the
+    line asks to continue: a trailing backslash, or shift/alt held down."""
+
+    # Page keys belong to the conversation, not to the caret.
+    BINDINGS = [Binding("pageup", "scroll_page_up"),
+                Binding("pagedown", "scroll_page_down")]
+
+    def __init__(self, *, placeholder: str = "",
+                 id: str | None = None) -> None:
+        super().__init__(placeholder=placeholder, id=id,
+                         show_line_numbers=False, soft_wrap=True,
+                         tab_behavior="focus")
+
+    @property
+    def value(self) -> str:
+        return self.text
+
+    @value.setter
+    def value(self, text: str) -> None:
+        self.load_text(text)
+        self.cursor_position = len(text)
+        self.post_message(TextArea.Changed(self))
+
+    def submit(self) -> None:
+        """Send what is in the prompt, as pressing enter would."""
+        self.post_message(PromptSubmitted(self))
+
+    @property
+    def cursor_position(self) -> int:
+        row, column = self.cursor_location
+        lines = self.text.split("\n")
+        return sum(len(line) + 1 for line in lines[:row]) + column
+
+    @cursor_position.setter
+    def cursor_position(self, position: int) -> None:
+        remaining = max(0, position)
+        row = 0
+        for row, line in enumerate(self.text.split("\n")):
+            if remaining <= len(line):
+                break
+            remaining -= len(line) + 1
+        self.move_cursor((row, remaining))
+
+    async def action_scroll_page_up(self) -> None:
+        await self.app.action_conv_page_up()
+
+    async def action_scroll_page_down(self) -> None:
+        await self.app.action_conv_page_down()
 
     def check_consume_key(self, key: str, character: str | None) -> bool:
         app = self.app
@@ -40,6 +101,27 @@ class _PromptInput(Input):
                 == 'selecting-agent':
             return False
         return super().check_consume_key(key, character)
+
+    def _continues(self) -> bool:
+        row, column = self.cursor_location
+        return column > 0 and self.document.get_line(row)[column - 1] == '\\'
+
+    def _break_line(self) -> None:
+        row, column = self.cursor_location
+        if self._continues():
+            self.delete((row, column - 1), (row, column))
+        self.insert('\n')
+
+    async def _on_key(self, event: events.Key) -> None:
+        if not event.key.endswith('enter'):
+            await super()._on_key(event)
+            return
+        event.stop()
+        event.prevent_default()
+        if event.key == 'enter' and not self._continues():
+            self.post_message(PromptSubmitted(self))
+            return
+        self._break_line()
 
 
 class _AgentPane(Static):

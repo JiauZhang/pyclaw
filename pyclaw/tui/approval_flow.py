@@ -3,13 +3,12 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from textual.widgets import Input
 
 from pyclaw.permissions import next_mode
 from pyclaw.permissions import PermissionChoice, is_destructive
 from pyclaw.tui.permission_card import _Approval, _PermissionPrompt
 from pyclaw.tui.question_card import _QuestionPrompt
-from pyclaw.tui.components import _ToolBlock
+from pyclaw.tui.components import _PromptInput, _ToolBlock
 from pyclaw.tools.names import BASH
 
 logger = logging.getLogger(__name__)
@@ -84,7 +83,7 @@ class ApprovalFlowMixin:
             block.set_waiting_permission(False)
         if not approval.future.done():
             approval.future.set_result(choice)
-        self.query_one("#input", Input).focus()
+        self.query_one("#input", _PromptInput).focus()
     async def _deny_pending_permission(self) -> bool:
         if not self._approvals:
             return False
