@@ -200,6 +200,7 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
     class _App:
 
         _exit_note = ''
+        _startup_error = ''
 
         def __init__(self, **kw):
             started.update(kw)
@@ -228,6 +229,7 @@ def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(
     class _App:
 
         _exit_note = 'Back at /repo. The worktree was removed.'
+        _startup_error = ''
 
         def __init__(self, **kw):
             pass
@@ -242,3 +244,26 @@ def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
     __main__.run_tui(__main__._build_parser().parse_args(["tui"]))
     assert 'The worktree was removed.' in capsys.readouterr().out
+
+
+def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
+    class _App:
+
+        _exit_note = ''
+        _startup_error = 'Error: this worktree could not be made'
+
+        def __init__(self, **kw):
+            pass
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(__main__, "load_config",
+                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
+    monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
+    args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
+    with pytest.raises(SystemExit) as exit_info:
+        __main__.run_tui(args)
+    assert exit_info.value.code == 1
+    assert 'could not be made' in capsys.readouterr().err

@@ -167,7 +167,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         return focus is not None and focus != 'autocomplete'
 
     def __init__(self, *, builder, session_id=None, resume=False,
-                 resume_from=None, hook_events=False):
+                 resume_from=None, hook_events=False, worktree=None):
         super().__init__()
         self._triple = banner.palette(config.load()["banner"])
         self.brand = banner.brand(self._triple)
@@ -183,6 +183,8 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._session_id = session_id
         self._resume = resume
         self._resume_from = resume_from
+        self._worktree = worktree
+        self._startup_error = ''
         self._team = None
         self._session: Session | None = None
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -283,6 +285,12 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._hud_started -= self._session.carried_seconds
         self._session.attach_approval(self._ask_permission)
         self._session.attach_question(self._ask_questions)
+        if self._worktree is not None:
+            started = await self._team.enter_worktree(self._worktree)
+            if started.startswith('Error'):
+                self._startup_error = started
+                self.exit()
+                return
         self._start_cron()
         self._unreg = register_runtime_handler(self._on_event)
         self._events = events.open_stream(

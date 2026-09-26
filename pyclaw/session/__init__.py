@@ -115,6 +115,8 @@ class Session(HistoryMixin, ReadoutMixin):
         self._gate = getattr(entity, '_pyclaw_gate', None)
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
+        if entity.worktree is not None:
+            save_worktree(self.conv_session_id, entity.worktree)
         _sessions_by_root[entity.name] = self
 
     def _watch_worktree(self, team) -> None:
@@ -358,9 +360,10 @@ class Session(HistoryMixin, ReadoutMixin):
 
     def _restore_worktree(self, source_id) -> None:
         """A conversation that was working inside a worktree comes back to it,
-        with the directory and the rules that go with that directory."""
+        with the directory and the rules that go with that directory. A worktree
+        asked for by name for this run wins over the one it left behind."""
         saved = load_worktree(source_id)
-        if saved:
+        if saved and self._team.worktree is None:
             self._team.worktree = saved
             self._team.set_cwd(saved['path'])
 

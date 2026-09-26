@@ -15,6 +15,7 @@ from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
 
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
+from chatchat.team.worktrees import in_repository
 
 _QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore",
                   "aiohttp", "urllib3", "websockets", "PIL")
@@ -125,7 +126,7 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
                       resume=False, resume_from=None, allowed_tools=None,
                       ask=None, disallowed_tools=None, base_tools=None,
                       use_team=False, agents=None,
-                      json_schema=None) -> dict:
+                      json_schema=None, worktree=None) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
                       allowed_tools=allowed_tools, ask=ask,
                       disallowed_tools=disallowed_tools,
@@ -134,8 +135,12 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
     if json_schema is not None:
         problem = team.set_output_schema(json_schema)
         if problem:
-            raise ValueError(problem)
+            raise ValueError(f'--json-schema: {problem}')
     session = Session(team, session_id=session_id, resume_from=resume_from)
+    if worktree is not None:
+        started = await team.enter_worktree(worktree)
+        if started.startswith('Error'):
+            raise ValueError(started.removeprefix('Error: '))
 
     stream = open_stream(session=str(session.conv_session_id))
     unregister = register_runtime_handler(stream)
@@ -204,9 +209,10 @@ async def run_headless(args):
                                 disallowed_tools=args.disallowed_tools,
                                 base_tools=args.tools,
                                 use_team=args.use_team, agents=args.agents,
-                                json_schema=_json_schema(args))
+                                json_schema=_json_schema(args),
+                                worktree=args.worktree)
     except ValueError as exc:
-        print(f"--json-schema: {exc}")
+        print(f"{exc}")
         sys.exit(1)
     render_output(args.output, out)
 
@@ -225,6 +231,12 @@ def run_tui(args):
         "tui session starting (provider=%s model=%s team=%s log=%s)",
         provider, model, args.use_team, log_path)
     session_id, resume_from = _cli_session(args)
+    if args.worktree is not None:
+        if not in_repository(os.getcwd()):
+            print('Error: --worktree needs a git repository, and this is not '
+                  'one. A WorktreeCreate hook in the settings is the other way '
+                  'to isolate work.')
+            sys.exit(1)
     hook_events = bool(args.include_hook_events
                        or config.get("includeHookEvents"))
     app = PyClawApp(builder=lambda: build_team(
@@ -232,11 +244,15 @@ def run_tui(args):
         allowed_tools=args.allowed_tools, ask=args.ask,
         disallowed_tools=args.disallowed_tools, base_tools=args.tools,
         use_team=args.use_team, agents_json=args.agents,
-        conversation_id=session_id),
+        conversation_id=session_id, worktree=args.worktree),
         session_id=session_id,
         resume=_cli_resume(args),
-        resume_from=resume_from, hook_events=hook_events)
+        resume_from=resume_from, hook_events=hook_events,
+        worktree=args.worktree)
     app.run()
+    if app._startup_error:
+        print(app._startup_error, file=sys.stderr)
+        sys.exit(1)
     if app._exit_note:
         print(app._exit_note)
 
@@ -313,6 +329,13 @@ def _add_session_args(target):
                              "name, each with description, prompt, tools, "
                              "model and permissionMode. Wins over the "
                              ".pyclaw/agents files.")
+    target.add_argument("--worktree", type=str, default=None, nargs='?',
+                        const='', metavar='NAME',
+                        help="Do this run in its own git worktree, created "
+                             "under .pyclaw/worktrees and switched into "
+                             "before the first turn. NAME is optional; without "
+                             "it the worktree is named after this "
+                             "conversation.")
 
 
 def _build_parser() -> argparse.ArgumentParser:

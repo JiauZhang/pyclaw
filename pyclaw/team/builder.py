@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import itertools
+import logging
 import os
 import uuid
 from pathlib import Path
 from typing import Optional
 
 from chatchat.team.team import Team
+from chatchat.team.worktrees import repository_root, sweep_worktrees
 from chatchat.tasks.cron_schedule import CronStore
 from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
@@ -27,6 +29,8 @@ from chatchat.knowledge.agent_memory import AgentMemory
 from chatchat.knowledge.skills import SkillRegistry
 
 _name_counter = itertools.count()
+
+logger = logging.getLogger(__name__)
 
 
 def configured_context_window() -> int:
@@ -203,6 +207,13 @@ def build_team(
 
     _roots_of(cwd)
     register_builtin_skills(team.skills, team)
+
+    # Only a worktree directory that someone left behind makes this cost
+    # anything: the check before it is one stat.
+    stale = sweep_worktrees(str(repository_root(cwd) or cwd))
+    if stale:
+        logger.info('swept %d stale worktree(s): %s', len(stale),
+                    ', '.join(path.name for path in stale))
 
     for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)

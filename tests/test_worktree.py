@@ -2,11 +2,13 @@
 away. Everything here runs against a real git repository."""
 import asyncio
 import os
+import re
 import subprocess
 from pathlib import Path
 
 import pytest
 
+from pyclaw import __main__
 from pyclaw.session import Session
 from pyclaw.session import store
 from pyclaw.team.builder import build_team
@@ -200,3 +202,64 @@ def test_backing_out_of_the_question_stays_in_the_worktree():
 
     session, screen = asyncio.run(scenario())
     assert session.left is None and screen == 'Screen'
+
+
+def _start_in(root, worktree, conversation='conv-start'):
+    """Run the terminal's own startup with --worktree and report what the
+    session ended up working in."""
+
+    async def scenario():
+        async with PyClawApp(
+                builder=lambda: build_team('agnes', 'agnes-2.5-flash',
+                                           cwd=str(root),
+                                           conversation_id=conversation),
+                session_id=conversation, worktree=worktree).run_test(
+                size=(120, 40)) as pilot:
+            app = pilot.app
+            for _ in range(20):
+                await pilot.pause(0.05)
+            return (app, app._team.worktree, app._startup_error,
+                    Path(app._team.tool_context.cwd))
+
+    return asyncio.run(scenario())
+
+
+def test_a_run_started_with_a_worktree_is_in_it_before_anything_reads(tmp_path):
+    root = _repo(tmp_path)
+    app, worktree, error, cwd = _start_in(root, 'aside', 'conv-started')
+    inside = root / '.pyclaw' / 'worktrees' / 'aside'
+
+    assert error == '' and worktree['name'] == 'aside'
+    assert cwd == inside
+    assert Path(os.getcwd()) == inside
+    assert app._team._pyclaw_gate.cwd == inside
+    assert store.load_worktree('conv-started')['path'] == inside
+
+
+def test_a_started_worktree_is_named_after_the_conversation_without_one(
+        tmp_path):
+    root = _repo(tmp_path)
+    app, worktree, error, _cwd = _start_in(root, '', 'conv-unnamed')
+    assert error == ''
+    assert re.fullmatch(r'[a-z]+-[a-z]+-[a-z]+', worktree['name'])
+
+
+def test_a_started_worktree_that_cannot_be_made_says_so_and_leaves(tmp_path):
+    root = _repo(tmp_path)
+    app, worktree, error, cwd = _start_in(root, '../outside', 'conv-bad')
+    assert worktree is None
+    assert 'not usable' in error or 'must not' in error
+    assert cwd == root
+    assert app._team._pyclaw_gate.cwd == root.resolve()
+
+
+def test_the_worktree_flag_is_refused_where_there_is_no_git(tmp_path, monkeypatch,
+                                                            capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(__main__, 'load_config',
+                        lambda: {'provider': 'p', 'model': 'm'})
+    args = __main__._build_parser().parse_args(['tui', '--worktree'])
+    with pytest.raises(SystemExit) as exit_info:
+        __main__.run_tui(args)
+    assert exit_info.value.code == 1
+    assert '--worktree needs a git repository' in capsys.readouterr().out
