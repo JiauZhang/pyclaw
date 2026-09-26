@@ -1,7 +1,7 @@
 import difflib
 from pathlib import Path
 
-from pyclaw.slash.session import (_handle_agents, _handle_branch,
+from pyclaw.slash.session import (_handle_agents, _handle_branch, _handle_debug,
                                   _handle_hooks, _handle_permissions,
                                   _handle_plan, _handle_rename,
                                   _handle_resume, _handle_rewind,
@@ -36,6 +36,8 @@ COMMANDS = [
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
+    {'name': 'debug', 'desc': 'Start recording every event and show where the '
+                              'log of this conversation is', 'hint': ''},
     {'name': 'context', 'desc': 'Show what the model is sent and how full the '
                                 'window is', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
@@ -209,6 +211,8 @@ async def handle_slash(text: str, session, session_key: str = '',
         return _handle_skills(session, arg)
     if cmd == 'hooks':
         return _handle_hooks(session, arg)
+    if cmd == 'debug':
+        return _handle_debug(session, arg)
     if cmd == 'status':
         return _status(session, session_key)
     if cmd == 'permissions':

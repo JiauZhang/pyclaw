@@ -21,9 +21,9 @@ from pyclaw.tools.bash import get_default_timeout_ms
 from pyclaw.usage_history import record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
-from .store import (_session_path, adopt_artifacts, append_conv,
-                    close_session_logger, history_dir, load_transcript,
-                    plan_file, save_transcript)
+from .store import (_session_path, append_conv, follow_conversation,
+                    adopt_artifacts, history_dir, load_transcript, plan_file,
+                    save_transcript)
 from pyclaw.team.builder import (_dispatch_event, checkpoints_enabled,
                                  configured_context_window)
 from pyclaw.permissions import parse_mode
@@ -79,7 +79,6 @@ def session_for(team_name) -> Optional['Session']:
 
 
 
-_session_loggers: dict[str, logging.Logger] = {}
 
 
 
@@ -129,6 +128,8 @@ class Session(HistoryMixin, ReadoutMixin):
         team.plan_path = plan_file(value)
         if self._gate is not None:
             self._gate.plan_file = team.plan_path
+        follow_conversation(value, level=logging.DEBUG if config.debug_on()
+                            else logging.INFO)
 
     def _adopt_history(self):
         """Start the snapshot store of this conversation, which after a clear,
@@ -442,4 +443,3 @@ class Session(HistoryMixin, ReadoutMixin):
     def remove_rule(self, rule: str) -> bool:
         gate = self._gate
         return gate.remove_rule(rule) if gate is not None else False
-        close_session_logger(self.conv_session_id)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,7 +14,7 @@ from pyclaw.permissions.rules import (BASH, _command_of,
                                      _local_settings_file,
                                      _path_rule,
                                      _read_rule_file, _rule_matches,
-                                     _user_settings_file)
+                                     _user_settings_file, matched_rule)
 from conippets import json
 
 from pyclaw.tools.paths import resolve
@@ -22,6 +23,8 @@ from pyclaw.tools.names import (AGENT, ASK_USER_QUESTION, CRON_CREATE,
                                CRON_DELETE, CRON_LIST, ENTER_PLAN_MODE,
                                EXIT_PLAN_MODE, SEND_MESSAGE, SKILL,
                                TASK_STOP, TEAM_CREATE, TEAM_DELETE)
+
+logger = logging.getLogger(__name__)
 
 AUTO_TOOLS = frozenset({AGENT, SEND_MESSAGE, TASK_STOP,
                         SKILL, TEAM_CREATE, TEAM_DELETE,
@@ -306,6 +309,14 @@ class PermissionController:
                         agent: str = '') -> bool | dict:
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
+        logger.info('permission %s %s mode=%s rule=%s', tool_name, decision,
+                    mode.value,
+                    matched_rule(self._deny if decision == 'deny' else
+                                 self._ask if decision == 'ask' else
+                                 self._allow,
+                                 tool_name, tool_input, self.cwd,
+                                 self.path_of(tool_name, tool_input),
+                                 every_part=decision == 'allow') or '-')
         if decision == 'allow':
             return True
         if decision == 'deny':

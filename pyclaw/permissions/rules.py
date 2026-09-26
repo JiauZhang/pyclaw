@@ -62,6 +62,17 @@ def _rule_matches(rules, tool_name: str, tool_input=None, cwd=None,
     return False
 
 
+def matched_rule(rules, tool_name: str, tool_input=None, cwd=None,
+                 target=None, every_part: bool = False) -> str:
+    """The rule that decided this, for the log line that has to explain a
+    permission answer without the user having to guess."""
+    for rule in rules:
+        if _rule_matches([rule], tool_name, tool_input, cwd, target,
+                         every_part):
+            return str(rule).strip()
+    return ''
+
+
 def _matches_pattern(pattern: str, target: str, cwd) -> bool:
     if pattern.startswith('./'):
         pattern = pattern[2:]

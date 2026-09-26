@@ -212,32 +212,41 @@ def save_transcript(session_id, messages) -> None:
     _write_records(path, _chained(payload, None))
 
 
-_session_loggers: dict[str, logging.Logger] = {}
+LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+CONVERSATION_LOG = "run.log"
+_conversation_handler: logging.FileHandler | None = None
 
 
-def session_logger(session_id) -> logging.Logger:
-    if session_id not in _session_loggers:
-        name = f"session.{session_id}"
-        log = logging.getLogger(name)
-        log.setLevel(logging.DEBUG)
-        log.propagate = False
-        handler = logging.FileHandler(
-            _session_dir(session_id) / "run.log", encoding="utf-8",
-        )
-        handler.setFormatter(logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(message)s"
-        ))
-        log.addHandler(handler)
-        _session_loggers[session_id] = log
-    return _session_loggers[session_id]
+class _ConversationFileHandler(logging.FileHandler):
+    """Opens the conversation log on its first record, and not a moment
+    earlier: a conversation that logs nothing leaves nothing behind."""
+
+    def _open(self):
+        Path(self.baseFilename).parent.mkdir(parents=True, exist_ok=True)
+        return super()._open()
 
 
-def close_session_logger(session_id) -> None:
-    log = _session_loggers.pop(session_id, None)
-    if log is not None:
-        for handler in list(log.handlers):
-            handler.close()
-            log.removeHandler(handler)
+def conversation_log(session_id) -> Path:
+    return _session_path(session_id) / CONVERSATION_LOG
+
+
+def follow_conversation(session_id, *, level: int = logging.INFO) -> Path:
+    """Send what this process logs into the conversation's own file too, so a
+    report can be read from the conversation it belongs to instead of being
+    picked out of one long shared log by timestamp."""
+    global _conversation_handler
+    path = conversation_log(session_id)
+    if _conversation_handler is not None:
+        root = logging.getLogger()
+        root.removeHandler(_conversation_handler)
+        _conversation_handler.close()
+        _conversation_handler = None
+    handler = _ConversationFileHandler(path, delay=True, encoding="utf-8")
+    handler.setLevel(level)
+    handler.setFormatter(logging.Formatter(LOG_FORMAT))
+    logging.getLogger().addHandler(handler)
+    _conversation_handler = handler
+    return path
 
 
 def record_meta(session_id, meta: dict) -> None:

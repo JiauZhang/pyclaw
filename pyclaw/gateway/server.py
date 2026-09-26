@@ -15,8 +15,8 @@ import uvicorn
 from pyclaw.version import __version__
 
 from ..session import Session
-from ..session.store import (append_conv, record_meta, resolve_session_id,
-                             session_logger)
+from ..session.store import (append_conv, follow_conversation, record_meta,
+                             resolve_session_id)
 from pyclaw.team.builder import IM_EXTRA, build_team
 from chatchat.hooks.events import (
     AGENT_REASON_START,
@@ -365,8 +365,8 @@ class GatewayServer:
             ):
                 await _adapter.save_known_contact(msg.sender_id)
                 session_id = resolve_session_id([_platform, str(msg.sender_id)])
-                s_log = session_logger(session_id)
-                s_log.info("IM '%s' received from %s: %s", _platform, msg.sender_id, msg.text)
+                follow_conversation(session_id)
+                logger.info("IM '%s' received from %s: %s", _platform, msg.sender_id, msg.text)
                 record_meta(session_id, {
                     "channel": "im",
                     "platform": _platform,
@@ -376,7 +376,7 @@ class GatewayServer:
                 key = (_platform, msg.sender_id, msg.text)
                 now = time.time()
                 if key in self._recent_im and now - self._recent_im[key] < 30:
-                    s_log.debug("Dropped duplicate IM message from %s", msg.sender_id)
+                    logger.debug("Dropped duplicate IM message from %s", msg.sender_id)
                     return
                 self._recent_im[key] = now
 
@@ -421,7 +421,7 @@ class GatewayServer:
                     self.runtime.increment_channel_messages(_adapter.channel_id)
                     self.runtime.increment_requests()
                 except Exception as exc:
-                    s_log.error("Channel '%s' handler error: %s", _platform, exc)
+                    logger.error("Channel '%s' handler error: %s", _platform, exc)
                     self.runtime.increment_errors()
                     friendly = _friendly_channel_error(exc)
                     err_out = OutboundMessage(text=friendly, reply_to=msg.id)

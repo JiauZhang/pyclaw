@@ -806,3 +806,33 @@ def test_the_export_names_itself_after_the_first_prompt(tmp_path):
     name = filename_for(session.transcript(),
                         when=datetime(2026, 5, 4, 9, 30, 12))
     assert name == '2026-05-04-093012-fix-the-parser-please.md'
+
+
+def test_debug_names_the_log_of_this_conversation(tmp_path, monkeypatch):
+    import asyncio
+    import logging
+
+    from pyclaw import slash
+    from pyclaw.session import Session, store as session_store
+    from chatchat.client import MockClient
+    from chatchat.team.team import Team
+
+    monkeypatch.delenv('PYCLAW_DEBUG', raising=False)
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+
+    async def answer(messages, tools=None, *, stream_cb=None):
+        return 'ok'
+
+    async def main():
+        team = Team('t1', client_factory=lambda inst, model=None:
+                    MockClient(handler=answer, model=model))
+        session = Session(team, session_id='dbg-conv')
+        out = await slash.handle_slash('/debug', session)
+        return out, logging.getLogger().handlers
+
+    out, handlers = asyncio.run(main())
+    import os
+    assert os.environ.get('PYCLAW_DEBUG') == '1'
+    assert str(tmp_path / 'dbg-conv' / 'run.log') in out
+    assert 'ERROR' in out
+    assert any(getattr(h, 'level', None) == logging.DEBUG for h in handlers)

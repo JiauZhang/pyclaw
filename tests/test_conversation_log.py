@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -10,9 +11,9 @@ from conippets import jsonl
 
 from pyclaw.session import store as session_store
 from pyclaw.session import Session as RealSession
-from pyclaw.session.store import (_session_dir, append_conv,
-                                  close_session_logger, record_meta,
-                                  resolve_session_id, session_logger)
+from pyclaw.session.store import (_session_dir, append_conv, conversation_log,
+                                  follow_conversation, record_meta,
+                                  resolve_session_id)
 from pyclaw.gateway.im import run_im_interaction
 
 
@@ -62,29 +63,39 @@ def test_record_meta_creates_and_updates(tmp_path):
     assert (tmp_path / "s1" / "meta.json").read_text(encoding="utf-8").endswith("\n")
 
 
-def test_session_logger_writes_run_log(tmp_path):
-    log = session_store.session_logger("s1")
-    log.info("agent started")
-    log.error("boom")
-    text = (tmp_path / "s1" / "run.log").read_text(encoding="utf-8")
-    assert "agent started" in text
-    assert "boom" in text
+def test_the_conversation_log_holds_what_this_conversation_did(tmp_path,
+                                                               monkeypatch):
+    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
+    path = session_store.follow_conversation('s1')
+    logging.getLogger('pyclaw.test').info('agent started')
+    logging.getLogger('pyclaw.test').error('boom')
+    text = path.read_text(encoding='utf-8')
+    assert 'agent started' in text
+    assert 'boom' in text
 
 
-def test_session_logger_is_stable():
-    a = session_store.session_logger("s1")
-    b = session_store.session_logger("s1")
-    assert a is b
+def test_following_a_conversation_moves_the_log_and_closes_the_old_one(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
+    first = session_store.follow_conversation('s1')
+    logging.getLogger('pyclaw.test').info('while on the first')
+    second = session_store.follow_conversation('s2')
+    assert first != second
+    logging.getLogger('pyclaw.test').info('only in the second')
+    assert 'only in the second' in second.read_text(encoding='utf-8')
+    assert 'only in the second' not in first.read_text(encoding='utf-8')
+    assert 'while on the first' in first.read_text(encoding='utf-8')
 
 
-def test_close_session_logger_removes_and_closes(tmp_path):
-    log = session_store.session_logger("s1")
-    assert log.handlers
-    session_store.close_session_logger("s1")
-    assert log.handlers == []
-    rebuilt = session_store.session_logger("s1")
-    assert rebuilt.handlers
-    assert rebuilt is log
+def test_a_quiet_conversation_leaves_no_log_behind(tmp_path, monkeypatch):
+    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
+    path = session_store.follow_conversation('quiet')
+    assert not path.exists()
+
+
+def test_a_conversation_log_is_a_file_of_its_own(tmp_path):
+    path = session_store.conversation_log('s9')
+    assert path == tmp_path / 's9' / 'run.log'
 
 
 def test_im_interaction_logs_user_and_assistant(tmp_path):

@@ -6,18 +6,15 @@ from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
 from pyclaw.session import Session
 from pyclaw.session import store as session_store
-from pyclaw.session.store import resolve_session_id
+from pyclaw.session.store import LOG_FORMAT as _LOG_FORMAT, resolve_session_id
 from pyclaw.team.builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
-from pyclaw.config import save as save_config
+from pyclaw.config import debug_on, save as save_config
 from pyclaw.cli import stop_server
 from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
 
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
-from pyclaw.session.store import resolve_session_id
-
-_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 _QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore",
                   "aiohttp", "urllib3", "websockets", "PIL")
@@ -28,6 +25,8 @@ def _level(name: str) -> int:
 
 
 def setup_logging(level: str = "INFO", *, console: bool = True):
+    """The file keeps everything once debug is on; without it the file holds
+    warnings, errors and decisions, which is what a report needs."""
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
 
@@ -47,7 +46,8 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
             log_dir / "pyclaw.log", maxBytes=5 * 1024 * 1024, backupCount=3,
             encoding="utf-8",
         )
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(logging.DEBUG if debug_on()
+                              else _level(level))
         file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
         root.addHandler(file_handler)
 
@@ -325,6 +325,8 @@ def _build_parser() -> argparse.ArgumentParser:
                              "with a payload validated against it.")
     parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    parser.add_argument("-d", "--debug", action="store_true",
+                        help="Log every streamed event to the conversation log")
     parser.add_argument("--permission-mode", type=str, default=None,
                         choices=["default", "acceptEdits", "plan"],
                         help="Session permission mode")
@@ -387,6 +389,8 @@ def _finalize_args(args) -> argparse.Namespace:
 def main():
     parser = _build_parser()
     args = _finalize_args(parser.parse_args())
+    if getattr(args, "debug", False):
+        os.environ["PYCLAW_DEBUG"] = "1"
 
     if args.version:
         print(__version__)

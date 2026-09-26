@@ -1838,3 +1838,18 @@ def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
     assert stored == ['Bash(git status:*)', 'Bash(git stash:*)']
     assert json.loads(saved.read_text(encoding='utf-8')) == {
         'permissions': {'allow': stored}}
+
+
+def test_a_permission_decision_says_which_rule_decided_it(tmp_path, caplog):
+    import logging
+
+    gate = PermissionController(mode='default', cwd=str(tmp_path),
+                                allow=['Bash(git status:*)'])
+    with caplog.at_level(logging.INFO, logger='pyclaw.permissions.gate'):
+        assert asyncio.run(gate.authorize('Bash', {'command': 'git status --short'}))
+        assert asyncio.run(gate.authorize('Bash', {'command': 'npm publish'})) is not None
+    lines = [record.message for record in caplog.records
+              if record.message.startswith('permission ')]
+    assert "permission Bash allow mode=default rule=Bash(git status:*)" in lines
+    assert any('permission Bash ask' in line and 'rule=-' in line
+               for line in lines)
