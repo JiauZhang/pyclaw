@@ -73,7 +73,28 @@ def matched_rule(rules, tool_name: str, tool_input=None, cwd=None,
     return ''
 
 
+def _covered(pattern: str, path: str) -> bool:
+    """Whether `path` is at or under `pattern`, which may end in /** or hold a
+    single-component wildcard. Both sides are absolute here, so a rule written
+    as an absolute path means that path and not something else below it."""
+    if pattern.endswith('/**'):
+        pattern = pattern[:-3]
+    pattern = pattern.rstrip('/')
+    if pattern in ('', '/'):
+        return True
+    if path == pattern or path.startswith(pattern + '/'):
+        return True
+    if '*' in pattern or '?' in pattern:
+        return fnmatch.fnmatch(path, pattern) or fnmatch.fnmatch(
+            path, pattern + '/*')
+    return False
+
+
 def _matches_pattern(pattern: str, target: str, cwd) -> bool:
+    raw_target = str(target).strip()
+    if pattern.startswith(('~', '/')):
+        absolute = os.path.abspath(os.path.expanduser(raw_target))
+        return _covered(os.path.abspath(os.path.expanduser(pattern)), absolute)
     if pattern.startswith('./'):
         pattern = pattern[2:]
     if pattern.endswith('/**'):
@@ -81,13 +102,13 @@ def _matches_pattern(pattern: str, target: str, cwd) -> bool:
     pattern = pattern.rstrip('/')
     if pattern in ('', '.'):
         return True
-    target = str(target).strip()
+    target = raw_target
     if target.startswith('./'):
         target = target[2:]
     try:
-        absolute = Path(target)
-        if absolute.is_absolute() and cwd is not None:
-            target = os.path.relpath(absolute, cwd)
+        path = Path(target)
+        if path.is_absolute() and cwd is not None:
+            target = os.path.relpath(path, cwd)
     except (OSError, ValueError):
         pass
     target = target.lstrip('/')

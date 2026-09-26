@@ -21,9 +21,8 @@ from pyclaw.tools import background
 from pyclaw.plugins import discover_tools
 from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
-from pyclaw.tools import tools as base_tools
-from pyclaw.permissions import PermissionController, PermissionMode, parse_mode
 from pyclaw.tools import BUILTIN_TOOLS
+from pyclaw.permissions import PermissionController, PermissionMode, parse_mode
 from chatchat.knowledge.agent_memory import AgentMemory
 from chatchat.knowledge.skills import SkillRegistry
 
@@ -39,7 +38,7 @@ def checkpoints_enabled() -> bool:
 
 def _resolve_tools(tools):
     if tools is None:
-        return list(base_tools) + discover_tools()
+        return list(BUILTIN_TOOLS) + discover_tools()
     return tools
 
 
@@ -189,6 +188,7 @@ def build_team(
         _roots_of(cwd)
 
     team._cwd_changed = _follow_worktree
+    team._skills_granted = gate.grant_rules
 
     def _plan_mode(mode):
         gate.mode = parse_mode(mode)

@@ -173,3 +173,9 @@ class ReadoutMixin:
     def dangerous_rules(self) -> list[str]:
         gate = self._gate
         return gate.dangerous_rules() if gate is not None else []
+
+    def grant_tools(self, rules) -> list[str]:
+        """Grant for the rest of this session what a skill or a setup command
+        said it needs. Returns what was actually let through."""
+        gate = self._gate
+        return gate.grant_rules(rules) if gate is not None else []

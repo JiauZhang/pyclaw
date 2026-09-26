@@ -22,8 +22,8 @@ from pyclaw.tools.paths import resolve
 from chatchat.runtime.structured import STRUCTURED_OUTPUT_TOOL
 from pyclaw.tools.names import (AGENT, ASK_USER_QUESTION, CRON_CREATE,
                                CRON_DELETE, CRON_LIST, ENTER_PLAN_MODE,
-                               EXIT_PLAN_MODE, SEND_MESSAGE, SKILL,
-                               TASK_STOP, TEAM_CREATE, TEAM_DELETE)
+                               EXIT_PLAN_MODE, EXIT_WORKTREE, SEND_MESSAGE,
+                               SKILL, TASK_STOP, TEAM_CREATE, TEAM_DELETE)
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,14 @@ AUTO_TOOLS = frozenset({AGENT, SEND_MESSAGE, TASK_STOP,
                         STRUCTURED_OUTPUT_TOOL, ASK_USER_QUESTION,
                         ENTER_PLAN_MODE, EXIT_PLAN_MODE,
                         CRON_CREATE, CRON_LIST, CRON_DELETE})
+
+def is_destructive(tool_name: str, tool_input) -> bool:
+    """Whether this particular call throws work away for good. Worth saying
+    only where the tool cannot be undone afterwards — an edit the user can put
+    back is not the same as deleting a branch with its commits."""
+    if tool_name != EXIT_WORKTREE or not isinstance(tool_input, dict):
+        return False
+    return str(tool_input.get('action') or '') == 'remove'
 
 REJECT_MESSAGE = (
     "The user refused this tool call, so nothing ran; a refused edit left the "
@@ -120,6 +128,25 @@ class PermissionController:
     def settings_files(self) -> dict:
         """Where the rules come from, so a report can say which file to edit."""
         return dict(self._layer_files)
+
+    def grant_rules(self, rules) -> list[str]:
+        """Let through what a skill or a command declared it needs, for the
+        rest of this session. Nothing is written to a settings file, a granted
+        rule is listed like any other so it is not a hidden allowance, and a
+        rule that would hand over the machine is refused all the same."""
+        granted = []
+        for rule in rules or ():
+            rule = str(rule).strip()
+            if not rule or rule in self._allow:
+                continue
+            if is_dangerous_rule(rule):
+                logger.warning('Not granting %s: it stands in front of every '
+                               'other check', rule)
+                continue
+            self._allow.append(rule)
+            self._layers.append(('allow', rule, 'session'))
+            granted.append(rule)
+        return granted
 
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)

@@ -11,9 +11,9 @@ from textual.widgets import Input, Static
 from pyclaw.permissions import PermissionChoice
 from pyclaw.tools.names import BASH
 from pyclaw.tui import keys
-from pyclaw.tui.theme import (ACCEPT_FEEDBACK_HINT, BULLET, OPTION_PAGE_SIZE,
-                              POINTER, REJECT_FEEDBACK_HINT,
-                              RULE_FEEDBACK_HINT)
+from pyclaw.tui.theme import (ACCEPT_FEEDBACK_HINT, BULLET, DESTRUCTIVE_NOTE,
+                              OPTION_PAGE_SIZE, POINTER,
+                              REJECT_FEEDBACK_HINT, RULE_FEEDBACK_HINT)
 from pyclaw.tui.toolui import tool_args, tool_label
 
 
@@ -54,7 +54,7 @@ class _PermissionPrompt(Vertical):
 
     def __init__(self, tool_name: str, tool_input, cwd: str = ".",
                  rememberable: bool = True, rules: list[str] | None = None,
-                 agent: str = "", **kw):
+                 agent: str = "", destructive: bool = False, **kw):
         super().__init__(classes="permission", **kw)
         self._tool = tool_name
         self._input = tool_input
@@ -63,6 +63,7 @@ class _PermissionPrompt(Vertical):
         self._rules = list(rules or [])
         self._rule = self._rules[0] if self._rules else ""
         self._agent = agent
+        self._destructive = destructive
         self._focused = 0
         self._open_accept = False
         self._open_reject = False
@@ -144,7 +145,8 @@ class _PermissionPrompt(Vertical):
             intent = str(self._input.get('description') or '').strip()
         if intent:
             lines.append(f"  [dim]{escape(intent)}[/]")
-        lines.append("  Allow this call?")
+        lines.append(f"  [red]{escape(DESTRUCTIVE_NOTE)}[/]"
+                     if self._destructive else "  Allow this call?")
         for index, option in enumerate(options):
             marker = POINTER if index == self._focused else ' '
             row = escape(f"  {marker} {index + 1}. {option.label}")

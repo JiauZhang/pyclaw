@@ -1,5 +1,7 @@
 from chatchat.runtime.thinking import Thinking
 
+from pyclaw import config as config_module
+
 # Session setup commands: how much the model may reason, and the status line.
 EFFORT_HINT = ('effort takes low, medium, high, or auto to leave it to the '
                'model')
@@ -32,8 +34,12 @@ async def _handle_effort(session, arg: str) -> str:
 
 STATUSLINE_PROMPT = 'Set up my status line from my shell PS1 configuration'
 
-def _handle_statusline(arg: str) -> tuple:
+def _handle_statusline(session, arg: str) -> tuple:
+    """The setup agent reads shell config anywhere under home and writes one
+    settings file, so those are let through for the rest of this session."""
     prompt = arg or STATUSLINE_PROMPT
+    session.grant_tools(('Read(~/**)',
+                         f'Edit({config_module.__config_file__})'))
     return ('Setting up the status line…',
             f'Create an agent with the Agent tool, subagent_type '
             f'"statusline-setup" and the prompt "{prompt}"')

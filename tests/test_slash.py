@@ -46,8 +46,13 @@ def _fake_session(**kwargs):
         def __init__(self, **kw):
             self.ended = []
             self.set = []
+            self.granted = []
             for k, v in kwargs.items():
                 setattr(self, k, v)
+
+        def grant_tools(self, rules):
+            self.granted.append(tuple(rules))
+            return list(self.granted[-1])
 
         def set_thinking(self, thinking):
             self.thinking = thinking
@@ -268,15 +273,19 @@ def test_mode_switch_commands_removed():
 
 
 def test_statusline_command_queues_the_setup_agent():
-    info, prompt = asyncio.run(_call("/statusline", _Bare()))
+    session = _fake_session()
+    info, prompt = asyncio.run(_call("/statusline", session))
     assert isinstance(info, str) and info
     assert "statusline-setup" in prompt
     assert "Set up my status line from my shell PS1 configuration" in prompt
     assert "/statusline" in slash.HELP
+    assert session.granted[0] == ('Read(~/**)',) + session.granted[0][1:]
+    assert str(session.granted[0][1]).startswith('Edit(')
 
 
 def test_statusline_command_forwards_the_user_instructions():
-    _, prompt = asyncio.run(_call("/statusline show the model in green", _Bare()))
+    _, prompt = asyncio.run(_call("/statusline show the model in green",
+                                  _fake_session()))
     assert "show the model in green" in prompt
     assert "statusline-setup" in prompt
     assert "Configure my statusLine" not in prompt

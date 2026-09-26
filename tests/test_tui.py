@@ -5601,3 +5601,37 @@ def test_the_resume_picker_lists_named_conversations_and_continues_one(
 
     rendered = asyncio.run(scenario())
     assert 'Continuing "the parser thread"' in rendered
+
+
+def test_a_call_that_throws_work_away_says_so_on_the_card():
+    from pyclaw.tui.theme import DESTRUCTIVE_NOTE
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            removing = _PermissionPrompt("ExitWorktree",
+                                         {"action": "remove", "name": "x"},
+                                         rememberable=False, destructive=True)
+            await app._conv().mount(removing)
+            await pilot.pause()
+            text = str(removing.query_one("#perm-body", Static).content)
+            assert DESTRUCTIVE_NOTE in text and "Allow this call?" not in text
+
+            keeping = _PermissionPrompt("ExitWorktree",
+                                        {"action": "keep", "name": "x"},
+                                        rememberable=False, destructive=False)
+            await app._conv().mount(keeping)
+            await pilot.pause()
+            plain = str(keeping.query_one("#perm-body", Static).content)
+            assert "Allow this call?" in plain and DESTRUCTIVE_NOTE not in plain
+
+    asyncio.run(scenario())
+
+
+def test_asking_to_remove_a_worktree_is_marked_and_keeping_is_not():
+    from pyclaw.permissions import is_destructive
+
+    assert is_destructive("ExitWorktree", {"action": "remove"}) is True
+    assert is_destructive("ExitWorktree", {"action": "keep"}) is False
+    assert is_destructive("EnterWorktree", {"name": "x"}) is False

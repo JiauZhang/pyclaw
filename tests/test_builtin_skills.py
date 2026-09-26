@@ -108,3 +108,34 @@ def test_skills_lists_the_built_in_one_with_its_own_terms(tmp_path, monkeypatch)
     assert 'debug (builtin)' in skills
     assert 'only when you ask for it' in skills
     assert '/debug [what went wrong]' in skills
+
+
+def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(
+        tmp_path, monkeypatch):
+    from chatchat.knowledge.skills import Skill
+    from chatchat.tools import tools as team_tools
+
+    _session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-grants')
+    team.skills.register(Skill(name='changelog', description='write notes',
+                               body_text='summarise the commits',
+                               allowed_tools=('Bash(git log:*)',)))
+    gate = team._pyclaw_gate
+    assert gate.decide('Bash', {'command': 'git log -3'}) == 'allow'
+    assert gate.decide('Bash', {'command': 'git rebase -i HEAD~3'}) == 'ask'
+    asyncio.run(team_tools.use_skill(team, team.lead, {'skill': 'changelog'}))
+    assert ('allow', 'Bash(git log:*)', 'session') in gate.rule_listing()
+    assert gate.decide('Bash', {'command': 'git rebase -i HEAD~3'}) == 'ask'
+
+
+def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path,
+                                                               monkeypatch):
+    import os
+
+    session, team, _reply = _opened(tmp_path, monkeypatch, 'conv-statusline')
+    gate = team._pyclaw_gate
+    config = os.path.expanduser('~/.pyclaw/config.json')
+    assert gate.decide('Read', {'file_path': os.path.expanduser('~/.zshrc')}) == 'ask'
+    asyncio.run(handle_slash('/statusline make it show the branch', session))
+    assert gate.decide('Read', {'file_path': os.path.expanduser('~/.zshrc')}) == 'allow'
+    assert gate.decide('Edit', {'file_path': config}) == 'allow'
+    assert gate.decide('Edit', {'file_path': os.path.expanduser('~/.bashrc')}) == 'ask'

@@ -240,6 +240,6 @@ async def handle_slash(text: str, session, session_key: str = '',
     if cmd == 'context':
         return _context(session, arg)
     if cmd == 'statusline':
-        return _handle_statusline(arg)
+        return _handle_statusline(session, arg)
 
     return (f'Unknown command: /{cmd}.\n\n{HELP}')

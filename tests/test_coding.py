@@ -1,4 +1,5 @@
 import asyncio
+import os
 import re
 import tempfile
 import time
@@ -212,7 +213,7 @@ def test_decide_matrix():
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.decide("Write", {"file_path": "../x"}) == "ask"
         assert g.decide("Read", {"file_path": "../x"}) == "ask"
-        assert g.decide("datetime", {}) == "ask"
+        assert g.decide("something-not-a-tool", {}) == "ask"
 
         plan = PermissionController(mode="plan", cwd=d, tools=BUILTIN_TOOLS)
         assert plan.decide("Edit", {"file_path": "a.txt"}) == "deny"
@@ -1901,3 +1902,65 @@ def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(
     assert marked == ['  [allow] Bash(python:*)  (cli)   '
                       '\u2190 lets the model run anything']
     assert 'without being looked at' in out
+
+
+def test_a_rule_written_for_home_or_an_absolute_path_reaches_an_absolute_target():
+    from pyclaw.permissions.rules import _matches_pattern
+
+    home = os.path.expanduser('~')
+    assert _matches_pattern('~/**', f'{home}/.zshrc', '/somewhere/project')
+    assert _matches_pattern('~/.pyclaw/config.json',
+                            f'{home}/.pyclaw/config.json', '/work')
+    assert not _matches_pattern('~/**', '/etc/passwd', '/work')
+    assert _matches_pattern('/tmp/other', '/tmp/other/a.py', '/work')
+    assert not _matches_pattern('/tmp/other', '/tmp/elsewhere/a.py', '/work')
+    assert _matches_pattern('./src/**', 'src/a/b.py', '/work')
+    assert _matches_pattern('src', '/work/src/a.py', '/work')
+    assert not _matches_pattern('./src/**', '../outside/a.py', '/work')
+
+
+def test_a_granted_rule_lets_through_and_is_listed_as_a_session_rule(tmp_path):
+    from pyclaw.permissions import PermissionController
+
+    home = os.path.expanduser('~')
+    gate = PermissionController(mode='default', cwd=tmp_path,
+                                tools=BUILTIN_TOOLS)
+    assert gate.decide('Read', {'file_path': f'{home}/.zshrc'}) == 'ask'
+    granted = gate.grant_rules(('Read(~/**)',))
+    assert granted == ['Read(~/**)']
+    assert gate.decide('Read', {'file_path': f'{home}/.zshrc'}) == 'allow'
+    assert ('allow', 'Read(~/**)', 'session') in gate.rule_listing()
+
+
+def test_a_granted_rule_still_cannot_hand_over_the_machine(tmp_path):
+    from pyclaw.permissions import PermissionController
+
+    gate = PermissionController(mode='default', cwd=tmp_path,
+                                tools=BUILTIN_TOOLS)
+    assert gate.grant_rules(('Bash(python:*)', 'Agent')) == []
+    assert gate.decide('Bash', {'command': 'python -c import os'}) == 'ask'
+    assert not [entry for entry in gate.rule_listing()
+                if entry[2] == 'session']
+
+
+def test_a_granted_edit_reaches_one_file_and_no_other(tmp_path):
+    from pyclaw.permissions import PermissionController
+
+    config = os.path.expanduser('~/.pyclaw/config.json')
+    gate = PermissionController(mode='default', cwd=tmp_path,
+                                tools=BUILTIN_TOOLS)
+    gate.grant_rules((f'Edit({config})',))
+    assert gate.decide('Edit', {'file_path': config}) == 'allow'
+    assert gate.decide('Edit',
+                       {'file_path': os.path.expanduser('~/.bashrc')}) == 'ask'
+
+
+def test_only_a_call_that_throws_work_away_is_marked_destructive():
+    from pyclaw.permissions import is_destructive
+
+    assert is_destructive('ExitWorktree', {'action': 'remove'}) is True
+    assert is_destructive('ExitWorktree', {'action': 'keep'}) is False
+    assert is_destructive('ExitWorktree', {}) is False
+    assert is_destructive('ExitWorktree', 'remove') is False
+    assert is_destructive('EnterWorktree', {'name': 'x'}) is False
+    assert is_destructive('Edit', {'file_path': 'a.py'}) is False

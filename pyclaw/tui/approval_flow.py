@@ -6,7 +6,7 @@ import logging
 from textual.widgets import Input
 
 from pyclaw.permissions import next_mode
-from pyclaw.permissions import PermissionChoice
+from pyclaw.permissions import PermissionChoice, is_destructive
 from pyclaw.tui.permission_card import _Approval, _PermissionPrompt
 from pyclaw.tui.question_card import _QuestionPrompt
 from pyclaw.tui.components import _ToolBlock
@@ -24,7 +24,8 @@ class ApprovalFlowMixin:
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
                                    rememberable=bool(rules)
                                    or tool_name != BASH,
-                                   rules=rules, agent=self._badge(agent))
+                                   rules=rules, agent=self._badge(agent),
+                                   destructive=is_destructive(tool_name, inp))
         block = self._tools.get(tool_use_id) if tool_use_id else None
         approval = _Approval(tool_use_id, tool_name, prompt, block,
                              asyncio.get_running_loop().create_future())
