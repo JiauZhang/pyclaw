@@ -20,10 +20,11 @@ class ApprovalFlowMixin:
                               *, tool_use_id: str = '',
                               agent: str | None = None) -> PermissionChoice:
         inp = tool_input if isinstance(tool_input, dict) else {}
-        rule = self._session.permission_rule(tool_name, inp)
+        rules = self._session.suggested_rules(tool_name, inp)
         prompt = _PermissionPrompt(tool_name, inp, cwd=self._cwd(),
-                                   rememberable=bool(rule) or tool_name != BASH,
-                                   rule=rule, agent=self._badge(agent))
+                                   rememberable=bool(rules)
+                                   or tool_name != BASH,
+                                   rules=rules, agent=self._badge(agent))
         block = self._tools.get(tool_use_id) if tool_use_id else None
         approval = _Approval(tool_use_id, tool_name, prompt, block,
                              asyncio.get_running_loop().create_future())

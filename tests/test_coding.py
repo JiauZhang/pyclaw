@@ -15,9 +15,10 @@ from pyclaw.session import Session
 from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
-from pyclaw.permissions.bash_rules import (bash_rule_matches,
+from pyclaw.permissions.bash_rules import (bash_allowed_by, bash_rule, bash_rule_matches,
                                            is_dangerous_removal, is_read_only,
-                                           parse_bash_rule, suggested_rule)
+                                           parse_bash_rule, rule_content,
+                                           suggested_rule, suggested_rules)
 from pyclaw.permissions.gate import (REJECT_MESSAGE,
                                      REJECT_MESSAGE_WITH_REASON_PREFIX,
                                      SUBAGENT_REJECT_MESSAGE,
@@ -1019,9 +1020,11 @@ def test_suggested_rule_prefers_two_word_prefix():
 def test_suggested_rule_exact_fallback():
     assert suggested_rule('ls -la') == 'Bash(ls -la)'
     assert suggested_rule('python3 x.py') == 'Bash(python3 x.py)'
-    assert suggested_rule('mkdir a && mkdir b') == 'Bash(mkdir a && mkdir b)'
+    assert suggested_rules('mkdir a && mkdir b') == ['Bash(mkdir a:*)',
+                                                      'Bash(mkdir b:*)']
     assert bash_rule_matches('Bash(ls -la)', 'ls -la')
-    assert bash_rule_matches('Bash(mkdir a && mkdir b)', 'mkdir a && mkdir b')
+    assert bash_allowed_by(['Bash(mkdir a:*)', 'Bash(mkdir b:*)'],
+                           'mkdir a && mkdir b')
 
 
 def test_suggested_rule_refuses_risky_commands():
@@ -1724,3 +1727,100 @@ def test_outside_a_repository_the_diff_lists_what_this_session_touched(
     assert view['kind'] == 'session'
     assert view['files'] == ['notes.md']
     assert '+1 -0' in view['text']
+
+
+COMPOUND_FROM_A_REAL_SESSION = [
+    'find pyclaw tests -name "*.py" | head -80',
+    'black conippets/shell.py conippets/git.py && git diff --stat',
+    'sed -n 80,140p conippets/git.py; echo ---; grep -n "def \\|env" conippets/shell.py',
+    'pytest -q 2>&1 | tail -2',
+    'git commit -am x && git push',
+    'git status --short && git stash list | head',
+]
+
+
+def test_a_saved_rule_still_covers_the_command_it_came_from():
+    """The measured defect: a rule written from a real command failed to match
+    that very command, so the same approval was asked for again."""
+    for command in COMPOUND_FROM_A_REAL_SESSION:
+        rules = suggested_rules(command)
+        assert rules, command
+        assert bash_allowed_by(rules, command), (command, rules)
+
+
+def test_a_heredoc_body_is_never_saved_as_a_rule():
+    assert suggested_rules("python3 - <<'EOF'\nprint(1)\nEOF") == []
+    assert suggested_rules('black a.py <<EOF\nx\nEOF') == []
+
+
+def test_a_quoted_argument_survives_into_the_rule():
+    rules = suggested_rules('grep -rn "*.py" src | head -5')
+    assert rules[0] == 'Bash(grep -rn "*.py" src)'
+    assert rule_content(rules[0]) == 'grep -rn "*.py" src'
+
+
+def test_a_rule_with_parentheses_in_it_round_trips():
+    rule = bash_rule('python3 -c "print((1))"')
+    assert rule == 'Bash(python3 -c "print\\(\\(1\\)\\)")'
+    assert rule_content(rule) == 'python3 -c "print((1))"'
+    assert bash_rule_matches(rule, 'python3 -c "print((1))"')
+
+
+def test_every_part_of_a_compound_command_must_be_covered_to_allow_it():
+    assert bash_allowed_by(['Bash(git status:*)', 'Bash(git stash:*)'],
+                           'git status --short && git stash list')
+    assert not bash_allowed_by(['Bash(git status:*)'],
+                               'git status --short && git stash list')
+    assert not bash_allowed_by(['Bash(git status:*)', 'Bash(git stash:*)'],
+                               'git status --short && git stash list | curl x')
+
+
+def test_a_deny_rule_catches_a_denied_part_of_a_compound_command(tmp_path):
+    gate = PermissionController(mode='default', cwd=str(tmp_path),
+                                deny=['Bash(rm:*)'])
+    assert gate.decide('Bash', {'command': 'echo hi && rm -rf build'}) == 'deny'
+    assert gate.decide('Bash', {'command': 'echo hi'}) == 'allow'
+
+
+def test_only_five_rules_are_written_from_one_wide_command():
+    command = ' && '.join(f'tool{i} sub{i}' for i in range(9))
+    assert len(suggested_rules(command)) == 5
+
+
+def test_a_command_that_cannot_be_described_offers_no_rule():
+    for command in ['rm -rf /', 'echo $(whoami)', 'cat <(date)',
+                    'find . -name *.py']:
+        assert suggested_rules(command) == [], command
+
+
+def test_an_exact_rule_keeps_the_whole_command_not_its_head():
+    rules = suggested_rules('cp a.txt > /dev/null && rm -rf build')
+    assert 'Bash(cp a.txt > /dev/null)' in rules
+    assert 'Bash(rm -rf build)' in rules
+    assert bash_allowed_by(rules, 'cp a.txt > /dev/null && rm -rf build')
+
+
+def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
+    from pyclaw.session import Session
+    from chatchat.client import MockClient
+    from chatchat.team.team import Team
+
+    saved = tmp_path / 'settings.local.json'
+    monkeypatch.setattr(perm, '_local_settings_file', lambda cwd: saved)
+
+    async def answer(messages, tools=None, *, stream_cb=None):
+        return 'ok'
+
+    async def main():
+        team = Team('t1', client_factory=lambda inst, model=None:
+                    MockClient(handler=answer, model=model))
+        gate = PermissionController(mode='default', cwd=str(tmp_path))
+        session = Session(team, session_id='multi-rule')
+        session._gate = gate
+        return gate.remember_allow(
+            'Bash', {'command': 'git status --short && git stash list'})
+
+    stored = asyncio.run(main())
+    assert stored == ['Bash(git status:*)', 'Bash(git stash:*)']
+    assert json.loads(saved.read_text(encoding='utf-8')) == {
+        'permissions': {'allow': stored}}

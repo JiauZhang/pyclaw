@@ -2401,7 +2401,7 @@ def test_permission_card_drops_remember_option_for_dangerous_command():
             assert locked._rememberable is False
 
             normal = _PermissionPrompt("Edit", "a.txt", rememberable=True,
-                                       rule="Edit")
+                                       rules=["Edit"])
             await app._conv().mount(normal)
             await pilot.pause()
             text = str(normal.query_one("#perm-body", Static).content)
@@ -2418,7 +2418,7 @@ def test_the_permission_card_holds_no_rows_beyond_its_own_text():
             await pilot.pause()
             prompt = _PermissionPrompt("Bash", {"command": "git commit -m x"},
                                        rememberable=True,
-                                       rule="Bash(git commit:*)")
+                                       rules=["Bash(git commit:*)"])
             await app._conv().mount(prompt)
             await pilot.pause()
             body = prompt.query_one("#perm-body", Static)
@@ -2437,7 +2437,7 @@ def test_focusing_the_remember_option_keeps_the_rule_row_shut():
             await pilot.pause()
             prompt = _PermissionPrompt("Bash", {"command": "git commit -m x"},
                                        rememberable=True,
-                                       rule="Bash(git commit:*)")
+                                       rules=["Bash(git commit:*)"])
             await app._conv().mount(prompt)
             await pilot.pause()
             rule = prompt.query_one("#perm-rule", Input)
@@ -5535,3 +5535,18 @@ def test_gated_actions_stop_while_a_modal_overlay_owns_focus():
             assert app.check_action('prompt_next', ()) is True
 
     asyncio.run(scenario())
+
+
+def test_a_wide_command_names_every_rule_it_would_save():
+    prompt = _PermissionPrompt(
+        'Bash', {'command': 'a && b'},
+        rules=['Bash(a run:*)', 'Bash(b run:*)', 'Bash(c run:*)',
+               'Bash(d run:*)'])
+    assert prompt._remember_label() == (
+        'Yes, and stop asking about: Bash(a run:*), Bash(b run:*), '
+        'Bash(c run:*) and 1 more')
+    single = _PermissionPrompt('Bash', {'command': 'git status'},
+                               rules=['Bash(git status:*)'])
+    assert single._remember_label() == (
+        'Yes, and stop asking about: Bash(git status:*)')
+    assert single._rule == 'Bash(git status:*)'

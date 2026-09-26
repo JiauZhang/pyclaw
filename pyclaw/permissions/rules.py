@@ -6,7 +6,8 @@ from pathlib import Path
 
 from conippets import json
 
-from pyclaw.permissions.bash_rules import bash_rule_matches
+from pyclaw.permissions.bash_rules import (
+    bash_allowed_by, bash_covered_by, rule_content, _rule_name)
 
 from pyclaw.home import pyclaw_home
 from pyclaw.tools.names import BASH
@@ -34,24 +35,29 @@ def split_rules(text: str) -> list[str]:
             current += char
     out.append(current)
     return [item.strip() for item in out if item.strip()]
-def _rule_matches(rules, tool_name: str, tool_input=None,
-                  env_all: bool = False, cwd=None, target=None) -> bool:
+def _rule_matches(rules, tool_name: str, tool_input=None, cwd=None,
+                  target=None, every_part: bool = False) -> bool:
+    """`every_part` is the allow question — is each part of this command
+    covered — while the default is the deny question: does any part fall under
+    a rule. The two differ so that one unsafe part cannot slip through inside
+    a command the user already allowed."""
     if not rules:
         return False
     command = _command_of(tool_input) if tool_name == BASH else ''
+    if tool_name == BASH:
+        mine = [rule for rule in rules if _rule_name(rule) == BASH]
+        if not command or not mine:
+            return any(not rule_content(rule) for rule in rules)
+        return (bash_allowed_by(mine, command) if every_part
+                else bash_covered_by(mine, command))
     for rule in rules:
-        name, _, arg = str(rule).partition('(')
-        if name.strip() != tool_name:
+        if _rule_name(rule) != tool_name:
             continue
-        if not arg:
+        content = rule_content(rule)
+        if not content:
             return True
-        if tool_name == BASH:
-            if command and bash_rule_matches(arg.rstrip(')'), command,
-                                            env_all):
-                return True
-            continue
         if target and cwd is not None \
-                and _matches_pattern(arg.rstrip(')'), target, cwd):
+                and _matches_pattern(content, target, cwd):
             return True
     return False
 

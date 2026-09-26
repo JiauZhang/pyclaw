@@ -244,10 +244,10 @@ class Session(HistoryMixin, ReadoutMixin):
     def apply_snapshot_update(self, agent_type: str, scope: str) -> str:
         return self._team.agent_memory.apply_snapshot(agent_type, scope)
 
-    def permission_rule(self, tool_name: str, tool_input) -> str:
+    def suggested_rules(self, tool_name: str, tool_input) -> list[str]:
         if self._gate is None:
-            return ''
-        return self._gate.suggested_rule(tool_name, tool_input) or ''
+            return []
+        return self._gate.suggested_rules(tool_name, tool_input)
 
     def submit(self, text: str, *, cancelable_tools: tuple = ()):
         self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)

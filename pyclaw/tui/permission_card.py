@@ -53,14 +53,15 @@ class _PermissionPrompt(Vertical):
          for index in range(1, 10)]
 
     def __init__(self, tool_name: str, tool_input, cwd: str = ".",
-                 rememberable: bool = True, rule: str = "", agent: str = "",
-                 **kw):
+                 rememberable: bool = True, rules: list[str] | None = None,
+                 agent: str = "", **kw):
         super().__init__(classes="permission", **kw)
         self._tool = tool_name
         self._input = tool_input
         self._cwd = cwd
         self._rememberable = rememberable
-        self._rule = rule
+        self._rules = list(rules or [])
+        self._rule = self._rules[0] if self._rules else ""
         self._agent = agent
         self._focused = 0
         self._open_accept = False
@@ -88,16 +89,22 @@ class _PermissionPrompt(Vertical):
     def _options(self) -> list[_PermOption]:
         options = [_PermOption("approved", "Yes", "accept")]
         if self._rememberable:
-            if self._tool == BASH and self._rule:
+            if self._tool == BASH and self._rules:
                 options.append(_PermOption(
-                    "dont_ask",
-                    f"Yes, and stop asking about: {self._rule}", "rule"))
+                    "dont_ask", self._remember_label(), "rule"))
             else:
                 options.append(_PermOption(
                     "dont_ask",
                     f"Yes, always allow {self._tool} in {self._cwd}", ""))
         options.append(_PermOption("denied", "No", "reject"))
         return options
+
+    def _remember_label(self) -> str:
+        listed = ', '.join(self._rules[:3])
+        extra = len(self._rules) - 3
+        if extra > 0:
+            listed += f' and {extra} more'
+        return f'Yes, and stop asking about: {listed}'
 
     def _row_field(self, option: _PermOption) -> Input | None:
         if option.feedback == "rule" and self._open_rule:

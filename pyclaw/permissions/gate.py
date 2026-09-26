@@ -7,7 +7,7 @@ from pathlib import Path
 from pyclaw.permissions.bash_rules import (is_dangerous_removal,
                                           is_read_only,
                                           is_workspace_edit_command,
-                                          suggested_rule)
+                                          suggested_rules)
 from pyclaw.permissions.modes import PermissionMode, parse_mode
 from pyclaw.permissions.rules import (BASH, _command_of,
                                      _local_settings_file,
@@ -170,26 +170,29 @@ class PermissionController:
         value = tool.get_path(tool_input)
         return str(value) if value else None
 
-    def suggested_rule(self, tool_name: str, tool_input) -> str | None:
+    def suggested_rules(self, tool_name: str, tool_input) -> list[str]:
         if tool_name == BASH:
-            return suggested_rule(_command_of(tool_input))
-        return _path_rule(tool_name, self.path_of(tool_name, tool_input),
+            return suggested_rules(_command_of(tool_input))
+        rule = _path_rule(tool_name, self.path_of(tool_name, tool_input),
                           self.cwd)
+        return [rule] if rule else []
+
+    def suggested_rule(self, tool_name: str, tool_input) -> str | None:
+        rules = self.suggested_rules(tool_name, tool_input)
+        return rules[0] if rules else None
 
     def remember_allow(self, tool_name: str, tool_input=None, rule=None):
-        if rule is None:
-            rule = self.suggested_rule(tool_name, tool_input)
-            if tool_name == BASH:
-                command = _command_of(tool_input)
-                if not command:
-                    return None
-                rule = rule or f'Bash({" ".join(command.split())})'
-            rule = rule or tool_name
-        if rule not in self._allow:
-            self._allow.append(rule)
-            self._layers.append(('allow', rule, 'session'))
-        self._save_local_rule(rule)
-        return rule
+        rules = [rule] if rule else self.suggested_rules(tool_name, tool_input)
+        if tool_name != BASH and not rules:
+            rules = [tool_name]
+        stored = []
+        for one in rules:
+            if one not in self._allow:
+                self._allow.append(one)
+                self._layers.append(('allow', one, 'session'))
+            self._save_local_rule(one)
+            stored.append(one)
+        return stored
 
     def _in_workspace(self, tool_name: str, input) -> bool:
         target = self.path_of(tool_name, input)
@@ -197,7 +200,7 @@ class PermissionController:
 
     def _rememberable(self, tool_name: str, tool_input) -> bool:
         if tool_name == BASH:
-            return suggested_rule(_command_of(tool_input)) is not None
+            return bool(suggested_rules(_command_of(tool_input)))
         return True
 
     def _effective_mode(self, mode) -> PermissionMode:
@@ -211,7 +214,7 @@ class PermissionController:
         command = _command_of(tool_input)
         if is_dangerous_removal(command):
             return 'ask'
-        if _rule_matches(self._allow, BASH, tool_input):
+        if _rule_matches(self._allow, BASH, tool_input, every_part=True):
             return 'allow'
         if mode is PermissionMode.accept_edits \
                 and is_workspace_edit_command(command):
@@ -222,13 +225,10 @@ class PermissionController:
 
     def decide(self, tool_name: str, tool_input, mode=None) -> str:
         mode = self._effective_mode(mode)
-        env_all = tool_name == BASH
         target = self.path_of(tool_name, tool_input)
-        if _rule_matches(self._deny, tool_name, tool_input, env_all, self.cwd,
-                         target):
+        if _rule_matches(self._deny, tool_name, tool_input, self.cwd, target):
             return 'deny'
-        if _rule_matches(self._ask, tool_name, tool_input, env_all, self.cwd,
-                         target):
+        if _rule_matches(self._ask, tool_name, tool_input, self.cwd, target):
             return 'ask'
         if mode is PermissionMode.bypass_permissions:
             return 'allow'
