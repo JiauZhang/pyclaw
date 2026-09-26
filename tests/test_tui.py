@@ -31,6 +31,7 @@ from pyclaw.tui import status_rows, turn_flow
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
 from pyclaw.tui.permission_card import _PermissionPrompt
+from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import (hide_row, leader_row, status_text,
@@ -1251,28 +1252,7 @@ def test_interrupt_cancels_running_work():
     asyncio.run(scenario())
 
 
-def test_interrupting_a_skill_turn_keeps_the_machine_prompt_out_of_the_input():
-    team = _TimeoutTeam()
-
-    async def scenario():
-        async with PyClawApp(builder=lambda: team).run_test() as pilot:
-            app = pilot.app
-            await pilot.pause()
-            app._pending_inputs.put_nowait(
-                ("Check the state of this installation.\n" + "detail " * 200,
-                 False))
-            for _ in range(4):
-                await pilot.pause()
-            assert app._processing is not None
-            await pilot.press("ctrl+c")
-            await pilot.pause()
-            assert app._processing is None
-            return app.query_one(Input).value
-
-    assert asyncio.run(scenario()) == ""
-
-
-def test_interrupting_a_turn_gives_back_what_the_user_typed():
+def test_interrupt_never_writes_the_running_prompt_into_the_input():
     team = _TimeoutTeam()
 
     async def scenario():
@@ -1286,9 +1266,83 @@ def test_interrupting_a_turn_gives_back_what_the_user_typed():
             assert app._processing == "fix the test"
             await pilot.press("ctrl+c")
             await pilot.pause()
+            assert app._processing is None
             return app.query_one(Input).value
 
-    assert asyncio.run(scenario()) == "fix the test"
+    assert asyncio.run(scenario()) == ""
+
+
+def test_up_pulls_queued_messages_into_the_input_and_off_the_queue():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "running now"
+            await pilot.press("enter")
+            for _ in range(3):
+                await pilot.pause()
+            app._pending_inputs.put_nowait(QueuedPrompt("and then this"))
+            await pilot.pause()
+            await pilot.press("up")
+            await pilot.pause()
+            return (app.query_one(Input).value, app._peek_queue())
+
+    value, queued = asyncio.run(scenario())
+    assert value == "and then this"
+    assert queued == []
+
+
+def test_a_written_for_you_prompt_writes_no_user_bubble():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._pending_inputs.put_nowait(
+                QueuedPrompt("Check the state of this installation.",
+                             meta=True))
+            for _ in range(5):
+                await pilot.pause()
+            return _flatten(app), team.transcript()
+
+    painted, messages = asyncio.run(scenario())
+    assert "Check the state of this installation." not in painted
+    assert any("Check the state of this installation." in str(m)
+               for m in messages)
+
+
+def test_a_written_for_you_prompt_is_left_out_of_the_queue_preview():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._peek_queue = lambda: [
+                QueuedPrompt("Check the state of this installation.",
+                             meta=True)]
+            await app._render_queued()
+            await pilot.pause()
+            return app._queued, app.query_one(Input).placeholder
+
+    queued, placeholder = asyncio.run(scenario())
+    assert queued is None
+    assert "queued" not in placeholder
+
+    async def typed():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._peek_queue = lambda: [QueuedPrompt("what I typed")]
+            await app._render_queued()
+            await pilot.pause()
+            return str(app._queued.render()) if app._queued else "", \
+                app.query_one(Input).placeholder
+
+    painted, placeholder = asyncio.run(typed())
+    assert "what I typed" in painted
+    assert "queued" in placeholder
 
 
 def test_subagent_progress_renders_tree_line():
@@ -4225,7 +4279,7 @@ def test_queued_messages_are_hidden_while_viewing_a_teammate():
             await pilot.pause()
             await _run_turn(pilot)
             team.worker_busy = False
-            app._peek_queue = lambda: [("queued while busy", True)]
+            app._peek_queue = lambda: [QueuedPrompt("queued while busy")]
             await app._render_queued()
             await pilot.pause()
             assert app._queued is not None

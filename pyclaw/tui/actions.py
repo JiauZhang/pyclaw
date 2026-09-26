@@ -29,7 +29,7 @@ class ActionMixin:
             self._selected_index = -1
             await self._refresh_agents()
             return
-        if self._processing is None:
+        if self._processing is None and not self._queued_is_editable():
             return
         await self._interrupt()
     async def action_interrupt(self):
@@ -44,9 +44,10 @@ class ActionMixin:
         if self._team is not None:
             self._team.lead.abort_work()
         if self._processing and not self._wrote_body:
-            if self._typed_by_user:
-                self.query_one("#input", Input).value = self._processing
             self._processing = None
+        if not self._processing and self._pop_queued():
+            await self._render_queued()
+            return
         if not rejected:
             await self._append_block(
                 f"[dim]{INTERRUPTED_TEXT}[/]")

@@ -200,16 +200,16 @@ class EventRouterMixin:
         self._driving = True
         try:
             while True:
-                text, typed = await self._pending_inputs.get()
-                self._processing = text
-                self._typed_by_user = typed
+                item = await self._pending_inputs.get()
+                self._processing = item.text
                 self._render_status()
                 await self._render_queued()
                 await self._refresh_agents()
-                await self._append_user(text)
+                if not item.meta:
+                    await self._append_user(item.text)
                 self._begin_turn()
                 await self._mount_spinner()
-                await self._converse(text)
+                await self._converse(item.text)
                 self._session.record_turn()
                 await self._settle_paint()
                 self._processing = None

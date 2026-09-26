@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 
 from pyclaw.tui.formatting import duration
+from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.theme import ASTERISK
 from chatchat.tasks.cron_schedule import find_missed, SchedulerLock
 from pyclaw.cron import run
@@ -60,4 +61,4 @@ class DeliveryMixin:
         if agent is not None:
             agent.submit(prompt)
             return
-        await self._pending_inputs.put((prompt, False))
+        await self._pending_inputs.put(QueuedPrompt(prompt, meta=True))

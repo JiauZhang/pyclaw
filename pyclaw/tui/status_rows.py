@@ -26,15 +26,6 @@ from pyclaw.tui.toolcard import _last_assistant_key
 logger = logging.getLogger(__name__)
 
 
-def _queued_line(item) -> str:
-    """The whole text of a machine prompt is already in the transcript."""
-    text, typed = item
-    if typed:
-        return str(text)
-    first = str(text).strip().splitlines()[0] if str(text).strip() else ''
-    return first if len(first) <= 72 else first[:71] + '…'
-
-
 class StatusMixin:
     def _spinner_text(self, char: str) -> str:
         viewed = self._viewing
@@ -95,24 +86,22 @@ class StatusMixin:
         return f'{seconds // 60}m {seconds % 60}s'
     async def _render_queued(self):
         inp = self.query_one("#input", Input)
-        queued = [] if self._viewing is not None else self._peek_queue()
-        inp.placeholder = ("up edits what you queued" if queued
+        waiting = ([] if self._viewing is not None
+                   else [item for item in self._peek_queue() if item.editable])
+        inp.placeholder = ("up edits what you queued" if waiting
                            else "Message PyClaw\u2026")
-        if not queued:
+        if not waiting:
             if self._queued is not None:
                 self._queued.remove()
                 self._queued = None
             return
-        text = "\n\n".join(escape(_queued_line(item))
-                           for item in queued)
+        text = "\n\n".join(escape(item.text) for item in waiting)
         if self._queued is None:
             self._queued = Static(text, markup=True, classes="user")
             await self.screen.mount(self._queued,
                                     before=self.query_one("#prompt"))
         else:
             self._queued.update(text)
-    def _peek_queue(self) -> list:
-        return list(self._pending_inputs._queue)
     def _note(self, name, tools=None, think=None, busy=None):
         st = self._state(name)
         if tools:

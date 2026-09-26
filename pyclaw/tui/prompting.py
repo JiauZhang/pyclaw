@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from pyclaw.tui import keys
 
+import asyncio
 import logging
 
 from pyclaw.tui.formatting import escape
@@ -12,6 +13,7 @@ from pyclaw.slash import (handle_slash, skill_rows,
                                 suggest as slash_suggest)
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.formatting import _direct_message
+from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
                                 RewindScreen, SessionsScreen, TasksScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
@@ -153,11 +155,36 @@ class PromptMixin:
             self._render_status()
             await self._render_queued()
             if follow:
-                self._pending_inputs.put_nowait((follow, False))
+                self._pending_inputs.put_nowait(
+                    QueuedPrompt(follow, meta=True))
             return
-        self._pending_inputs.put_nowait((text, True))
+        self._pending_inputs.put_nowait(QueuedPrompt(text))
         self._render_status()
         await self._render_queued()
+    def _peek_queue(self) -> list:
+        return list(self._pending_inputs._queue)
+    def _queued_is_editable(self) -> bool:
+        return any(item.editable for item in self._peek_queue())
+    def _pop_queued(self) -> bool:
+        """Pull the messages a person typed into the input for editing, taking
+        them off the queue so they cannot also be sent as they were."""
+        items = self._peek_queue()
+        editable = [item for item in items if item.editable]
+        if not editable:
+            return False
+        while True:
+            try:
+                self._pending_inputs.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+        for item in items:
+            if not item.editable:
+                self._pending_inputs.put_nowait(item)
+        inp = self.query_one("#input", Input)
+        inp.value = "\n".join([item.text for item in editable]
+                              + ([inp.value] if inp.value else []))
+        inp.cursor_position = len(inp.value)
+        return True
     def on_input_changed(self, event: Input.Changed) -> None:
         value = event.value
         self._render_status()
@@ -216,8 +243,11 @@ class PromptMixin:
                          else f"[dim]{row}[/]")
         widget.update('\n'.join(lines))
     def action_prompt_prev(self):
-        if self._suggest_items:
+        if len(self._suggest_items) > 1:
             self.action_suggest_prev()
+            return
+        if self._pop_queued():
+            self._render_status()
             return
         self._history_step(-1)
     def action_prompt_next(self):
