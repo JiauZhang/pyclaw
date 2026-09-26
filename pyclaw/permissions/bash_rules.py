@@ -4,7 +4,7 @@ import os
 import re
 import shlex
 
-from pyclaw.tools.names import BASH
+from pyclaw.tools.names import AGENT, BASH
 
 SAFE_ENV_VARS = frozenset({
     'NODE_ENV', 'GOOS', 'GOARCH', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE',
@@ -386,6 +386,42 @@ BARE_SHELL_PREFIXES = frozenset({
     'powershell', 'cmd', 'env', 'xargs', 'nice', 'sudo', 'doas', 'pkexec',
     'nohup', 'stdbuf', 'timeout', 'time',
 })
+# An allow rule over one of these hands the model a way to run anything, which
+# is why a rule naming them is never suggested and is reported as a hole.
+CROSS_PLATFORM_CODE_EXEC = ('python', 'python2', 'python3', 'node', 'deno',
+                            'tsx', 'ruby', 'perl', 'php', 'lua', 'npx', 'bunx',
+                            'npm run', 'yarn run', 'pnpm run', 'bun run',
+                            'bash', 'sh', 'ssh')
+DANGEROUS_BASH_PATTERNS = CROSS_PLATFORM_CODE_EXEC + ('zsh', 'fish', 'eval',
+                                                      'exec', 'env', 'xargs',
+                                                      'sudo')
+
+
+def is_dangerous_bash_rule(content) -> bool:
+    """Whether a Bash rule content would allow arbitrary code: nothing at all
+    (`Bash`, `Bash(*)`), a bare `*`, or any shape of prefix or wildcard over a
+    listed interpreter - `python:*`, `python*`, `python *`, `python -*`."""
+    text = str(content or '').strip().lower()
+    if not text or text == '*':
+        return True
+    for pattern in DANGEROUS_BASH_PATTERNS:
+        if text in (pattern, f'{pattern}:*', f'{pattern}*', f'{pattern} *'):
+            return True
+        if text.startswith(f'{pattern} -') and text.endswith('*'):
+            return True
+    return False
+
+
+def is_dangerous_rule(rule) -> bool:
+    """The same question about a whole rule string, with Agent included: a
+    standing allow on delegation approves a sub-agent before anyone reads what
+    it was asked to do."""
+    name = _rule_name(rule)
+    if name == AGENT:
+        return True
+    if name != BASH:
+        return False
+    return is_dangerous_bash_rule(rule_content(rule))
 _SUBCOMMAND = re.compile(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
 _RULE_ESCAPED = ('\\', '(', ')')
 _REDIR_TOKEN = re.compile(r'^\d*&?[<>]{1,2}\d*&?$')

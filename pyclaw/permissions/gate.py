@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from pyclaw.permissions.bash_rules import (is_dangerous_removal,
+                                          is_dangerous_rule,
                                           is_read_only,
                                           is_workspace_edit_command,
                                           suggested_rules)
@@ -121,6 +122,12 @@ class PermissionController:
 
     def rule_listing(self) -> list[tuple[str, str, str]]:
         return list(self._layers)
+
+    def dangerous_rules(self) -> list[str]:
+        """Allow rules that would let the model run anything it wants, so the
+        listing can say so instead of leaving them looking like any other."""
+        return [rule for behavior, rule, _source in self._layers
+                if behavior == 'allow' and is_dangerous_rule(rule)]
 
     def remove_rule(self, rule: str) -> bool:
         entry = next((e for e in self._layers

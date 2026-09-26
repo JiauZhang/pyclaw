@@ -152,3 +152,7 @@ class ReadoutMixin:
     def permission_rules(self):
         gate = self._gate
         return gate.rule_listing() if gate is not None else []
+
+    def dangerous_rules(self) -> list[str]:
+        gate = self._gate
+        return gate.dangerous_rules() if gate is not None else []

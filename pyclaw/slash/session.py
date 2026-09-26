@@ -55,10 +55,19 @@ async def _handle_permissions(session, arg: str) -> str:
     lines = [f'Permission mode: {session.permission_mode}']
     rules = (session.permission_rules()
              if hasattr(session, 'permission_rules') else [])
+    dangerous = set(session.dangerous_rules() if hasattr(session,
+                                                          'dangerous_rules')
+                    else [])
     if rules:
         lines.append('Rules:')
         for behavior, rule, source in rules:
-            lines.append(f'  [{behavior}] {rule}  ({source})')
+            lines.append(f'  [{behavior}] {rule}  ({source})'
+                         + ('   ← lets the model run anything'
+                            if rule in dangerous else ''))
+    if dangerous:
+        lines += ['', 'An allow rule over a shell or interpreter stands in front '
+                      'of every other check: anything it covers is approved '
+                      'without being looked at.']
     return '\n'.join(lines)
 
 def _handle_agents(session) -> str:

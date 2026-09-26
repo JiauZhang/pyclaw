@@ -15,8 +15,10 @@ from pyclaw.session import Session
 from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
-from pyclaw.permissions.bash_rules import (bash_allowed_by, bash_rule, bash_rule_matches,
-                                           is_dangerous_removal, is_read_only,
+from pyclaw.permissions.bash_rules import (bash_allowed_by, bash_rule,
+                                           bash_rule_matches,
+                                           is_dangerous_removal, is_dangerous_rule,
+                                           is_read_only,
                                            parse_bash_rule, rule_content,
                                            suggested_rule, suggested_rules)
 from pyclaw.permissions.gate import (REJECT_MESSAGE,
@@ -1853,3 +1855,49 @@ def test_a_permission_decision_says_which_rule_decided_it(tmp_path, caplog):
     assert "permission Bash allow mode=default rule=Bash(git status:*)" in lines
     assert any('permission Bash ask' in line and 'rule=-' in line
                for line in lines)
+
+
+def test_a_rule_over_an_interpreter_is_recognised_as_a_hole():
+    for rule in ['Bash', 'Bash()', 'Bash(*)', 'Bash(python:*)', 'Bash(node*)',
+                 'Bash(npm run:*)', 'Bash(ssh *)', 'Bash(python3 -c *)',
+                 'Bash(env:*)', 'Agent']:
+        assert is_dangerous_rule(rule), rule
+    for rule in ['Bash(git status:*)', 'Bash(pytest -q)', 'Bash(npx cowsay:*)',
+                 'Read', 'Write(./a.py)', 'TaskCreate']:
+        assert not is_dangerous_rule(rule), rule
+
+
+def test_a_prefix_rule_is_still_written_even_over_an_interpreter():
+    """The reference offers these and only refuses to honour them later, so a
+    suggestion is not where the hole gets called out - the listing is."""
+    assert suggested_rules('npm run test') == ['Bash(npm run:*)']
+    assert suggested_rules('python -c "print(1)"') == \
+        ['Bash(python -c "print\\(1\\)")']
+
+
+def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(
+        tmp_path):
+    import asyncio
+
+    from pyclaw import slash
+    from pyclaw.session import Session
+    from chatchat.client import MockClient
+    from chatchat.team.team import Team
+
+    async def answer(messages, tools=None, *, stream_cb=None):
+        return 'ok'
+
+    async def main():
+        team = Team('t1', client_factory=lambda inst, model=None:
+                    MockClient(handler=answer, model=model))
+        session = Session(team, session_id='dangerous-listing')
+        session._gate = PermissionController(
+            mode='default', cwd=str(tmp_path),
+            allow=['Bash(git status:*)', 'Bash(python:*)'])
+        return await slash.handle_slash('/permissions', session)
+
+    out = asyncio.run(main())
+    marked = [line for line in out.splitlines() if 'run anything' in line]
+    assert marked == ['  [allow] Bash(python:*)  (cli)   '
+                      '\u2190 lets the model run anything']
+    assert 'without being looked at' in out
