@@ -3,6 +3,7 @@ import datetime
 import logging
 import subprocess
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
@@ -18,7 +19,7 @@ from chatchat.hooks.events import (
 
 from pyclaw import config
 from pyclaw.tools.bash import get_default_timeout_ms
-from pyclaw.usage_history import record, row
+from pyclaw.usage_history import conversation_totals, record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
 from .store import (_session_path, append_conv, follow_conversation,
@@ -106,6 +107,8 @@ class Session(HistoryMixin, ReadoutMixin):
         self.resume_from = resume_from
         self._conv_reply = ""
         self._conv_thinking = ""
+        self._started = time.monotonic()
+        self.carried_seconds = 0
         self._seen = self._seen_zero()
         self._unreg = None
         self._bind_gen = 0
@@ -169,10 +172,33 @@ class Session(HistoryMixin, ReadoutMixin):
             save_transcript(self.conv_session_id, self._team.transcript())
 
     def restore_transcript(self) -> int:
-        messages = load_transcript(self.resume_from or self.conv_session_id)
+        source = self.resume_from or self.conv_session_id
+        messages = load_transcript(source)
         if messages:
             self._team.restore(messages)
+            self._carry_totals(source)
         return len(messages)
+
+    def _carry_totals(self, source_id) -> None:
+        """Carry on counting from where the conversation being continued had
+        got to, so /cost and the status row do not fall back to zero the
+        moment it is resumed. The same sums become the baseline for the next
+        turn's own numbers."""
+        seen = conversation_totals(str(source_id))
+        spent = (seen['input'] or seen['output'] or seen['seconds']
+                 or any(seen['metrics'].values()))
+        if not spent:
+            return
+        self._team.restore_totals(
+            {'prompt_tokens': seen['input'],
+             'completion_tokens': seen['output'],
+             'total_tokens': seen['total'],
+             'prompt_tokens_details': {'cached_tokens': seen['cached']}},
+            seen['metrics'])
+        self._seen = {'input': seen['input'], 'output': seen['output'],
+                      'cached': seen['cached'], 'seconds': seen['seconds'],
+                      **seen['metrics']}
+        self.carried_seconds = seen['seconds']
 
 
 
@@ -257,7 +283,7 @@ class Session(HistoryMixin, ReadoutMixin):
         await self._team.end_session(reason)
 
     def _seen_zero(self) -> dict:
-        return {'input': 0, 'output': 0, 'cached': 0,
+        return {'input': 0, 'output': 0, 'cached': 0, 'seconds': 0,
                 **{name: 0 for name in Metrics().as_dict()}}
 
     def record_turn(self) -> dict:
@@ -274,11 +300,14 @@ class Session(HistoryMixin, ReadoutMixin):
                             - seen['cached']),
                     turns=sum(1 for message in self._team.transcript()
                               if message.get('role') == 'assistant'),
+                    seconds=int(time.monotonic() - self._started)
+                    - seen['seconds'],
                     metrics={name: value - seen[name]
                              for name, value in metrics.items()})
         self._seen = {'input': usage.prompt_tokens,
                       'output': usage.completion_tokens,
                       'cached': int(details.get('cached_tokens') or 0),
+                      'seconds': int(time.monotonic() - self._started),
                       **metrics}
         record(entry)
         return entry
@@ -300,6 +329,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.restore(messages)
         self._team.reset_rules()
         self._team.begin_new_session('resume')
+        self._carry_totals(session_id)
         resumed = uuid.uuid4().hex
         adopt_artifacts(session_id, resumed)
         self.conv_session_id = resumed

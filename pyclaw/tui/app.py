@@ -277,6 +277,9 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._team = self._builder()
         self._session = Session(self._team, session_id=self._session_id,
                                 resume_from=self._resume_from)
+        # A continued conversation has already been running: start the clock
+        # where it left off rather than at zero.
+        self._hud_started -= self._session.carried_seconds
         self._session.attach_approval(self._ask_permission)
         self._session.attach_question(self._ask_questions)
         self._start_cron()

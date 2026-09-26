@@ -150,3 +150,101 @@ def test_resetting_the_session_starts_the_history_at_zero_again(tmp_path,
         await session.close()
 
     asyncio.run(main())
+
+
+def test_the_totals_of_one_conversation_are_read_back(monkeypatch, tmp_path):
+    _home(monkeypatch, tmp_path)
+    today = date.today().isoformat()
+    mod.record({**ROW, 'at': f'{today}T09:00:00', 'day': today,
+                'session': 'mine'})
+    mod.record({**ROW, 'at': f'{today}T09:05:00', 'day': today,
+                'session': 'mine'})
+    mod.record({**ROW, 'at': f'{today}T09:10:00', 'day': today,
+                'session': 'someone-else'})
+
+    totals = mod.conversation_totals('mine', today=date.fromisoformat(today))
+    assert totals['input'] == 2000 and totals['output'] == 400
+    assert totals['cached'] == 1200 and totals['turns'] == 2
+    assert totals['metrics']['tool_calls'] == 6
+    assert mod.conversation_totals(
+        'nobody', today=date.fromisoformat(today))['input'] == 0
+
+
+def test_a_resumed_conversation_keeps_the_numbers_it_had(tmp_path, monkeypatch):
+    import asyncio
+
+    from chatchat.client import MockClient
+    from pyclaw import slash, usage_history, session as session_mod
+    from pyclaw.session import store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+    _home(monkeypatch, tmp_path)
+    today = date.today().isoformat()
+
+    async def answer(messages, tools=None, *, stream_cb=None):
+        return 'ok'
+
+    def build(session_id):
+        return session_mod.Session(
+            Team('t1', client_factory=lambda inst, model=None:
+                 MockClient(handler=answer, model=model)),
+            session_id=session_id)
+
+    async def main():
+        first = build('conv-one')
+        session_store.save_transcript('conv-one', [
+            {'role': 'user', 'content': 'do it'},
+            {'role': 'assistant', 'content': [{'type': 'text', 'text': 'done'}],
+             'usage': {'prompt_tokens': 1800, 'completion_tokens': 200,
+                       'total_tokens': 2000,
+                       'prompt_tokens_details': {'cached_tokens': 600}}}])
+        usage_history.record({
+            **ROW, 'at': f'{today}T09:00:00', 'day': today,
+            'session': 'conv-one', 'input': 1800, 'output': 200,
+            'total': 2000, 'cached': 600, 'turns': 1})
+        second = build('conv-two')
+        assert second.resume_session('conv-one') == 2
+        cost = await slash.handle_slash('/cost', second)
+        status = await slash.handle_slash('/status', second)
+        return second, cost, status
+
+    session, cost, status = asyncio.run(main())
+    assert session.usage.prompt_tokens == 1800
+    assert 'Tokens: 1800 in / 200 out' in cost
+    assert 'Usage: 1800 in / 200 out / 2000 total' in status
+
+
+def test_a_resumed_conversation_picks_up_the_clock_where_it_stopped(
+        tmp_path, monkeypatch):
+    """Wall seconds are stored per turn, so what the status row shows after a
+    resume is the time really spent on the conversation, not a guess."""
+    import asyncio
+
+    from chatchat.client import MockClient
+    from pyclaw import usage_history
+    from pyclaw.session import Session, store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+    _home(monkeypatch, tmp_path)
+    today = date.today().isoformat()
+
+    async def answer(messages, tools=None, *, stream_cb=None):
+        return 'ok'
+
+    def build(session_id):
+        return Session(Team('t1', client_factory=lambda inst, model=None:
+                           MockClient(handler=answer, model=model)),
+                       session_id=session_id)
+
+    async def main():
+        session = build('timed')
+        session._started -= 120
+        session_store.save_transcript('timed', [{'role': 'user',
+                                                 'content': 'go'}])
+        session.record_turn()
+        again = build('later')
+        again.resume_session('timed')
+        return again
+
+    resumed = asyncio.run(main())
+    assert resumed.carried_seconds == 120

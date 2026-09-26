@@ -8,7 +8,7 @@ from pyclaw.home import pyclaw_home
 METRICS = ('tool_calls', 'tool_ms', 'lines_added', 'lines_removed', 'api_ms',
            'requests', 'hooks', 'hook_ms', 'denials')
 
-FIELDS = ('input', 'output', 'total', 'cached', 'turns')
+FIELDS = ('input', 'output', 'total', 'cached', 'turns', 'seconds')
 
 
 def _directory() -> Path:
@@ -57,6 +57,21 @@ def read_days(limit: int, until: date | None = None) -> list[dict]:
     return sorted(rows, key=lambda row: str(row.get('at') or ''))
 
 
+def conversation_totals(session, *, today: date | None = None,
+                        days: int = 30) -> dict:
+    """What one conversation has already spent, read back from the daily rows
+    so a resumed conversation can carry on counting instead of starting at
+    zero again."""
+    last = today or date.today()
+    rows = [row for row in read_days(days, until=last)
+            if str(row.get('session')) == str(session)]
+    seen = totals(rows)
+    return {'input': seen['input'], 'output': seen['output'],
+            'total': seen['total'], 'cached': seen['cached'],
+            'turns': seen['turns'], 'seconds': seen['seconds'],
+            'metrics': {name: seen[name] for name in METRICS}}
+
+
 def totals(rows: list[dict]) -> dict:
     out = {name: 0 for name in ('records',) + FIELDS + METRICS}
     for row in rows:
@@ -79,7 +94,7 @@ def by_day(rows: list[dict]) -> list[tuple[str, dict]]:
 
 def row(at: datetime, session: str, provider: str, model: str, *,
         input_tokens: int, output_tokens: int, cached: int, turns: int,
-        metrics: dict) -> dict:
+        seconds: int, metrics: dict) -> dict:
     moment = at.replace(microsecond=0)
     return {'at': moment.isoformat(), 'day': moment.date().isoformat(),
             'session': session, 'provider': provider, 'model': model,
@@ -87,5 +102,6 @@ def row(at: datetime, session: str, provider: str, model: str, *,
             'total': int(input_tokens) + int(output_tokens),
             'cached': int(cached),
             'turns': int(turns),
+            'seconds': int(seconds),
             'metrics': {name: int(metrics.get(name) or 0)
                         for name in METRICS}}
