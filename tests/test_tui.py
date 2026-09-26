@@ -5721,6 +5721,28 @@ def test_a_wide_command_names_every_rule_it_would_save():
     assert single._rule == 'Bash(git status:*)'
 
 
+def test_a_rule_list_takes_the_navigation_aliases():
+    async def scenario():
+        async with PyClawApp(builder=_GateTeam).run_test(size=(90, 30)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._session.permission_rules = lambda: [
+                ('allow', 'Bash(git:*)', 'local'),
+                ('allow', 'Read(src)', 'session')]
+            app.query_one(_PromptInput).value = '/permissions'
+            await pilot.press('enter')
+            await pilot.pause()
+            screen = app.screen
+            seen = []
+            for key in ('j', 'k', 'ctrl+n', 'ctrl+p'):
+                await pilot.press(key)
+                await pilot.pause()
+                seen.append(screen._selected)
+            return seen
+
+    assert asyncio.run(scenario()) == [1, 0, 1, 0]
+
+
 def test_the_resume_picker_lists_named_conversations_and_continues_one(
         tmp_path, monkeypatch):
     from pyclaw.session import store as session_store

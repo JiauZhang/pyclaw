@@ -29,8 +29,8 @@ def _ago(seconds: float) -> str:
 
 class SessionsScreen(Screen):
 
-    BINDINGS = [keys.binding('prev', 'Previous', priority=True),
-                keys.binding('next', 'Next', priority=True),
+    BINDINGS = [keys.binding('prev', 'Previous', priority=True, aliases=False),
+                keys.binding('next', 'Next', priority=True, aliases=False),
                 keys.binding('accept', 'Continue'),
                 keys.binding('dismiss', 'Close'),
                 Binding('ctrl+c', 'dismiss', 'Close')]

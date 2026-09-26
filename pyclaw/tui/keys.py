@@ -104,8 +104,16 @@ def either(first: str, second: str, text: str) -> str:
     return f'{display(first)} or {display(second)} {text}'
 
 
-def binding(action: str, label: str, priority: bool = False) -> Binding:
-    return Binding(key(action), action, label, priority=priority)
+# A list answers to more than the arrows, as a person's hands are already on
+# them. Hints keep showing the arrow, so this table only widens what is accepted.
+ALIASES = {'prev': 'up,k,ctrl+p', 'next': 'down,j,ctrl+n'}
+
+
+def binding(action: str, label: str, priority: bool = False,
+            aliases: bool = True) -> Binding:
+    # A list whose rows are filtered by a text box cannot also answer to j/k.
+    taken = ALIASES.get(action) if aliases else None
+    return Binding(taken or key(action), action, label, priority=priority)
 
 
 def app_bindings() -> list:

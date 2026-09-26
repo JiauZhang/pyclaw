@@ -14,8 +14,8 @@ from pyclaw.tui.components import _PromptInput
 
 class HistorySearchScreen(Screen):
 
-    BINDINGS = [keys.binding('prev', 'Previous', priority=True),
-                keys.binding('next', 'Next', priority=True),
+    BINDINGS = [keys.binding('prev', 'Previous', priority=True, aliases=False),
+                keys.binding('next', 'Next', priority=True, aliases=False),
                 keys.binding('dismiss', 'Close'),
                 Binding('ctrl+c', 'dismiss', 'Close'),
                 keys.binding('accept', 'Accept')]
