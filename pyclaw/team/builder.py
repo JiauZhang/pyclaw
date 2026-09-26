@@ -20,6 +20,7 @@ from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
 from pyclaw.plugins import discover_tools
 from pyclaw.skills import discover_registry
+from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import tools as base_tools
 from pyclaw.permissions import PermissionController, PermissionMode, parse_mode
 from pyclaw.tools import BUILTIN_TOOLS
@@ -198,6 +199,7 @@ def build_team(
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
     _roots_of(cwd)
+    register_builtin_skills(team.skills, team)
 
     for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
         team.register_agent_definition(defn)

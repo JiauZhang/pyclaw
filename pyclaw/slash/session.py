@@ -1,8 +1,4 @@
 # Session commands: what the conversation is, and where it stands.
-import logging
-import os
-
-from pyclaw.home import pyclaw_home
 from pyclaw.tui.formatting import _plural
 
 from pyclaw.slash.usage import _cost_of
@@ -107,31 +103,11 @@ def _handle_resume(session, arg: str) -> str:
     name = f'"{target["title"]}"' if target['title'] else target['id']
     return f'Resumed {count} messages from {name}.'
 
-def _handle_debug(session, arg: str) -> str:
-    """Turn event logging on for this process and say where to read it, so a
-    report can be made from what just happened rather than from a guess."""
-    os.environ['PYCLAW_DEBUG'] = '1'
-    for handler in logging.getLogger().handlers:
-        handler.setLevel(logging.DEBUG)
-    path = session_store.conversation_log(session.conv_session_id)
-    lines = _tail(path)
-    return '\n'.join([
-        f'Logging every event now, from here on.',
-        f'This conversation: {path}',
-        f'The whole process: {pyclaw_home() / "logs" / "pyclaw.log"}',
-        'Grep either for ERROR or WARN to find what went wrong.',
-        '',
-        f'Last {len(lines)} recorded lines:',
-        *lines,
-    ])
-
-
-def _tail(path, lines: int = 12) -> list[str]:
-    try:
-        text = path.read_text(encoding='utf-8', errors='replace')
-    except OSError:
-        return []
-    return text.splitlines()[-lines:]
+def _handle_debug(session, arg: str) -> tuple:
+    """The debug skill, asked for by name: logging goes on from here, and what
+    the session recorded is handed to the model with a way to read it."""
+    return ('Reading what this session recorded…',
+            session.skill_prompt('debug', arg))
 
 
 def _handle_rename(session, arg: str) -> str:
@@ -231,8 +207,14 @@ def _handle_skills(session, arg: str) -> str:
         lines.append('Skills:')
         for row in rows:
             line = f"  {row['name']} ({row['source']}) - {row['description']}"
+            if row['argument_hint']:
+                line += f" · /{row['name']} {row['argument_hint']}"
             if row['allowed_tools']:
                 line += f" \u00b7 allows {', '.join(row['allowed_tools'])}"
+            if row['disable_model_invocation']:
+                line += ' · only when you ask for it'
+            if not row['user_invocable']:
+                line += ' · not offered to the terminal'
             lines.append(line)
     else:
         lines.append('No skills are installed.')

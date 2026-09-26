@@ -37,8 +37,9 @@ COMMANDS = [
     {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
     {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
     {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
-    {'name': 'debug', 'desc': 'Start recording every event and show where the '
-                              'log of this conversation is', 'hint': ''},
+    {'name': 'debug', 'desc': 'Start recording every event and read what this '
+                              'session has run into so far',
+     'hint': '[what went wrong]'},
     {'name': 'context', 'desc': 'Show what the model is sent and how full the '
                                 'window is', 'hint': ''},
     {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},

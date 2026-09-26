@@ -117,6 +117,10 @@ class PermissionController:
             self.cwd / '.pyclaw' / 'settings.json')
         self._layer_files['local'] = _local_settings_file(self.cwd)
 
+    def settings_files(self) -> dict:
+        """Where the rules come from, so a report can say which file to edit."""
+        return dict(self._layer_files)
+
     def allowed_tool(self, name: str) -> bool:
         return not _rule_matches(self._deny, name)
 

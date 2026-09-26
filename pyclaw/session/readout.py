@@ -24,8 +24,14 @@ class ReadoutMixin:
         return list(self._team.instruction_files)
     def skill_rows(self) -> list:
         return [{'name': skill.name, 'description': skill.description,
-                 'source': skill.source, 'allowed_tools': skill.allowed_tools}
+                 'source': skill.source, 'allowed_tools': skill.allowed_tools,
+                 'argument_hint': skill.argument_hint,
+                 'user_invocable': skill.user_invocable,
+                 'disable_model_invocation': skill.disable_model_invocation}
                 for skill in self._team.skills.all()]
+    def skill_prompt(self, name: str, args: str = '') -> str:
+        skill = self._team.skills.get(name)
+        return '' if skill is None else skill.render(args)
     def skill_problems(self) -> list:
         return list(self._team.skills.problems)
     @property

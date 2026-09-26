@@ -514,13 +514,21 @@ def test_tasks_says_so_when_nothing_runs():
 def test_skills_lists_what_was_found_and_where_it_came_from():
     session = _fake_session(skill_problems=lambda: [], skill_rows=lambda: [
         {'name': 'notes', 'description': 'turn a log into bullets',
-         'source': 'project', 'allowed_tools': ('Read',)},
+         'source': 'project', 'allowed_tools': ('Read',),
+         'argument_hint': '[which log]', 'user_invocable': True,
+         'disable_model_invocation': False},
         {'name': 'pdf', 'description': 'work with pdfs', 'source': 'user',
-         'allowed_tools': ()}])
-    out = _strip(asyncio.run(_call('/skills', session)))
+         'allowed_tools': (), 'argument_hint': '', 'user_invocable': True,
+         'disable_model_invocation': True},
+        {'name': 'hidden', 'description': 'not for the terminal',
+         'source': 'user', 'allowed_tools': (), 'argument_hint': '',
+         'user_invocable': False, 'disable_model_invocation': False}])
+    out = asyncio.run(_call('/skills', session))
     assert 'notes' in out and 'project' in out
     assert 'allows Read' in out
-    assert 'pdf' in out
+    assert '/notes [which log]' in out
+    assert 'pdf' in out and 'only when you ask for it' in out
+    assert 'hidden' in out and 'not offered to the terminal' in out
 
 
 def test_skills_reports_the_directories_it_could_not_use():
@@ -807,33 +815,3 @@ def test_the_export_names_itself_after_the_first_prompt(tmp_path):
     name = filename_for(session.transcript(),
                         when=datetime(2026, 5, 4, 9, 30, 12))
     assert name == '2026-05-04-093012-fix-the-parser-please.md'
-
-
-def test_debug_names_the_log_of_this_conversation(tmp_path, monkeypatch):
-    import asyncio
-    import logging
-
-    from pyclaw import slash
-    from pyclaw.session import Session, store as session_store
-    from chatchat.client import MockClient
-    from chatchat.team.team import Team
-
-    monkeypatch.delenv('PYCLAW_DEBUG', raising=False)
-    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
-
-    async def answer(messages, tools=None, *, stream_cb=None):
-        return 'ok'
-
-    async def main():
-        team = Team('t1', client_factory=lambda inst, model=None:
-                    MockClient(handler=answer, model=model))
-        session = Session(team, session_id='dbg-conv')
-        out = await slash.handle_slash('/debug', session)
-        return out, logging.getLogger().handlers
-
-    out, handlers = asyncio.run(main())
-    import os
-    assert os.environ.get('PYCLAW_DEBUG') == '1'
-    assert str(tmp_path / 'dbg-conv' / 'run.log') in out
-    assert 'ERROR' in out
-    assert any(getattr(h, 'level', None) == logging.DEBUG for h in handlers)
