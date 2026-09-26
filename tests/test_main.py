@@ -267,3 +267,47 @@ def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
         __main__.run_tui(args)
     assert exit_info.value.code == 1
     assert 'could not be made' in capsys.readouterr().err
+
+
+def test_the_terminal_builds_the_team_with_what_the_run_asked_for(
+        tmp_path, monkeypatch):
+    """The builder is only called once the terminal mounts, so a keyword left
+    behind in it crashes the real run rather than a test."""
+    built = []
+    holders = {}
+
+    class _App:
+
+        _exit_note = ''
+        _startup_error = ''
+
+        def __init__(self, *, builder, **kw):
+            holders['builder'] = builder
+            built.append(dict(kw, builder=None))
+
+        def run(self):
+            return None
+
+    monkeypatch.setattr(__main__, "load_config",
+                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
+    monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
+
+    def build_team(provider, model, **kw):
+        built.append(kw)
+        return object()
+
+    monkeypatch.setattr(__main__, "build_team", build_team)
+    args = __main__._build_parser().parse_args(['tui', '--worktree', 'side'])
+    __main__.run_tui(args)
+    holders['builder']()
+    import inspect
+
+    from pyclaw.team.builder import build_team as the_real_builder
+
+    app_kw, build_kw = built
+    missing = set(build_kw) - set(inspect.signature(the_real_builder).parameters)
+    assert missing == set()
+    assert 'worktree' not in build_kw
+    assert build_kw['conversation_id']
+    assert app_kw['worktree'] is None or app_kw['worktree'] == 'side'

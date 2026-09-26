@@ -244,7 +244,7 @@ def run_tui(args):
         allowed_tools=args.allowed_tools, ask=args.ask,
         disallowed_tools=args.disallowed_tools, base_tools=args.tools,
         use_team=args.use_team, agents_json=args.agents,
-        conversation_id=session_id, worktree=args.worktree),
+        conversation_id=session_id),
         session_id=session_id,
         resume=_cli_resume(args),
         resume_from=resume_from, hook_events=hook_events,
