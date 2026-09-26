@@ -420,10 +420,27 @@ How the statusLine command works:
        "total_input_tokens": number,
        "total_output_tokens": number,
        "context_window_size": number,      // occupancy that triggers compaction
-       "current_usage": {{"input_tokens": number}},
-       "used_percentage": number,          // 0-100
-       "remaining_percentage": number      // 0-100
-     }}
+       "current_usage": {{"input_tokens": number, "output_tokens": number, \
+"cached_tokens": number}},  // last reply, null before the first one
+       "used_percentage": number,          // 0-100, null before the first reply
+       "remaining_percentage": number      // 0-100, null before the first reply
+     }},
+     "exceeds_200k_tokens": true | false,
+     "cost": {{
+       "total_cost_usd": number,           // null until pricing is configured
+       "total_duration_ms": number,        // wall clock of this conversation
+       "total_api_duration_ms": number,    // time spent waiting on the model
+       "total_lines_added": number,
+       "total_lines_removed": number
+     }},
+     "session_name": "string",             // only once the conversation is named
+     "worktree": {{
+       "name": "string",
+       "path": "string",
+       "branch": "string",
+       "original_cwd": "string",
+       "original_branch": "string"
+     }}                                    // only inside a worktree
    }}
 
    Read a field with jq, e.g.:
@@ -439,7 +456,8 @@ file from the config instead.
    {{
      "statusLine": {{
        "type": "command",
-       "command": "your_command_here"
+       "command": "your_command_here",
+       "padding": 0                // optional: indent both ends of the row
      }}
    }}
    PyClaw reloads the config before each redraw, so the row changes as soon as \

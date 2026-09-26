@@ -145,6 +145,10 @@ class Session(HistoryMixin, ReadoutMixin):
         return self._team.plan_path
 
     @property
+    def elapsed_seconds(self) -> int:
+        return int(time.monotonic() - self._started) + self.carried_seconds
+
+    @property
     def provider(self) -> str:
         return self._provider
 

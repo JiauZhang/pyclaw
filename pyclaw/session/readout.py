@@ -149,6 +149,8 @@ class ReadoutMixin:
     @property
     def usage(self):
         return self._team.usage()
+    def metrics(self) -> dict:
+        return self._team.total_metrics().as_dict()
     def permission_rules(self):
         gate = self._gate
         return gate.rule_listing() if gate is not None else []

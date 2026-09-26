@@ -1,14 +1,16 @@
 import asyncio
 import itertools
 import json
+import logging
 import os
 
 import pytest
 
 from fakes import Usage
 from pyclaw import config as config_module
-from pyclaw.statusline import (build_payload, clean_output,
+from pyclaw.statusline import (build_payload, clean_output, user_padding,
                                context_percentages, run, user_command)
+from pyclaw.team.defs import STATUSLINE_SYSTEM_PROMPT
 
 
 class _StatusSession:
@@ -20,8 +22,16 @@ class _StatusSession:
     last_usage = Usage(40_000, 500, 40_500, 8_000)
     usage = Usage(1200, 300, 1500, 200)
 
+    title = ''
+    worktree = None
+    elapsed_seconds = 90
+
     def __init__(self, cwd=None):
         self.cwd = cwd or os.getcwd()
+
+    def metrics(self) -> dict:
+        return {'api_ms': 4200, 'requests': 3, 'lines_added': 12,
+                'lines_removed': 3}
 
 
 @pytest.fixture(autouse=True)
@@ -126,6 +136,13 @@ def test_a_command_that_prints_nothing_usable_blanks_the_line():
         assert asyncio.run(run(_StatusSession(), user_command())) == ''
 
 
+def test_a_broken_status_line_command_leaves_a_trace_in_the_log(caplog):
+    _use_command('echo oops >&2; exit 3')
+    with caplog.at_level(logging.WARNING, logger='pyclaw.statusline'):
+        assert asyncio.run(run(_StatusSession(), user_command())) == ''
+    assert 'exited 3' in caplog.text and 'oops' in caplog.text
+
+
 def test_a_slow_command_is_cut_off(monkeypatch):
     import pyclaw.statusline as statusline
     _use_command('sleep 5')
@@ -136,3 +153,56 @@ def test_a_slow_command_is_cut_off(monkeypatch):
 
 def test_running_without_a_command_starts_nothing():
     assert asyncio.run(run(_StatusSession(), user_command())) == ''
+
+
+def test_the_payload_carries_cost_and_the_two_context_fields():
+    payload = build_payload(_StatusSession())
+    assert payload['cost']['total_duration_ms'] == 90_000
+    assert payload['cost']['total_api_duration_ms'] == 4200
+    assert payload['cost']['total_lines_added'] == 12
+    assert payload['cost']['total_lines_removed'] == 3
+    assert payload['exceeds_200k_tokens'] is False
+    assert 'session_name' not in payload
+    assert 'worktree' not in payload
+
+    class _Huge(_StatusSession):
+        context_window = 400_000
+        title = 'git ssh key'
+        worktree = {'name': 'w1', 'path': '/tmp/w1', 'branch': 'worktree-w1',
+                    'origin': '/repo', 'origin_branch': 'main'}
+
+    big = build_payload(_Huge())
+    assert big['exceeds_200k_tokens'] is True
+    assert big['session_name'] == 'git ssh key'
+    assert big['worktree'] == {'name': 'w1', 'path': '/tmp/w1',
+                               'branch': 'worktree-w1', 'original_cwd': '/repo',
+                               'original_branch': 'main'}
+
+
+def test_the_setup_agent_documents_every_field_it_will_receive():
+    class _Everything(_StatusSession):
+        title = 'git ssh key'
+        worktree = {'name': 'w1', 'path': '/tmp/w1', 'branch': 'worktree-w1',
+                     'origin': '/repo', 'origin_branch': 'main'}
+
+    def keys(value):
+        if isinstance(value, dict):
+            for key, inner in value.items():
+                yield key
+                yield from keys(inner)
+
+    payload = build_payload(_Everything())
+    missing = [key for key in sorted(set(keys(payload)))
+               if f'"{key}"' not in STATUSLINE_SYSTEM_PROMPT]
+    assert missing == []
+
+
+def test_the_padding_comes_from_the_same_settings_entry():
+    _write_config({'statusLine': {'type': 'command', 'command': 'echo x',
+                                 'padding': 3}})
+    assert user_padding() == 3
+    _write_config({'statusLine': {'type': 'command', 'command': 'echo x'}})
+    assert user_padding() == 0
+    _write_config({'statusLine': {'type': 'command', 'command': 'echo x',
+                                 'padding': 'wide'}})
+    assert user_padding() == 0

@@ -193,7 +193,10 @@ class StatusMixin:
         self._statusline_task = task
         try:
             text = await task
-        except (asyncio.CancelledError, Exception):
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logger.exception('Status line command %r', self._statusline_cmd)
             return
         if self._statusline_task is not task:
             return
@@ -205,6 +208,7 @@ class StatusMixin:
             return
         widget = self.query_one("#statusline", Static)
         widget.display = bool(self._statusline_text)
+        widget.styles.padding = (0, statusline.user_padding())
         widget.update(Text.from_ansi(self._statusline_text, style="dim",
                                      no_wrap=True))
     def _subagents_running(self) -> bool:

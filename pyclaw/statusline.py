@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
-from pyclaw import config
+from pyclaw import config, cost
 from pyclaw.config import load
 from pyclaw.session.store import transcript_path
 from pyclaw.version import __version__
+
+logger = logging.getLogger(__name__)
 
 STATUS_LINE_TIMEOUT_SECONDS = 5.0
 STATUS_LINE_DEBOUNCE_SECONDS = 0.3
@@ -27,6 +30,19 @@ def _sync_config() -> None:
     config.reload()
 
 
+def _pricing() -> dict:
+    return load().get('pricing') or {}
+
+
+def user_padding() -> int:
+    _sync_config()
+    entry = load().get('statusLine') or {}
+    try:
+        return max(0, int(entry.get('padding') or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def user_command() -> str:
     _sync_config()
     entry = load().get('statusLine')
@@ -44,6 +60,7 @@ def context_percentages(used: int, size: int) -> tuple[int, int]:
 
 def build_payload(session) -> dict:
     usage = session.usage
+    metrics = session.metrics()
     window = session.context_window
     last = session.last_usage
     details = usage.prompt_tokens_details or {}
@@ -59,7 +76,7 @@ def build_payload(session) -> dict:
         }
         used_percentage, remaining_percentage = context_percentages(
             last.prompt_tokens, window)
-    return {
+    payload = {
         'session_id': session.conv_session_id,
         'transcript_path': str(transcript_path(session.conv_session_id)),
         'cwd': session.cwd,
@@ -85,7 +102,26 @@ def build_payload(session) -> dict:
             'used_percentage': used_percentage,
             'remaining_percentage': remaining_percentage,
         },
+        'exceeds_200k_tokens': bool(window and window > 200_000),
+        'cost': {
+            'total_cost_usd': cost.usage_cost(session.model, usage,
+                                              _pricing()),
+            'total_duration_ms': session.elapsed_seconds * 1000,
+            'total_api_duration_ms': int(metrics.get('api_ms', 0)),
+            'total_lines_added': int(metrics.get('lines_added', 0)),
+            'total_lines_removed': int(metrics.get('lines_removed', 0)),
+        },
+        **({'session_name': session.title} if session.title else {}),
     }
+    worktree = session.worktree
+    if worktree:
+        payload['worktree'] = {'name': str(worktree.get('name') or ''),
+                               'path': str(worktree.get('path') or ''),
+                               'branch': str(worktree.get('branch') or ''),
+                               'original_cwd': str(worktree.get('origin') or ''),
+                               'original_branch': str(
+                                   worktree.get('origin_branch') or '')}
+    return payload
 
 
 def clean_output(stdout: str) -> str:
@@ -105,7 +141,7 @@ async def run(session, command: str) -> str:
         cwd=session.cwd,
     )
     try:
-        stdout, _ = await asyncio.wait_for(
+        stdout, stderr = await asyncio.wait_for(
             process.communicate(payload.encode()),
             STATUS_LINE_TIMEOUT_SECONDS)
     except (asyncio.TimeoutError, asyncio.CancelledError):
@@ -115,10 +151,16 @@ async def run(session, command: str) -> str:
     except Exception:
         _kill(process)
         await process.wait()
+        logger.exception('Status line command could not be started')
         return ''
     if process.returncode != 0:
+        logger.warning('Status line command exited %d: %s',
+                       process.returncode,
+                       stderr.decode(errors='replace').strip()[:200])
         return ''
-    return clean_output(stdout.decode(errors='replace'))
+    text = clean_output(stdout.decode(errors='replace'))
+    logger.debug('Status line: %s', text or 'nothing usable')
+    return text
 
 
 def _kill(process) -> None:
