@@ -190,6 +190,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._queue: asyncio.Queue = asyncio.Queue()
         self._pending_inputs: asyncio.Queue = asyncio.Queue()
         self._processing: str | None = None
+        self._typed_by_user = True
         self._driving = False
         self._follow = True
         self._unreg = None

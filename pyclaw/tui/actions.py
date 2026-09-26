@@ -44,7 +44,8 @@ class ActionMixin:
         if self._team is not None:
             self._team.lead.abort_work()
         if self._processing and not self._wrote_body:
-            self.query_one("#input", Input).value = self._processing
+            if self._typed_by_user:
+                self.query_one("#input", Input).value = self._processing
             self._processing = None
         if not rejected:
             await self._append_block(

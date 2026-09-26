@@ -1251,6 +1251,46 @@ def test_interrupt_cancels_running_work():
     asyncio.run(scenario())
 
 
+def test_interrupting_a_skill_turn_keeps_the_machine_prompt_out_of_the_input():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._pending_inputs.put_nowait(
+                ("Check the state of this installation.\n" + "detail " * 200,
+                 False))
+            for _ in range(4):
+                await pilot.pause()
+            assert app._processing is not None
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert app._processing is None
+            return app.query_one(Input).value
+
+    assert asyncio.run(scenario()) == ""
+
+
+def test_interrupting_a_turn_gives_back_what_the_user_typed():
+    team = _TimeoutTeam()
+
+    async def scenario():
+        async with PyClawApp(builder=lambda: team).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = "fix the test"
+            await pilot.press("enter")
+            for _ in range(4):
+                await pilot.pause()
+            assert app._processing == "fix the test"
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            return app.query_one(Input).value
+
+    assert asyncio.run(scenario()) == "fix the test"
+
+
 def test_subagent_progress_renders_tree_line():
     async def scenario():
         async with PyClawApp(builder=lambda: _SubTeam()).run_test() as pilot:
@@ -4185,7 +4225,7 @@ def test_queued_messages_are_hidden_while_viewing_a_teammate():
             await pilot.pause()
             await _run_turn(pilot)
             team.worker_busy = False
-            app._peek_queue = lambda: ["queued while busy"]
+            app._peek_queue = lambda: [("queued while busy", True)]
             await app._render_queued()
             await pilot.pause()
             assert app._queued is not None

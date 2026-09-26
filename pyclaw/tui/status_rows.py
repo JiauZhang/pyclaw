@@ -25,6 +25,16 @@ from pyclaw.tui.toolcard import _last_assistant_key
 
 logger = logging.getLogger(__name__)
 
+
+def _queued_line(item) -> str:
+    """The whole text of a machine prompt is already in the transcript."""
+    text, typed = item
+    if typed:
+        return str(text)
+    first = str(text).strip().splitlines()[0] if str(text).strip() else ''
+    return first if len(first) <= 72 else first[:71] + '…'
+
+
 class StatusMixin:
     def _spinner_text(self, char: str) -> str:
         viewed = self._viewing
@@ -93,7 +103,8 @@ class StatusMixin:
                 self._queued.remove()
                 self._queued = None
             return
-        text = "\n\n".join(escape(str(t)) for t in queued)
+        text = "\n\n".join(escape(_queued_line(item))
+                           for item in queued)
         if self._queued is None:
             self._queued = Static(text, markup=True, classes="user")
             await self.screen.mount(self._queued,

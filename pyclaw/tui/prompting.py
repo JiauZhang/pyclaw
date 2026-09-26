@@ -153,9 +153,9 @@ class PromptMixin:
             self._render_status()
             await self._render_queued()
             if follow:
-                self._pending_inputs.put_nowait(follow)
+                self._pending_inputs.put_nowait((follow, False))
             return
-        self._pending_inputs.put_nowait(text)
+        self._pending_inputs.put_nowait((text, True))
         self._render_status()
         await self._render_queued()
     def on_input_changed(self, event: Input.Changed) -> None:

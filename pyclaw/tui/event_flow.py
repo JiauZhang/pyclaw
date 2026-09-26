@@ -200,8 +200,9 @@ class EventRouterMixin:
         self._driving = True
         try:
             while True:
-                text = await self._pending_inputs.get()
+                text, typed = await self._pending_inputs.get()
                 self._processing = text
+                self._typed_by_user = typed
                 self._render_status()
                 await self._render_queued()
                 await self._refresh_agents()

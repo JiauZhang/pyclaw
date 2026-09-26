@@ -60,4 +60,4 @@ class DeliveryMixin:
         if agent is not None:
             agent.submit(prompt)
             return
-        await self._pending_inputs.put(prompt)
+        await self._pending_inputs.put((prompt, False))
