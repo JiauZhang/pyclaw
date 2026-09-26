@@ -60,6 +60,16 @@ class HistoryMixin:
             self.save_transcript()
         return result
 
+    def generated_title(self) -> str:
+        """A name for a conversation nobody named: what it was asked to do."""
+        for message in self._team.transcript():
+            if message.get('role') != 'user':
+                continue
+            content = str(message.get('content') or '').strip()
+            if content:
+                return ' '.join(content.split())[:60]
+        return ''
+
     def rename(self, title: str) -> str:
 
         return rename_session(self.conv_session_id, title)

@@ -76,6 +76,19 @@ class TranscriptMixin:
         await self._append_block(escape(
             f"Rewound to that turn{' · ' + ', '.join(moved) if moved else ''}"))
 
+    async def _apply_resume(self, session_id: str, name: str = ''):
+        count = self._session.resume_session(session_id)
+        # The name belongs to the conversation that was read back, not to the
+        # fresh id this one now writes under.
+        title = name or session_id[:8]
+        if not count:
+            await self._append_note(
+                f'That conversation has nothing recorded to come back to.')
+            return
+        await self._replay_transcript()
+        await self._append_note(
+            f'Continuing "{title}" · {_plural(count, "message")} read back')
+
     async def _render_history(self):
         for message in self._session.transcript():
             role = message.get("role")

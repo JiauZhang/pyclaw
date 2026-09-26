@@ -189,7 +189,7 @@ def test_resuming_by_name_loads_the_named_conversation():
     assert "Resumed 2 messages" in asyncio.run(main())
 
 
-def test_a_name_that_belongs_to_two_conversations_asks_for_the_id():
+def test_a_name_two_conversations_share_is_not_guessed_at():
     from pyclaw import slash
     _saved("aaaa1111", "same name")
     _saved("bbbb2222", "same name")
@@ -199,19 +199,23 @@ def test_a_name_that_belongs_to_two_conversations_asks_for_the_id():
         return await slash.handle_slash("/resume same name", session), session
 
     out, session = asyncio.run(main())
-    assert "aaaa1111" in out and "bbbb2222" in out
+    assert "Found 2 conversations" in out
+    assert "pick one" in out
     assert session.transcript() == []
 
 
-def test_a_name_matching_nothing_says_so():
+def test_a_name_has_to_be_the_whole_name():
     from pyclaw import slash
     _saved("deadbeef", "git-ssh-key")
 
     async def main():
         session = _session(_answer, "fresh")
-        return await slash.handle_slash("/resume ssh-keys", session)
+        return (await slash.handle_slash("/resume git", session),
+                await slash.handle_slash("/resume ssh-keys", session))
 
-    assert "No saved conversation named" in asyncio.run(main())
+    by_prefix, by_wrong = asyncio.run(main())
+    assert by_prefix == 'Session "git" was not found.'
+    assert by_wrong == 'Session "ssh-keys" was not found.'
 
 
 def test_resume_on_the_command_line_takes_a_name_too():
@@ -227,7 +231,7 @@ def test_resume_on_the_command_line_takes_a_name_too():
 def test_reading_a_conversation_that_is_not_there_creates_nothing(tmp_path):
     assert load_transcript("not-a-session") == []
     assert session_store.session_meta("not-a-session") == {}
-    assert session_store.match_sessions("not-a-session") == []
+    assert session_store.named_sessions("not-a-session") == []
     assert not (tmp_path / "not-a-session").exists()
 
 
@@ -312,3 +316,38 @@ def test_the_rename_and_branch_commands_reach_the_session():
     assert 'You are now in the branch' in branched
     assert '/resume talk' in branched
     assert '"the other way (Branch)"' in named
+
+
+def test_naming_a_conversation_without_a_name_uses_what_it_was_asked():
+    from pyclaw import slash
+
+    async def main():
+        session = _session(_answer, 'auto-name')
+        await session.chat('fix the flaky parser test')
+        out = await slash.handle_slash('/rename', session)
+        return session.title, out
+
+    title, out = asyncio.run(main())
+    assert title == 'fix the flaky parser test'
+    assert 'is now called' in out
+
+
+def test_an_unnamed_conversation_says_so_in_status():
+    from pyclaw import slash
+
+    async def main():
+        session = _session(_answer, 'status-name')
+        return await slash.handle_slash('/status', session)
+
+    assert 'Name: none yet' in asyncio.run(main())
+
+
+def test_a_named_conversation_shows_its_name_in_status():
+    from pyclaw import slash
+
+    async def main():
+        session = _session(_answer, 'status-named')
+        session.rename('parser work')
+        return await slash.handle_slash('/status', session)
+
+    assert 'Name: parser work' in asyncio.run(main())

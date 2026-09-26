@@ -12,7 +12,7 @@ from pyclaw.slash import handle_slash, suggest as slash_suggest
 from pyclaw.tui.agents_panel import AgentsScreen
 from pyclaw.tui.formatting import _direct_message
 from pyclaw.tui.screens import (DiffScreen, MemoryScreen, PermissionsScreen,
-                                RewindScreen, TasksScreen)
+                                RewindScreen, SessionsScreen, TasksScreen)
 from pyclaw.tui.suggest import (_apply_at, _at_token, _file_suggest,
                                 _suggest_label)
 from pyclaw.tui.theme import RESULT_HANG, RESULT_PREFIX
@@ -78,6 +78,16 @@ class PromptMixin:
                     'PyClaw has not recorded any turn to go back to.'))
                 return
             self.push_screen(RewindScreen(self))
+            return
+        if text == '/resume':
+            self.query_one("#input", Input).value = ""
+            if self._processing:
+                await self._append_block(escape(
+                    f'PyClaw is still working. Press {keys.display("escape")} '
+                    'to stop it first, then change conversation.'))
+                return
+            await self._append_user(text)
+            self.push_screen(SessionsScreen(self))
             return
         if text == '/diff':
             self.query_one("#input", Input).value = ""

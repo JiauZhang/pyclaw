@@ -115,21 +115,14 @@ def list_sessions() -> list:
     return sessions
 
 
-def match_sessions(query) -> list:
-    """The saved conversations a person's word refers to: an exact id or name
-    wins, otherwise everything whose id or name starts with it."""
-    wanted = ' '.join(str(query or '').split()).lower()
+def named_sessions(title) -> list:
+    """The saved conversations carrying exactly this name. A name is only a
+    name if it is complete: a part of one is a search, not an address."""
+    wanted = ' '.join(str(title or '').split()).lower()
     if not wanted:
         return []
-    sessions = list_sessions()
-    exact = [item for item in sessions
-             if item['id'].lower() == wanted
-             or item['title'].lower() == wanted]
-    if exact:
-        return exact
-    return [item for item in sessions
-            if item['id'].lower().startswith(wanted)
-            or item['title'].lower().startswith(wanted)]
+    return [item for item in list_sessions()
+            if item['title'].lower() == wanted or item['id'].lower() == wanted]
 
 
 def _expired(path: Path, cutoff: float) -> bool:

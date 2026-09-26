@@ -16,7 +16,8 @@ from pyclaw.team import memory as agent_memory
 COMMANDS = [
     {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
     {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
-    {'name': 'resume', 'desc': 'List saved sessions or load one with /resume <id>', 'hint': '[id]'},
+    {'name': 'resume', 'desc': 'Pick a saved conversation, or name the one to '
+                               'continue', 'hint': '[name or id]'},
     {'name': 'rename', 'desc': 'Name this conversation, so /resume is readable',
      'hint': '[name]'},
     {'name': 'branch', 'desc': 'Carry on in a copy of this conversation from '

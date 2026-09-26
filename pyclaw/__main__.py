@@ -105,9 +105,9 @@ def _cli_session(args):
     key = ["cli", os.getcwd()]
     resume_id = getattr(args, "resume", None)
     if resume_id:
-        matches = session_store.match_sessions(resume_id)
-        if len(matches) == 1:
-            resume_id = matches[0]['id']
+        named = session_store.named_sessions(resume_id)
+        if len(named) == 1:
+            resume_id = named[0]['id']
         return resolve_session_id(key, rotate=True), resume_id
     if getattr(args, "continue_session", False):
         previous = resolve_session_id(key, rotate=False)

@@ -16,6 +16,8 @@ def _status(session, session_key: str) -> str:
     usage = session.usage
     lines = [f'pyclaw: {__version__}',
              f'Session: {session_key or session.name}',
+             f'Name: {session.title}' if session.title else
+             'Name: none yet, /rename gives this conversation one',
              f'Directory: {getattr(session, "cwd", "")}',
              f'Mode: {session.mode}']
     team = getattr(session, 'team_context', None)
@@ -81,21 +83,16 @@ def _handle_resume(session, arg: str) -> str:
                          + name)
         lines.append('Use /resume <id> to continue one of them.')
         return '\n'.join(lines)
-    resumed = getattr(session, 'resume_session', None)
-    matches = session_store.match_sessions(arg)
-    if not matches:
-        return f'No saved conversation named "{arg}".'
-    if len(matches) > 1:
-        lines = [f'{len(matches)} conversations answer to "{arg}":']
-        lines += [f"  {item['id']}  ({item['messages']} messages)"
-                  + (f"  \"{item['title']}\"" if item['title'] else '')
-                  for item in matches[:10]]
-        lines.append('Use /resume <id> to continue one of them.')
-        return '\n'.join(lines)
-    target = matches[0]
-    count = resumed(target['id']) if resumed else 0
+    named = session_store.named_sessions(arg)
+    if not named:
+        return f'Session "{arg}" was not found.'
+    if len(named) > 1:
+        return (f'Found {len(named)} conversations named "{arg}". '
+                'Use /resume on its own to pick one.')
+    target = named[0]
+    count = session.resume_session(target['id'])
     if not count:
-        return f'No transcript found for session: {arg}'
+        return f'Session "{arg}" has nothing recorded to come back to.'
     name = f'"{target["title"]}"' if target['title'] else target['id']
     return f'Resumed {count} messages from {name}.'
 
@@ -129,10 +126,12 @@ def _tail(path, lines: int = 12) -> list[str]:
 def _handle_rename(session, arg: str) -> str:
     current = getattr(session, 'title', '')
     if not arg:
-        return (f'This conversation is called "{current}".'
-                if current else
-                'This conversation has no name yet; /rename <name> gives it '
-                'one.')
+        if current:
+            return f'This conversation is called "{current}".'
+        arg = session.generated_title()
+        if not arg:
+            return ('Nothing has been asked of this conversation yet, so there '
+                    'is nothing to name it after: /rename <name>.')
     try:
         title = session.rename(arg)
     except ValueError as exc:

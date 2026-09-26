@@ -115,6 +115,7 @@ class StatusMixin:
         if s is None or not self.is_running:
             return
         self._schedule_statusline()
+        self.title = s.title or 'PyClaw'
         viewing = self._viewing is not None
         viewing_busy = viewing and self._agent_running(
             self._agent_by_name(self._viewing))

@@ -23,6 +23,7 @@ def _thinking():
 def _fake_session(**kwargs):
     class FakeSession:
         name = "s1"
+        title = ""
         mode = "agent"
         thinking = _thinking()
         provider = "p"

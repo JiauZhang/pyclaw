@@ -144,6 +144,15 @@ class _FakeTeam:
     def restore(self, messages):
         self._messages = list(messages)
 
+    def reset_rules(self):
+        self._rules_reset = True
+
+    def reset_usage(self):
+        self._usage_reset = True
+
+    def begin_new_session(self, source='clear'):
+        self._session_source = source
+
     async def query(self, prompt, timeout=60):
         self.record("user", prompt)
         emit(AGENT_TOOL_CALL, agent="lead", tool="k",
@@ -5550,3 +5559,43 @@ def test_a_wide_command_names_every_rule_it_would_save():
     assert single._remember_label() == (
         'Yes, and stop asking about: Bash(git status:*)')
     assert single._rule == 'Bash(git status:*)'
+
+
+def test_the_resume_picker_lists_named_conversations_and_continues_one(
+        tmp_path, monkeypatch):
+    from pyclaw.session import store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+    session_store.save_transcript('old-one', [{'role': 'user',
+                                               'content': 'earlier question'},
+                                              {'role': 'assistant',
+                                               'content': 'earlier answer'}])
+    session_store.rename_session('old-one', 'the parser thread')
+
+    async def scenario():
+        async with PyClawApp(builder=_builder,
+                             session_id='picker').run_test(size=(90, 30)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app.query_one(Input).value = '/resume'
+            await pilot.press('enter')
+            await pilot.pause()
+            screen = app.screen
+            assert screen.__class__.__name__ == 'SessionsScreen'
+            body = str(screen.query_one('#ss-list', Static).content)
+            assert 'the parser thread' in body
+            assert 'message' in body
+            screen.query_one('#ss-input', Input).value = 'nomatch'
+            await pilot.pause()
+            assert 'no saved conversation matches' in str(
+                screen.query_one('#ss-list', Static).content)
+            screen.query_one('#ss-input', Input).value = 'parser'
+            await pilot.pause()
+            await pilot.press('enter')
+            for _ in range(8):
+                await pilot.pause()
+            return ''.join(str(child.content) for child in app._conv().children
+                           if hasattr(child, 'content'))
+
+    rendered = asyncio.run(scenario())
+    assert 'Continuing "the parser thread"' in rendered
