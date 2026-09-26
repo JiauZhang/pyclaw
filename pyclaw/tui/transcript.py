@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.widgets import Static
 
 from pyclaw.tui.formatting import _content_text, _plural

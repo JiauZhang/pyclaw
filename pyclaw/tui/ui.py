@@ -6,7 +6,7 @@ the theme can move them all at once.
 """
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.tui import keys
 from pyclaw.tui.theme import POINTER

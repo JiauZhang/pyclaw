@@ -21,9 +21,11 @@ from pyclaw.tools.bash import get_default_timeout_ms
 from pyclaw.usage_history import record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
-from .store import (_session_dir, append_conv, close_session_logger,
-                   load_transcript, save_transcript)
-from pyclaw.team.builder import _dispatch_event, configured_context_window
+from .store import (_session_path, adopt_artifacts, append_conv,
+                    close_session_logger, history_dir, load_transcript,
+                    plan_file, save_transcript)
+from pyclaw.team.builder import (_dispatch_event, checkpoints_enabled,
+                                 configured_context_window)
 from pyclaw.permissions import parse_mode
 
 _sessions_by_root: dict[str, 'Session'] = {}
@@ -102,7 +104,6 @@ class Session(HistoryMixin, ReadoutMixin):
         self._tools = entity.provided_tools
         self.mode = getattr(entity, '_pyclaw_mode', 'agent')
         self.name = entity.name
-        self.conv_session_id = session_id or entity.name
         self.resume_from = resume_from
         self._conv_reply = ""
         self._conv_thinking = ""
@@ -110,9 +111,34 @@ class Session(HistoryMixin, ReadoutMixin):
         self._unreg = None
         self._bind_gen = 0
         self._gate = getattr(entity, '_pyclaw_gate', None)
-        if session_id:
-            self._team.sidechain_dir = _session_dir(session_id) / "subagents"
+        self.conv_session_id = session_id or uuid.uuid4().hex
         _sessions_by_root[entity.name] = self
+
+    @property
+    def conv_session_id(self) -> str:
+        return self._conv_session_id
+
+    @conv_session_id.setter
+    def conv_session_id(self, value: str):
+        """Moving to another conversation re-points every artifact store with
+        it, so a plan or a snapshot can never land on another conversation."""
+        self._conv_session_id = value
+        team = self._team
+        team.lead_session_id = value
+        team.sidechain_dir = _session_path(value) / "subagents"
+        team.plan_path = plan_file(value)
+        if self._gate is not None:
+            self._gate.plan_file = team.plan_path
+
+    def _adopt_history(self):
+        """Start the snapshot store of this conversation, which after a clear,
+        a resume or a branch is a different one from before."""
+        if checkpoints_enabled():
+            self._team.use_file_history(history_dir(self.conv_session_id))
+
+    @property
+    def plan_path(self) -> Path:
+        return self._team.plan_path
 
     @property
     def provider(self) -> str:
@@ -264,6 +290,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.reset_usage()
         self._team.reset_rules()
         self._team.begin_new_session('clear')
+        self._adopt_history()
 
     def resume_session(self, session_id: str) -> int:
         messages = load_transcript(session_id)
@@ -272,7 +299,10 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.restore(messages)
         self._team.reset_rules()
         self._team.begin_new_session('resume')
-        self.conv_session_id = uuid.uuid4().hex
+        resumed = uuid.uuid4().hex
+        adopt_artifacts(session_id, resumed)
+        self.conv_session_id = resumed
+        self._adopt_history()
         self.resume_from = None
         return len(messages)
 

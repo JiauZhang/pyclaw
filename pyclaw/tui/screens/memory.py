@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import VerticalScroll
 from textual.binding import Binding

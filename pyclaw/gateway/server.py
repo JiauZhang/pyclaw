@@ -81,17 +81,19 @@ class GatewayServer:
     def webchat_enabled(self) -> bool:
         return 'web' in self.config.enabled_channels
 
-    def _new_session(self, provider=None, model=None) -> Session:
+    def _new_session(self, conversation_id: str, provider=None,
+                     model=None) -> Session:
         return Session(build_team(
             provider=provider or self.config.provider,
             model=model or self.config.model,
             http_options={'timeout': 300},
-        ))
+            conversation_id=conversation_id,
+        ), session_id=conversation_id)
 
     async def _get_session(self, session_key: str, provider=None, model=None) -> Session:
         session = self._sessions.get(session_key)
         if session is None:
-            session = self._new_session(provider, model)
+            session = self._new_session(session_key, provider, model)
             self._sessions[session_key] = session
             self.runtime.get_or_create_session(session_key, session.name)
         return session

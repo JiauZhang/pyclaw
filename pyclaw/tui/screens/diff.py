@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from pyclaw.tui import keys

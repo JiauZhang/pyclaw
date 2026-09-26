@@ -5,7 +5,7 @@ import logging
 import random
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 

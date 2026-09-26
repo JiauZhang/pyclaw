@@ -23,6 +23,9 @@ class _Team:
         self.lead = _Lead()
         self._pyclaw_gate = ToolContext(cwd=cwd)
 
+    def use_file_history(self, directory):
+        self.file_history_dir = directory
+
 
 def _session(tmp_path):
     return Session(_Team(tmp_path), session_id='bash-mode')

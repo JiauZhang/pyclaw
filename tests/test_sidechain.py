@@ -47,8 +47,13 @@ def test_session_persists_subagent_sidechains_under_session_log(tmp_path, monkey
     assert meta['status'] == 'completed'
 
 
-def test_sessions_without_persistence_do_not_write_sidechains(tmp_path, monkeypatch):
+def test_sidechains_follow_the_conversation_not_the_team_name(tmp_path,
+                                                              monkeypatch):
+    """A conversation without an id of its own still has one: its records belong
+    to it alone, and never to whatever the team happens to be called."""
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
     _spawn_subagent('np')
-    assert not (tmp_path / 'logs').exists() or \
-        list((tmp_path / 'logs').iterdir()) == []
+    conversations = list((tmp_path / 'logs').iterdir())
+    assert len(conversations) == 1
+    assert conversations[0].name != 'np'
+    assert list((conversations[0] / 'subagents').glob('agent-*.jsonl'))

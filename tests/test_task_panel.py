@@ -93,6 +93,24 @@ def test_a_blank_line_only_separates_sections_that_exist():
     assert panel_text([[], ['only']]) == 'only'
 
 
+def test_output_full_of_brackets_still_leaves_the_whole_panel_readable():
+    """Tool output quotes things as ["ssh -i '/tmp/k'"], and Textual opens a
+    tag at any unescaped bracket: one such row must not take the panel down."""
+    from textual.content import Content
+    output = ("Git(ssh_key) -> [\"ssh -i '/tmp/k' -o IdentitiesOnly=yes\"] "
+              "and [/bold] too")
+    text = panel_text([
+        subagent_rows({'a@t': _sub(last_tool=output, tools=1)}),
+        agent_tree(_Team(_Agent('lead')), {}, {'lead': '#FF6B80'}),
+        shell_rows([{'id': 'b1', 'command': output, 'seconds': 1,
+                     'exit': None}]),
+        tool_rows([{'name': 'Read'}]),
+    ])
+    rendered = str(Content.from_markup(text))
+    assert output in rendered
+    assert 'Agents' in rendered and 'Tools 1' in rendered
+
+
 def test_a_shell_detail_shows_status_runtime_command_and_output():
     lines = task_detail_lines(
         {'kind': 'shell', 'id': 'b1', 'command': 'npm run dev',

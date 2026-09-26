@@ -6,7 +6,7 @@ import asyncio
 import logging
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from rich.text import Text
 from textual.containers import Horizontal
 from textual.widgets import Input, Static

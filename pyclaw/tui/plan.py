@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.tui.formatting import _summarize
 from pyclaw.tui.theme import (BLOCKED_PREFIX, DONE_COLOR, NEXT_PREFIX,

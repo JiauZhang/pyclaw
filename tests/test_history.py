@@ -35,6 +35,7 @@ def test_transcript_roundtrip():
 
 def test_transcript_skips_broken_lines():
     path = session_store.transcript_path("s1")
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('{"role": "user", "content": "a"}\nnot json\n\n',
                     encoding="utf-8")
     assert session_store.load_transcript("s1") == [{"role": "user", "content": "a"}]
@@ -167,6 +168,67 @@ def test_slash_resume_lists_and_loads_a_saved_session():
         assert session.conv_session_id != "old"
 
     asyncio.run(main())
+
+
+def _saved(session_id, title):
+    session_store.save_transcript(
+        session_id, [{"role": "user", "content": "hi"},
+                     {"role": "assistant", "content": "ok"}])
+    if title:
+        session_store.rename_session(session_id, title)
+
+
+def test_resuming_by_name_loads_the_named_conversation():
+    from pyclaw import slash
+    _saved("deadbeef", "git-ssh-key")
+
+    async def main():
+        session = _session(_answer, "fresh")
+        return await slash.handle_slash("/resume git-ssh-key", session)
+
+    assert "Resumed 2 messages" in asyncio.run(main())
+
+
+def test_a_name_that_belongs_to_two_conversations_asks_for_the_id():
+    from pyclaw import slash
+    _saved("aaaa1111", "same name")
+    _saved("bbbb2222", "same name")
+
+    async def main():
+        session = _session(_answer, "fresh")
+        return await slash.handle_slash("/resume same name", session), session
+
+    out, session = asyncio.run(main())
+    assert "aaaa1111" in out and "bbbb2222" in out
+    assert session.transcript() == []
+
+
+def test_a_name_matching_nothing_says_so():
+    from pyclaw import slash
+    _saved("deadbeef", "git-ssh-key")
+
+    async def main():
+        session = _session(_answer, "fresh")
+        return await slash.handle_slash("/resume ssh-keys", session)
+
+    assert "No saved conversation named" in asyncio.run(main())
+
+
+def test_resume_on_the_command_line_takes_a_name_too():
+    _saved("deadbeef", "git-ssh-key")
+
+    class Explicit:
+        resume = "git-ssh-key"
+        continue_session = False
+
+    assert __main__._cli_session(Explicit())[1] == "deadbeef"
+
+
+def test_reading_a_conversation_that_is_not_there_creates_nothing(tmp_path):
+    assert load_transcript("not-a-session") == []
+    assert session_store.session_meta("not-a-session") == {}
+    assert session_store.match_sessions("not-a-session") == []
+    assert not (tmp_path / "not-a-session").exists()
 
 
 async def _talked_session(session_id='talk'):

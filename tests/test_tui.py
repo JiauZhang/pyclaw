@@ -76,6 +76,9 @@ class _FakeTeam:
     def set_thinking(self, thinking):
         self.thinking = thinking
 
+    def use_file_history(self, directory):
+        self.file_history_dir = directory
+
     def remember_thinking(self):
         self.remembered = True
 
@@ -2297,7 +2300,8 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
     async def scenario():
-        async with PyClawApp(builder=lambda: _LogTeam()).run_test() as pilot:
+        async with PyClawApp(builder=lambda: _LogTeam(),
+                             session_id='conv-logs').run_test() as pilot:
             app = pilot.app
             await pilot.pause()
             app.query_one(Input).value = "hi"
@@ -2306,7 +2310,7 @@ def test_turn_appends_conversation_log(tmp_path, monkeypatch):
                 await pilot.pause()
     asyncio.run(scenario())
 
-    records = jsonl.read(tmp_path / "t" / "messages.jsonl")
+    records = jsonl.read(tmp_path / "conv-logs" / "messages.jsonl")
     assistant = [r for r in records if r["role"] == "assistant"]
     assert assistant
     assert assistant[-1]["content"] == "logged answer"

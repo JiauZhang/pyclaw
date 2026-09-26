@@ -4,7 +4,7 @@ import asyncio
 import logging
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from chatchat.hooks.events import (AGENT_COMPACT, AGENT_PROGRESS,
                                    AGENT_REASON_START, AGENT_STATE, AGENT_TEXT,

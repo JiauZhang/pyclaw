@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import difflib
 import re
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.tui.formatting import _edit_summary
 from pyclaw.tools.names import EDIT, WRITE

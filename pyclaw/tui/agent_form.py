@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pyclaw.tui import keys
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.widgets import Input
 
 from chatchat.team.agents import AgentDefinition

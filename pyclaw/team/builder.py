@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import itertools
 import os
+import uuid
 from pathlib import Path
 from typing import Optional
 
@@ -125,7 +126,9 @@ def build_team(
     base_tools: Optional[list] = None,
     agents_json: Optional[str] = None,
     use_team: bool = False,
+    conversation_id: Optional[str] = None,
 ) -> Team:
+    conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
     registry = _resolve_skills(skills, cwd)
     coding_tools = list(BUILTIN_TOOLS)
@@ -163,7 +166,7 @@ def build_team(
         agent_memory=_agent_memory(cwd),
         cron=CronStore(Path(cwd) / '.pyclaw'),
         rules=agent_memory.rule_set(cwd),
-        file_history_dir=(str(pyclaw_home() / 'file-history')
+        file_history_dir=(str(pyclaw_home() / 'file-history' / conversation_id)
                           if checkpoints_enabled() else None),
         multi_agent=use_team,
         context_window=configured_context_window(),
@@ -181,8 +184,7 @@ def build_team(
         team.hooks.permission_mode = gate.mode.value
 
     team._plan_mode_changed = _plan_mode
-    team.plan_path = pyclaw_home() / 'plans' / f'{team.name}.md'
-    gate.plan_file = team.plan_path
+    team.lead_session_id = conversation_id
     team._pyclaw_mode = 'team' if use_team else 'agent'
 
     team.set_instruction_files(agent_memory.load_instruction_files(cwd))

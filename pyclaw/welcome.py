@@ -5,7 +5,7 @@ import time
 import unicodedata
 from pathlib import Path
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from pyclaw import config
 from pyclaw.session import store as session_store
 

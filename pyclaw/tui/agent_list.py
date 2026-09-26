@@ -3,7 +3,7 @@ from __future__ import annotations
 import dataclasses
 
 from pyclaw.tui import keys
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.team import defs as agent_defs
 from pyclaw.tui.agent_form import AGENT_LOCATIONS, AGENT_NAV

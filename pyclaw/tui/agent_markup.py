@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.tui.formatting import _summarize, _teammate_blocks, _user_markup
 from pyclaw.tui.theme import (BULLET, BULLET_PREFIX, POINTER, PREVIEW_CHARS,

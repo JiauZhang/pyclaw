@@ -5,7 +5,6 @@ from pyclaw.tui import keys
 import json
 import re
 from pathlib import Path
-from rich.markup import escape
 
 from pyclaw.tui.theme import MAX_RESULT_LINES, POINTER, RESULT_PREFIX
 
@@ -16,6 +15,14 @@ TEAMMATE_MESSAGE_RE = re.compile(
 HIDDEN_TEAMMATE_TYPES = frozenset({'idle_notification', 'shutdown_approved',
                                    'teammate_terminated'})
 DIRECT_MESSAGE_RE = re.compile(r'^@([\w-]+)\s+(.+)$', re.S)
+_OPEN_BRACKET_RE = re.compile(r'(?<!\\)\[')
+
+
+def escape(value) -> str:
+    """The renderer opens a tag at any bracket, not only a tag-shaped one, so
+    every one of them has to go: an unescaped ``[`` in tool output would
+    otherwise swallow the markup of the rows that follow it."""
+    return _OPEN_BRACKET_RE.sub(r'\\[', str(value))
 
 
 def _summarize(value, limit: int = 60) -> str:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.widgets import Input, Markdown, Static

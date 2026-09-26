@@ -5,7 +5,7 @@ import logging
 import random
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.tui.readout import _agent_tokens

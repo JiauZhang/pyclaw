@@ -5,7 +5,7 @@ from pyclaw.tui import keys
 import logging
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.containers import VerticalScroll
 
 from pyclaw.tools import background

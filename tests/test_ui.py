@@ -40,3 +40,15 @@ def test_a_footer_is_a_gap_and_the_hints():
 
 def test_the_selection_follows_the_theme():
     assert ui.SELECTED == '$brand'
+
+
+def test_text_from_outside_can_never_open_a_tag():
+    """Textual starts a tag at any bracket that is not already escaped, so the
+    escaping layer has to cover every bracket and not just the tag-shaped
+    ones: a quoted list in tool output used to swallow the markup after it."""
+    from textual.content import Content
+    from pyclaw.tui.formatting import escape
+    for raw in ['Git -> ["ssh -i \'/tmp/k\' -o IdentitiesOnly=yes"]',
+                'a [/bold] b [bold]c[/] d',
+                'see [the README] for @[user] and $brand']:
+        assert str(Content.from_markup(escape(raw))) == raw

@@ -5,12 +5,16 @@ import datetime
 import json
 import logging
 import os
+import shutil
+import time
 import uuid
 from pathlib import Path
 
 from conippets import jsonl
 
 from pyclaw.home import pyclaw_home
+
+DEFAULT_CLEANUP_DAYS = 30
 
 
 def _logs_dir() -> Path:
@@ -19,8 +23,12 @@ def _logs_dir() -> Path:
     return logs
 
 
+def _session_path(session_id) -> Path:
+    return _logs_dir() / str(session_id)
+
+
 def _session_dir(session_id) -> Path:
-    session = _logs_dir() / str(session_id)
+    session = _session_path(session_id)
     session.mkdir(parents=True, exist_ok=True)
     return session
 
@@ -46,7 +54,7 @@ def resolve_session_id(logical_key, *, rotate: bool = False) -> str:
 
 
 def transcript_path(session_id) -> Path:
-    return _session_dir(session_id) / "transcript.jsonl"
+    return _session_path(session_id) / "transcript.jsonl"
 
 
 _ENTRY_META = ("uuid", "parentUuid")
@@ -77,7 +85,7 @@ def load_transcript(session_id) -> list:
 
 
 def session_meta(session_id) -> dict:
-    path = _session_dir(session_id) / "meta.json"
+    path = _session_path(session_id) / "meta.json"
     if not path.exists():
         return {}
     try:
@@ -107,6 +115,54 @@ def list_sessions() -> list:
     return sessions
 
 
+def match_sessions(query) -> list:
+    """The saved conversations a person's word refers to: an exact id or name
+    wins, otherwise everything whose id or name starts with it."""
+    wanted = ' '.join(str(query or '').split()).lower()
+    if not wanted:
+        return []
+    sessions = list_sessions()
+    exact = [item for item in sessions
+             if item['id'].lower() == wanted
+             or item['title'].lower() == wanted]
+    if exact:
+        return exact
+    return [item for item in sessions
+            if item['id'].lower().startswith(wanted)
+            or item['title'].lower().startswith(wanted)]
+
+
+def _expired(path: Path, cutoff: float) -> bool:
+    try:
+        return path.stat().st_mtime < cutoff
+    except OSError:
+        return False
+
+
+def sweep(days: int = DEFAULT_CLEANUP_DAYS) -> int:
+    """Drop conversations nobody has touched for `days`, the plan beside them
+    and their snapshots, so a long-lived home does not grow forever."""
+    cutoff = time.time() - max(1, int(days)) * 86400
+    removed = 0
+    logs = _logs_dir()
+    for entry in logs.iterdir():
+        if entry.is_dir() and _expired(entry, cutoff):
+            shutil.rmtree(entry, ignore_errors=True)
+            removed += 1
+        elif entry.name.startswith('pyclaw.log.') and _expired(entry, cutoff):
+            entry.unlink(missing_ok=True)
+    plans = plans_dir()
+    for path in plans.glob('*.md'):
+        if _expired(path, cutoff):
+            path.unlink(missing_ok=True)
+    history = pyclaw_home() / 'file-history'
+    if history.exists():
+        for entry in history.iterdir():
+            if entry.is_dir() and _expired(entry, cutoff):
+                shutil.rmtree(entry, ignore_errors=True)
+    return removed
+
+
 def _content_of(entry) -> dict:
     return {key: value for key, value in entry.items()
             if key not in _ENTRY_META}
@@ -124,12 +180,14 @@ def _chained(payload, parent):
 
 
 def _append_records(path, records) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as handle:
         for record in records:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def _write_records(path, records) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     with temporary.open("w", encoding="utf-8") as handle:
         for record in records:
@@ -206,6 +264,45 @@ def title_of(session_id) -> str:
     return str(session_meta(session_id).get('title') or '')
 
 
+def plans_dir() -> Path:
+    return pyclaw_home() / 'plans'
+
+
+def plan_file(session_id) -> Path:
+    """One plan per conversation, named after it: two conversations can never
+    write over each other's plan."""
+    return plans_dir() / f'{session_id}.md'
+
+
+def history_dir(session_id) -> Path:
+    return pyclaw_home() / 'file-history' / str(session_id)
+
+
+def adopt_artifacts(source_id, target_id) -> None:
+    """Hand the plan and the snapshots of an inherited conversation to the one
+    that continues it: the copy keeps the original intact, and snapshots are
+    shared by hard link rather than duplicated."""
+    if not source_id or not target_id or source_id == target_id:
+        return
+    source_plan, target_plan = plan_file(source_id), plan_file(target_id)
+    if source_plan.exists() and not target_plan.exists():
+        target_plan.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source_plan, target_plan)
+    source_history, target_history = (history_dir(source_id),
+                                       history_dir(target_id))
+    if not source_history.exists():
+        return
+    target_history.mkdir(parents=True, exist_ok=True)
+    for entry in source_history.iterdir():
+        link = target_history / entry.name
+        if link.exists():
+            continue
+        try:
+            os.link(entry, link)
+        except OSError:
+            shutil.copyfile(entry, link)
+
+
 def first_prompt(session_id) -> str:
     for entry in load_transcript(session_id):
         if entry.get('role') != 'user':
@@ -246,7 +343,8 @@ def create_branch(session_id, title: str = '') -> dict:
     effective = branch_title(
         ' '.join(str(title or '').split()) or first_prompt(session_id), taken)
     record_meta(fork_id, {'title': effective, 'forked_from': str(session_id)})
-    return {'id': fork_id, 'title': effective, 'messages': len(records)}
+    return {'id': fork_id, 'title': effective, 'messages': len(records),
+            'forked_from': str(session_id)}
 
 
 def append_conv(session_id, role, content, *, reasoning_content=None, topic=None,

@@ -6,7 +6,7 @@ import logging
 import random
 import time
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll

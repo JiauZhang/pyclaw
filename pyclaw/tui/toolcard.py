@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 
 from pyclaw.tui.formatting import (_format_count, _single_line, _summarize)
 from pyclaw.tui.theme import (EXPAND_HINT, INITIALIZING_TEXT,

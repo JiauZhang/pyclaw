@@ -1,5 +1,7 @@
 import asyncio
 import json
+import os
+import time
 from pathlib import Path
 
 import pytest
@@ -141,3 +143,26 @@ def test_resolve_session_id_persists(tmp_path):
     assert list(index.values()) == [first]
     again = session_store.resolve_session_id(["wechat", "u1"])
     assert first == again
+
+
+def _age(path, days):
+    stamp = time.time() - days * 86400
+    os.utime(path, (stamp, stamp))
+
+
+def test_sweep_drops_only_the_stale_conversation(tmp_path):
+    fresh, stale = tmp_path / 'fresh', tmp_path / 'stale'
+    for folder in (fresh, stale):
+        folder.mkdir()
+        (folder / 'transcript.jsonl').write_text('', encoding='utf-8')
+    plans = session_store.plans_dir()
+    plans.mkdir(parents=True, exist_ok=True)
+    old_plan, new_plan = plans / 'old-plan.md', plans / 'new-plan.md'
+    old_plan.write_text('x', encoding='utf-8')
+    new_plan.write_text('x', encoding='utf-8')
+    _age(stale, 40)
+    _age(old_plan, 40)
+
+    assert session_store.sweep(30) == 1
+    assert fresh.exists() and not stale.exists()
+    assert new_plan.exists() and not old_plan.exists()

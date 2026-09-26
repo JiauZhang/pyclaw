@@ -5,7 +5,7 @@ from pyclaw.tui import keys
 
 import logging
 
-from rich.markup import escape
+from pyclaw.tui.formatting import escape
 from textual.widgets import Input, Static
 
 from pyclaw.slash import handle_slash, suggest as slash_suggest

@@ -212,8 +212,77 @@ def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
     assert team.hooks.permission_mode == 'plan'
 
 
-def test_the_plan_file_lives_under_the_pyclaw_home(tmp_path):
-    team = _built(tmp_path)
-    assert team.plan_path is not None
-    assert str(team.plan_path).startswith(str(tmp_path / 'pyclaw-home'))
-    assert team._pyclaw_gate.plan_file == team.plan_path
+def _conversation(tmp_path, session_id):
+    from pyclaw.session import Session
+
+    return Session(_built(tmp_path), session_id=session_id)
+
+
+def _write_plan(session, text):
+    """The Write tool makes its own parent directory; a test that drops a plan
+    in directly has to do the same."""
+    session.plan_path.parent.mkdir(parents=True, exist_ok=True)
+    session.plan_path.write_text(text, encoding='utf-8')
+
+
+def _spoken(session):
+    session._team.lead.messages.append({'role': 'user', 'content': 'hi'})
+    session._team.lead.messages.append({'role': 'assistant',
+                                        'content': [{'type': 'text',
+                                                     'text': 'ok'}]})
+    session.save_transcript()
+
+
+def test_the_plan_file_belongs_to_the_conversation_not_the_team(tmp_path):
+    first = _conversation(tmp_path, 'conv-one')
+    second = _conversation(tmp_path, 'conv-two')
+    home = tmp_path / 'pyclaw-home'
+    assert str(first.plan_path).startswith(str(home / 'plans'))
+    assert first.plan_path != second.plan_path
+    assert first._team.name not in str(first.plan_path)
+    assert first._team._pyclaw_gate.plan_file == first.plan_path
+
+
+def test_clearing_gives_the_next_conversation_its_own_plan(tmp_path):
+    session = _conversation(tmp_path, 'conv-one')
+    before = session.plan_path
+    session.reset()
+    assert session.plan_path != before
+
+
+def test_a_branch_carries_the_plan_text_into_a_file_of_its_own(tmp_path):
+    session = _conversation(tmp_path, 'conv-one')
+    _write_plan(session, 'the plan')
+    _spoken(session)
+    original = session.plan_path
+
+    session.branch('side work')
+
+    assert session.plan_path != original
+    assert session.plan_path.read_text(encoding='utf-8') == 'the plan'
+    assert original.read_text(encoding='utf-8') == 'the plan'
+
+
+def test_resuming_continues_from_a_copy_of_the_plan(tmp_path):
+    first = _conversation(tmp_path, 'conv-one')
+    _write_plan(first, 'keep me')
+    _spoken(first)
+
+    second = _conversation(tmp_path, 'conv-two')
+    assert second.resume_session('conv-one') > 0
+    assert second.plan_path != first.plan_path
+    assert second.plan_path.read_text(encoding='utf-8') == 'keep me'
+    assert first.plan_path.read_text(encoding='utf-8') == 'keep me'
+
+
+def test_snapshots_are_kept_per_conversation(tmp_path):
+    first = _conversation(tmp_path, 'conv-one')
+    second = _conversation(tmp_path, 'conv-two')
+    home = tmp_path / 'pyclaw-home'
+    for session in (first, second):
+        history = session._team.file_history
+        assert history is not None
+        assert str(history.directory).startswith(
+            str(home / 'file-history'))
+    assert (first._team.file_history.directory
+            != second._team.file_history.directory)

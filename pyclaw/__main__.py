@@ -5,6 +5,8 @@ from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version_
 from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
 from pyclaw.session import Session
+from pyclaw.session import store as session_store
+from pyclaw.session.store import resolve_session_id
 from pyclaw.team.builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
 from pyclaw.config import save as save_config
@@ -103,6 +105,9 @@ def _cli_session(args):
     key = ["cli", os.getcwd()]
     resume_id = getattr(args, "resume", None)
     if resume_id:
+        matches = session_store.match_sessions(resume_id)
+        if len(matches) == 1:
+            resume_id = matches[0]['id']
         return resolve_session_id(key, rotate=True), resume_id
     if getattr(args, "continue_session", False):
         previous = resolve_session_id(key, rotate=False)
@@ -125,7 +130,7 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
                       allowed_tools=allowed_tools, ask=ask,
                       disallowed_tools=disallowed_tools,
                       base_tools=base_tools, use_team=use_team,
-                      agents_json=agents)
+                      agents_json=agents, conversation_id=session_id)
     if json_schema is not None:
         problem = team.set_output_schema(json_schema)
         if problem:
@@ -226,7 +231,8 @@ def run_tui(args):
         provider, model, permission_mode=args.permission_mode,
         allowed_tools=args.allowed_tools, ask=args.ask,
         disallowed_tools=args.disallowed_tools, base_tools=args.tools,
-        use_team=args.use_team, agents_json=args.agents),
+        use_team=args.use_team, agents_json=args.agents,
+        conversation_id=session_id),
         session_id=session_id,
         resume=_cli_resume(args),
         resume_from=resume_from, hook_events=hook_events).run()
@@ -385,6 +391,8 @@ def main():
     if args.version:
         print(__version__)
         return
+
+    session_store.sweep(int(load_config().get("cleanupPeriodDays", 30)))
 
     if args.print is not None:
         asyncio.run(run_headless(args))

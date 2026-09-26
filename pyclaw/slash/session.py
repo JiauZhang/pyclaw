@@ -78,10 +78,22 @@ def _handle_resume(session, arg: str) -> str:
         lines.append('Use /resume <id> to continue one of them.')
         return '\n'.join(lines)
     resumed = getattr(session, 'resume_session', None)
-    count = resumed(arg) if resumed else 0
+    matches = session_store.match_sessions(arg)
+    if not matches:
+        return f'No saved conversation named "{arg}".'
+    if len(matches) > 1:
+        lines = [f'{len(matches)} conversations answer to "{arg}":']
+        lines += [f"  {item['id']}  ({item['messages']} messages)"
+                  + (f"  \"{item['title']}\"" if item['title'] else '')
+                  for item in matches[:10]]
+        lines.append('Use /resume <id> to continue one of them.')
+        return '\n'.join(lines)
+    target = matches[0]
+    count = resumed(target['id']) if resumed else 0
     if not count:
         return f'No transcript found for session: {arg}'
-    return f'Resumed {count} messages from {arg}.'
+    name = f'"{target["title"]}"' if target['title'] else target['id']
+    return f'Resumed {count} messages from {name}.'
 
 def _handle_rename(session, arg: str) -> str:
     current = getattr(session, 'title', '')

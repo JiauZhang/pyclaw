@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from pyclaw.session.store import (
+    adopt_artifacts,
     rename_session,
     title_of,
     create_branch,
@@ -76,6 +77,8 @@ class HistoryMixin:
         self._team.reset_rules()
         self._team.begin_new_session('branch')
         self.conv_session_id = fork['id']
+        adopt_artifacts(fork['forked_from'], fork['id'])
+        self._adopt_history()
         self.resume_from = None
         fork['messages'] = len(messages)
         return fork
