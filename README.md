@@ -10,10 +10,10 @@ pip install pyclaw
 
 ## Quick Start
 
-Start the server:
+Start the server with the web channel on:
 
 ```shell
-pyclaw serve
+pyclaw serve --channels web
 ```
 
 Open your browser and navigate to:
@@ -107,17 +107,6 @@ skills = ['/abs/path/to/my/skill/roots']
 After `pip install` (a local `pip install -e .` works), pyclaw discovers them
 at startup and injects them into the per-session Team's sub-agents. The leader
 instruction is auto-generated to include the discovered tool names.
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/` | GET | Server info |
-| `/v1/status` | GET | Detailed runtime status |
-| `/v1/{method}` | POST | RPC endpoint |
-| `/ws` | WebSocket | General WebSocket connection |
-| `/chat/ws` | WebSocket | WebChat streaming connection |
-| `/chat` | GET | WebChat UI |
 
 ## Sponsor
 
