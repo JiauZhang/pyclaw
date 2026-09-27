@@ -17,6 +17,9 @@ def _make_session(name="agent1"):
     class Session:
         conv_session_id = "s1"
 
+        def record_turn(self):
+            pass
+
         def stream(self, message, on_event=None):
             async def gen():
                 yield "Hello "

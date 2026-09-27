@@ -116,6 +116,9 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
         def _flush_conv(self):
             RealSession._flush_conv(self)
 
+        def record_turn(self):
+            pass
+
         async def chat(self, message, on_event=None):
             self._conv_reply = "final answer"
             self._flush_conv()
@@ -196,6 +199,9 @@ def test_an_im_turn_is_recorded_on_the_conversation_the_session_is_on(tmp_path):
 
         def _flush_conv(self):
             RealSession._flush_conv(self)
+
+        def record_turn(self):
+            pass
 
         async def chat(self, message, on_event=None):
             self._conv_reply = "answer"

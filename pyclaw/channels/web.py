@@ -189,7 +189,9 @@ class WebChannelAdapter(ChannelAdapter):
         finally:
             await self.unregister_client(client_id)
 
-    async def _finish_stream(self, client_id, session_id, session, full_response):
+    async def _finish_stream(self, client_id, session_id, session,
+                            full_response):
+        session.record_turn()
         await self.send_response(
             client_id,
             "",

@@ -28,6 +28,10 @@ class _Session:
         self._response = response
         self._events = events or []
         self.conv_session_id = 'sid1'
+        self.recorded = 0
+
+    def record_turn(self):
+        self.recorded += 1
 
     async def chat(self, message, on_event=None):
         for ev in self._events:

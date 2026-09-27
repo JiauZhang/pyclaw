@@ -74,6 +74,7 @@ async def run_im_interaction(
     try:
         response = await session.chat(f"{im_extra}\n{text}", on_event=on_event)
     finally:
+        session.record_turn()
         pump.cancel()
         for status in tracker.drain(clock()):
             await adapter.send_message(sender_id, OutboundMessage(text=status, reply_to=msg_id))
