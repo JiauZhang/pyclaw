@@ -4,6 +4,7 @@ import logging
 from typing import Dict, Any, Optional, AsyncIterator, Callable
 from datetime import datetime
 
+from chatchat.hooks.events import AGENT_WARN
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
 from ..session.store import (append_conv, follow_conversation,
@@ -242,9 +243,13 @@ class WebChannelAdapter(ChannelAdapter):
                     return
 
             async def on_event(ev):
-                parts = ev.kind.split(':')
                 content = (ev.data.get('delta') or ev.data.get('text')
                            or ev.data.get('content') or '')
+                if ev.kind == AGENT_WARN:
+                    await self.send_response(client_id, text=content,
+                                             message_type="error")
+                    return
+                parts = ev.kind.split(':')
                 await self.send_response(
                     client_id,
                     text=content,

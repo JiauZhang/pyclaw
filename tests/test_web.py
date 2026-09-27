@@ -88,3 +88,41 @@ def test_process_message_slash_command_streams_reply():
     assert adapter.sent[-1][0] == "stream_complete"
     assert adapter.sent[-1][2]["full_response"] == adapter.sent[0][1]
     assert calls["requests"] == 1
+
+
+def test_a_failed_turn_reaches_the_page_as_an_error(tmp_path, monkeypatch):
+    """The turn died on an API 503; the browser has to be told, not left
+    staring at an empty reply."""
+    from pyclaw.session import store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+
+    from chatchat.hooks.events import AGENT_WARN, RuntimeEvent
+
+    failure = "503, message='Service Unavailable'"
+
+    class Session:
+        name = 'agent1'
+
+        def stream(self, message, on_event=None):
+            async def gen():
+                await on_event(RuntimeEvent(AGENT_WARN, agent='team-lead',
+                                          team='t',
+                                          data={'text': failure}))
+                return
+                yield
+
+            return gen()
+
+        async def end_session(self, reason):
+            pass
+
+        def reset(self):
+            pass
+
+    adapter = _CollectingAdapter()
+    runtime, calls = _make_runtime()
+    asyncio.run(adapter._process_message("c1", {"type": "message", "text": "hi"},
+                                         Session(), runtime))
+    assert (["error", failure] in
+            [[kind, text] for kind, text, _ in adapter.sent])
