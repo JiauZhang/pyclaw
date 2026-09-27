@@ -15,6 +15,8 @@ class _CollectingAdapter(WebChannelAdapter):
 
 def _make_session(name="agent1"):
     class Session:
+        conv_session_id = "s1"
+
         def stream(self, message, on_event=None):
             async def gen():
                 yield "Hello "
@@ -103,6 +105,7 @@ def test_a_failed_turn_reaches_the_page_as_an_error(tmp_path, monkeypatch):
 
     class Session:
         name = 'agent1'
+        conv_session_id = 'c1'
 
         def stream(self, message, on_event=None):
             async def gen():
@@ -126,3 +129,33 @@ def test_a_failed_turn_reaches_the_page_as_an_error(tmp_path, monkeypatch):
                                          Session(), runtime))
     assert (["error", failure] in
             [[kind, text] for kind, text, _ in adapter.sent])
+
+
+def test_a_web_turn_stays_on_the_conversation_the_session_chose(tmp_path,
+                                                                monkeypatch):
+    from pyclaw.session import store as session_store
+
+    monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+
+    class Session:
+        name = 'agent1'
+        conv_session_id = 'resumed-here'
+
+        def stream(self, message, on_event=None):
+            async def gen():
+                yield "ok"
+            return gen()
+
+        async def end_session(self, reason):
+            pass
+
+        def reset(self):
+            pass
+
+    adapter = _CollectingAdapter()
+    runtime, _ = _make_runtime()
+    session = Session()
+    asyncio.run(adapter._process_message("c1", {"type": "message", "text": "hi"},
+                                         session, runtime))
+    assert session.conv_session_id == 'resumed-here'
+    assert (tmp_path / 'resumed-here' / 'messages.jsonl').exists()

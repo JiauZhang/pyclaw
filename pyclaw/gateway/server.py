@@ -45,6 +45,7 @@ class GatewayConfig:
     provider: Optional[str] = None
     model: Optional[str] = None
     enabled_channels: List[str] = field(default_factory=lambda: ["wechat"])
+    use_team: bool = False
 
 
 class GatewayServer:
@@ -88,6 +89,7 @@ class GatewayServer:
             model=model or self.config.model,
             http_options={'timeout': 300},
             conversation_id=conversation_id,
+            use_team=self.config.use_team,
         ), session_id=conversation_id)
 
     async def _get_session(self, session_key: str, provider=None, model=None) -> Session:
@@ -393,7 +395,7 @@ class GatewayServer:
                             await _adapter.send_message(
                                 msg.sender_id, OutboundMessage(text=info, reply_to=msg.id))
                         await run_im_interaction(
-                            session, _adapter, session_id, msg.sender_id,
+                            session, _adapter, msg.sender_id,
                             follow, msg.id, im_extra=IM_EXTRA,
                             progress_fn=_im_progress_text)
                         logger.info("IM '%s' ran /init via model", _platform)
@@ -410,7 +412,6 @@ class GatewayServer:
                     response = await run_im_interaction(
                         session,
                         _adapter,
-                        session_id,
                         msg.sender_id,
                         msg.text,
                         msg.id,

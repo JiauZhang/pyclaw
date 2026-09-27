@@ -210,11 +210,10 @@ class WebChannelAdapter(ChannelAdapter):
         runtime
     ):
         try:
-            session_id = self._client_sessions.get(client_id, client_id)
+            session_id = session.conv_session_id
             self._client_sessions[client_id] = session_id
             record_meta(session_id, {"channel": "web", "client_id": client_id})
             runtime.get_or_create_session(session_id, session.name)
-            session.conv_session_id = session_id
             message = data.get("text", "")
             append_conv(session_id, "user", message)
 

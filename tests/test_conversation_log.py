@@ -109,7 +109,7 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
 
     class Session:
         def __init__(self):
-            self.conv_session_id = None
+            self.conv_session_id = "abc123"
             self._conv_thinking = ""
             self._conv_reply = ""
 
@@ -124,7 +124,7 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
     adapter = Adapter()
     session = Session()
     asyncio.run(run_im_interaction(
-        session, adapter, "abc123", "u1", "hi there", "m1",
+        session, adapter, "u1", "hi there", "m1",
         im_extra="", progress_fn=lambda ev: "", status_interval=0.01, max_msg_len=1500,
     ))
 
@@ -177,3 +177,35 @@ def test_sweep_drops_only_the_stale_conversation(tmp_path):
     assert session_store.sweep(30) == 1
     assert fresh.exists() and not stale.exists()
     assert new_plan.exists() and not old_plan.exists()
+
+
+def test_an_im_turn_is_recorded_on_the_conversation_the_session_is_on(tmp_path):
+    """After /resume the session owns a new conversation; the next message must
+    not drag it back to the one the channel resolved first."""
+    from pyclaw.gateway.im import run_im_interaction
+
+    class Adapter:
+        async def send_message(self, to, msg):
+            return True
+
+    class Session:
+        def __init__(self):
+            self.conv_session_id = "resumed-here"
+            self._conv_thinking = ""
+            self._conv_reply = ""
+
+        def _flush_conv(self):
+            RealSession._flush_conv(self)
+
+        async def chat(self, message, on_event=None):
+            self._conv_reply = "answer"
+            self._flush_conv()
+            return "answer"
+
+    session = Session()
+    asyncio.run(run_im_interaction(session, Adapter(), "u1", "hi", "m1",
+                                  im_extra="", progress_fn=lambda ev: "",
+                                  status_interval=0.01, max_msg_len=1500))
+    assert session.conv_session_id == "resumed-here"
+    data = _read(tmp_path / "resumed-here" / "messages.jsonl")
+    assert [row["role"] for row in data] == ["user", "assistant"]

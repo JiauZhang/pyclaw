@@ -43,7 +43,6 @@ def _friendly_channel_error(exc: Exception) -> str:
 async def run_im_interaction(
     session,
     adapter,
-    session_id: str,
     sender_id: str,
     text: str,
     msg_id,
@@ -54,8 +53,8 @@ async def run_im_interaction(
     max_msg_len: int = 1500,
     clock=time.monotonic,
 ):
-    session.conv_session_id = session_id
-    append_conv(session_id, "user", text)
+    conversation = session.conv_session_id
+    append_conv(conversation, "user", text)
 
     tracker = IMStatusTracker(refresh_interval=status_interval)
 

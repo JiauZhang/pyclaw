@@ -27,6 +27,7 @@ class _Session:
     def __init__(self, response, events=None):
         self._response = response
         self._events = events or []
+        self.conv_session_id = 'sid1'
 
     async def chat(self, message, on_event=None):
         for ev in self._events:
@@ -37,7 +38,7 @@ class _Session:
 
 def _run(session, adapter, clock=lambda: 0.0, **kw):
     return asyncio.run(run_im_interaction(
-        session, adapter, 'sid1', 'u1', 'hi', 'm1',
+        session, adapter, 'u1', 'hi', 'm1',
         im_extra='', progress_fn=_im_progress_text, status_interval=4.0,
         max_msg_len=1500, clock=clock, **kw))
 

@@ -88,6 +88,7 @@ async def start_server(args):
         provider=config["provider"],
         model=config["model"],
         enabled_channels=config["enabled_channels"],
+        use_team=args.use_team or bool(config.get("use_team")),
     )
 
     gateway = GatewayServer(gateway_config, app_config=config)
@@ -364,6 +365,8 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--host", type=str, default=None, help="Bind address (config/gateway/http/host or 127.0.0.1)")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     serve_parser.add_argument("--channels", nargs="*", default=None, choices=["web", "qq", "wechat"], help="Channels to enable (default: wechat only)")
+    serve_parser.add_argument("--use-team", action="store_true", default=False,
+                             help="Give every conversation a team to work with")
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
 
