@@ -155,6 +155,17 @@ def build_team(
                            else agent_instruction(names))
     if gate.mode is PermissionMode.plan:
         inst = inst + PLAN_NOTE
+    # cwd 相对的数据目录（.pyclaw/teams、cron、项目记忆）依赖可写的工作目录：
+    # 终端里 cwd 是用户项目，保持每项目隔离；但 launchd 拉起的 GUI App 的
+    # cwd 是只读根目录 /，在这些位置建目录会直接崩——回落到 pyclaw_home()。
+    if os.access(cwd, os.W_OK):
+        state_root = cwd
+        mailbox_root = os.path.join(state_root, '.pyclaw', 'teams')
+        cron_root = Path(state_root) / '.pyclaw'
+    else:
+        state_root = str(pyclaw_home())
+        mailbox_root = str(pyclaw_home() / 'teams')
+        cron_root = pyclaw_home()
     team = Team(
         f'pyclaw-{next(_name_counter)}',
         provider=provider,
@@ -166,13 +177,13 @@ def build_team(
         thinking=thinking or thinking_from_config(),
         model_timeout=model_timeout,
         http_options=http_options or {},
-        mailbox_dir=os.path.join(cwd, '.pyclaw', 'teams'),
+        mailbox_dir=mailbox_root,
         tasks_dir=str(pyclaw_home() / 'tasks'),
         skills=registry,
         team_store=str(pyclaw_home() / 'teams'),
-        agent_memory=_agent_memory(cwd),
-        cron=CronStore(Path(cwd) / '.pyclaw'),
-        rules=agent_memory.rule_set(cwd),
+        agent_memory=_agent_memory(state_root),
+        cron=CronStore(cron_root),
+        rules=agent_memory.rule_set(state_root),
         file_history_dir=(str(pyclaw_home() / 'file-history' / conversation_id)
                           if checkpoints_enabled() else None),
         multi_agent=use_team,

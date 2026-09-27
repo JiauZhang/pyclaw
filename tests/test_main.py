@@ -18,33 +18,50 @@ def _args(**kw):
 
 
 def test_apply_overrides_only_set_values():
-    config = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    modified = __main__._apply_overrides(config, _args(model="m1"))
+    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
+    settings = __main__._apply_overrides(dict(saved), _args(model="m1"))
 
-    assert modified is True
-    assert config["provider"] == "p0"
-    assert config["model"] == "m1"
-    assert config["enabled_channels"] == ["wechat"]
+    assert settings["provider"] == "p0"
+    assert settings["model"] == "m1"
+    assert settings["enabled_channels"] == ["wechat"]
+    assert saved["model"] == "m0"
 
 
 def test_apply_overrides_none_no_change():
-    config = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    modified = __main__._apply_overrides(config, _args())
+    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
+    settings = __main__._apply_overrides(dict(saved), _args())
 
-    assert modified is False
-    assert config["provider"] == "p0"
+    assert settings == saved
 
 
 def test_apply_overrides_all():
-    config = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    modified = __main__._apply_overrides(
-        config, _args(provider="p1", model="m1", channels=["web", "wechat"])
+    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
+    settings = __main__._apply_overrides(
+        dict(saved), _args(provider="p1", model="m1", channels=["web", "wechat"])
     )
 
-    assert modified is True
-    assert config["provider"] == "p1"
-    assert config["model"] == "m1"
-    assert config["enabled_channels"] == ["web", "wechat"]
+    assert settings["provider"] == "p1"
+    assert settings["model"] == "m1"
+    assert settings["enabled_channels"] == ["web", "wechat"]
+    assert saved["provider"] == "p0"
+
+
+def test_start_server_does_not_persist_cli_overrides(monkeypatch):
+    """serve's flags steer this run only: the saved config is what the TUI and
+    every other surface read, and a serve invocation must not rewrite it."""
+    saved_calls = []
+
+    monkeypatch.setattr(__main__, "GatewayServer", lambda *a, **k: FakeGateway())
+    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m", "enabled_channels": ["wechat"]})
+
+    import pyclaw.config as config_module
+
+    monkeypatch.setattr(config_module, "save", lambda c: saved_calls.append(c))
+
+    args = __main__._finalize_args(__main__._build_parser().parse_args(
+        ["serve", "--provider", "other", "--channels", "qq"]))
+    asyncio.run(__main__.start_server(args))
+    assert saved_calls == []
 
 
 def test_session_parsers_carry_the_flags_that_steer_a_run():
@@ -106,7 +123,6 @@ def test_start_server_runs_with_default_args(monkeypatch):
 
     monkeypatch.setattr(__main__, "GatewayServer", fake_gateway)
     monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m", "enabled_channels": ["wechat"]})
-    monkeypatch.setattr(__main__, "save_config", lambda c: None)
 
     args = __main__._finalize_args(__main__._build_parser().parse_args([]))
     asyncio.run(__main__.start_server(args))

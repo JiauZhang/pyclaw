@@ -49,9 +49,12 @@ def _run(session, adapter, clock=lambda: 0.0, **kw):
 
 def test_im_progress_text_maps_real_event_kinds():
     cases = (
-        (RuntimeEvent(AGENT_REASON_START, agent='lead'), '🔄 PyClaw 思考中…'),
+        (RuntimeEvent(AGENT_REASON_START, agent='lead'), '🔄 思考中…'),
         (RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
-                      data={'tool': 'Read', 'input': {}}), '🔧 调用工具 Read'),
+                      data={'tool': 'Read', 'input': {}}), '🔧 Read'),
+        (RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
+                      data={'tool': 'Bash',
+                            'input': {'command': 'ls -la'}}), '🔧 Bash ls -la'),
         (RuntimeEvent(AGENT_WARN, agent='lead',
                       data={'text': 'careful'}), '⚠️ careful'),
         (RuntimeEvent(AGENT_TEXT, agent='lead', data={'delta': 'hi'}), ''))
@@ -81,7 +84,7 @@ def test_interaction_collapses_status_bursts_to_latest():
         RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
                      data={'tool': 'search', 'input': {}})])
     _run(session, adapter, clock=clock)
-    assert adapter.sent == ['🔧 调用工具 search', 'done']
+    assert adapter.sent == ['🔧 search', 'done']
 
 
 def test_interaction_sends_only_the_answer_without_progress():

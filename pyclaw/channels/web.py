@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional, AsyncIterator, Callable
 from datetime import datetime
 
 from chatchat.hooks.events import AGENT_WARN
+from starlette.websockets import WebSocketDisconnect
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
 from ..session.store import (append_conv, follow_conversation,
@@ -21,6 +22,7 @@ class WebChannelAdapter(ChannelAdapter):
         self._message_queue: asyncio.Queue[InboundMessage] = asyncio.Queue()
         self._clients: Dict[str, Dict[str, Any]] = {}
         self._client_sessions: Dict[str, str] = {}
+        self._busy: set = set()
         self._message_handler: Optional[Callable[[InboundMessage, str], asyncio.Future]] = None
 
     async def connect(self) -> bool:
@@ -162,36 +164,75 @@ class WebChannelAdapter(ChannelAdapter):
         self,
         websocket,
         client_id: str,
-        session,
+        get_session,
         runtime
     ):
         await self.register_client(client_id, websocket)
+        session = None
         try:
             await websocket.send_json({
                 "type": "connected",
                 "client_id": client_id,
+                "session_id": client_id,
                 "channel": "web",
                 "timestamp": datetime.now().isoformat()
             })
+            # 会话在连接时立即创建：环境/磁盘类错误（如 HOME 解析不出、
+            # 目录不可写）在连接阶段就暴露给客户端，而不是第一条消息后。
+            try:
+                session = await get_session()
+            except Exception as exc:
+                logger.exception("Failed to create web session")
+                await websocket.send_json({
+                    "type": "error",
+                    "text": f"Failed to start the session: {exc}",
+                })
             while True:
                 try:
                     data = await websocket.receive_json()
-                    response = await self.handle_incoming_message(client_id, data)
-                    if response:
-                        await websocket.send_json(response)
-                    if data.get("type") == "message":
-                        asyncio.create_task(
-                            self._process_message(client_id, data, session, runtime)
-                        )
-                except Exception as e:
-                    logger.error(f"Error handling WebSocket message: {e}")
-                    await websocket.send_json({"type": "error", "error": str(e)})
+                except WebSocketDisconnect:
+                    logger.info("Web client disconnected: %s", client_id)
+                    break
+                msg_type = data.get("type", "message")
+                if msg_type == "ping":
+                    await websocket.send_json({
+                        "type": "pong",
+                        "timestamp": datetime.now().isoformat(),
+                    })
+                    continue
+                if msg_type == "abort":
+                    if session is not None:
+                        session._team.lead.abort_work()
+                    await websocket.send_json({"type": "aborted"})
+                    continue
+                if msg_type != "message":
+                    continue
+                if session is None:
+                    try:
+                        session = await get_session()
+                    except Exception as exc:
+                        logger.exception("Failed to create web session")
+                        await websocket.send_json({
+                            "type": "error",
+                            "text": f"Failed to start the session: {exc}",
+                        })
+                        continue
+                if client_id in self._busy:
+                    await websocket.send_json({
+                        "type": "error",
+                        "text": "A turn is already running in this conversation.",
+                    })
+                    continue
+                self._busy.add(client_id)
+                asyncio.create_task(
+                    self._process_message(client_id, data, session, runtime)
+                )
         finally:
             await self.unregister_client(client_id)
 
     async def _finish_stream(self, client_id, session_id, session,
                             full_response):
-        session.record_turn()
+        entry = session.record_turn() or {}
         await self.send_response(
             client_id,
             "",
@@ -201,6 +242,12 @@ class WebChannelAdapter(ChannelAdapter):
                 "agent_id": session.name,
                 "is_final": True,
                 "full_response": full_response,
+                "model": entry.get('model') or getattr(session, 'model', ''),
+                "mode": getattr(session, 'mode', ''),
+                "usage": {"input": entry.get('input', 0),
+                          "output": entry.get('output', 0),
+                          "cached": entry.get('cached', 0),
+                          "seconds": entry.get('seconds', 0)},
             },
         )
 
@@ -244,20 +291,21 @@ class WebChannelAdapter(ChannelAdapter):
                     return
 
             async def on_event(ev):
-                content = (ev.data.get('delta') or ev.data.get('text')
-                           or ev.data.get('content') or '')
                 if ev.kind == AGENT_WARN:
-                    await self.send_response(client_id, text=content,
+                    await self.send_response(client_id, text=ev.data.get('text', ''),
                                              message_type="error")
                     return
-                parts = ev.kind.split(':')
+                if ev.kind in ('agent.text',):
+                    return
                 await self.send_response(
                     client_id,
-                    text=content,
-                    message_type=f"progress_{':'.join(parts[1:])}",
+                    text='',
+                    message_type="progress",
                     extra_data={
-                        "tool_name": ev.data.get('tool') or ev.data.get('name', ''),
-                        "content": content,
+                        "kind": ev.kind,
+                        "tool": ev.data.get('tool') or ev.data.get('name', ''),
+                        "input": ev.data.get('input'),
+                        "agent": ev.agent,
                     },
                 )
 
@@ -278,6 +326,8 @@ class WebChannelAdapter(ChannelAdapter):
             runtime.increment_requests()
             logger.info("web replied to %s (%d chars)", client_id, len(full_response))
         except Exception as e:
-            logger.error("Error processing message: %s", e)
-            await self.send_response(client_id, f"Error: {str(e)}", message_type="error")
+            logger.exception("Error processing message")
+            await self.send_response(client_id, f"Error: {e}", message_type="error")
             runtime.increment_errors()
+        finally:
+            self._busy.discard(client_id)

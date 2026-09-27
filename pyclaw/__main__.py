@@ -1,4 +1,4 @@
-import argparse, asyncio, json, logging, os, sys
+import argparse, asyncio, json, logging, os, secrets, sys
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
@@ -9,7 +9,7 @@ from pyclaw.session import store as session_store
 from pyclaw.session.store import LOG_FORMAT as _LOG_FORMAT, resolve_session_id
 from pyclaw.team.builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
-from pyclaw.config import debug_on, save as save_config
+from pyclaw.config import debug_on
 from pyclaw.cli import stop_server
 from pyclaw.permissions import split_rules
 from chatchat.cli.config import parse_config, cli_config
@@ -57,18 +57,51 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
     return log_dir / "pyclaw.log"
 
 
-def _apply_overrides(config: dict, args) -> bool:
-    overrides = {
-        "provider": args.provider,
-        "model": args.model,
-        "enabled_channels": args.channels,
-    }
-    modified = False
-    for key, value in overrides.items():
+def _apply_overrides(config: dict, args) -> dict:
+    for key, value in (("provider", args.provider),
+                       ("model", args.model),
+                       ("enabled_channels", args.channels)):
         if value is not None:
             config[key] = value
-            modified = True
-    return modified
+    return config
+
+
+async def start_api(args):
+    """Headless local API server for pyclaw-desktop.
+
+    Binds 127.0.0.1:0 (OS-assigned port, no collisions), generates a
+    per-run token, and reports both on stdout as one line so the desktop
+    sidecar can pick them up:
+        PYCLAW_ENDPOINT {"port": 53211, "token": "..."}"""
+    setup_logging(args.log_level)
+    logger = logging.getLogger(__name__)
+
+    config = load_config()
+    settings = _apply_overrides(dict(config), args)
+
+    token = secrets.token_hex(16)
+    gateway_config = GatewayConfig(
+        port=0,
+        host="127.0.0.1",
+        provider=settings.get("provider"),
+        model=settings.get("model"),
+        enabled_channels=["web"],
+        use_team=bool(settings.get("use_team")),
+        local_token=token,
+        # 桌面端 webview 与 127.0.0.1:port 是跨源访问，REST 必须允许跨源读响应；
+        # token 校验（middleware + WS 前置检查）仍然是唯一准入凭证。
+        cors_origins=["*"],
+    )
+    gateway = GatewayServer(gateway_config, app_config=config)
+
+    def on_started(port: int):
+        print(f"PYCLAW_ENDPOINT {json.dumps({'port': port, 'token': token})}",
+              flush=True)
+
+    try:
+        await gateway.start(on_started=on_started)
+    except KeyboardInterrupt:
+        await gateway.shutdown()
 
 
 async def start_server(args):
@@ -78,17 +111,18 @@ async def start_server(args):
     config = load_config()
     logger.info("Configuration loaded")
 
-    if _apply_overrides(config, args):
-        save_config(config)
+    # Command-line overrides apply to this run only: persisting them would
+    # change what the TUI and every other surface read from config.json.
+    settings = _apply_overrides(dict(config), args)
 
-    gw_http = config.get("gateway", {}).get("http", {})
+    gw_http = settings.get("gateway", {}).get("http", {})
     gateway_config = GatewayConfig(
         port=args.port if args.port is not None else gw_http.get("port", 12321),
         host=args.host if args.host is not None else gw_http.get("host", "127.0.0.1"),
-        provider=config["provider"],
-        model=config["model"],
-        enabled_channels=config["enabled_channels"],
-        use_team=args.use_team or bool(config.get("use_team")),
+        provider=settings["provider"],
+        model=settings["model"],
+        enabled_channels=settings["enabled_channels"],
+        use_team=args.use_team or bool(settings.get("use_team")),
     )
 
     gateway = GatewayServer(gateway_config, app_config=config)
@@ -364,11 +398,16 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--port", type=int, default=None, help="HTTP port (config/gateway/http/port or 12321)")
     serve_parser.add_argument("--host", type=str, default=None, help="Bind address (config/gateway/http/host or 127.0.0.1)")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["web", "qq", "wechat"], help="Channels to enable (default: wechat only)")
+    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["qq", "wechat"], help="Channels to enable (default: wechat only)")
     serve_parser.add_argument("--use-team", action="store_true", default=False,
                              help="Give every conversation a team to work with")
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+
+    api_parser = subparsers.add_parser("api", help="Run the headless local API server (used by pyclaw-desktop)")
+    api_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    api_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
+    api_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
 
     channel_parser = subparsers.add_parser("channel", help="Manage IM channels")
     channel_sub = channel_parser.add_subparsers(dest="channel_command")
@@ -448,6 +487,10 @@ def main():
 
     if args.command == "tui":
         run_tui(args)
+        return
+
+    if args.command == "api":
+        asyncio.run(start_api(args))
         return
 
     if args.command == "serve" or args.command is None:

@@ -15,14 +15,27 @@ from ..slash import handle_slash
 logger = logging.getLogger(__name__)
 
 
+def _brief_input(data: dict) -> str:
+    value = data.get('input')
+    if not isinstance(value, dict):
+        return ''
+    for key in ('command', 'path', 'file_path', 'pattern', 'query', 'url',
+                'skill'):
+        v = value.get(key)
+        if v:
+            return ' ' + str(v).replace('\n', ' ')[:40]
+    return ''
+
+
 def _im_progress_text(ev) -> str:
     kind = ev.kind
     data = ev.data or {}
     if kind == AGENT_REASON_START:
-        return '🔄 PyClaw 思考中…'
+        return '🔄 思考中…'
     if kind == AGENT_TOOL_CALL:
-        name = data.get('tool', 'tool')
-        return f'🔧 调用工具 {name}'
+        who = getattr(ev, 'agent', '') or ''
+        prefix = f'{who} ' if who and who != 'lead' else ''
+        return f'🔧 {prefix}{data.get("tool", "tool")}{_brief_input(data)}'
     if kind == AGENT_WARN:
         return f'⚠️ {data.get("text", "")}'
     return ''

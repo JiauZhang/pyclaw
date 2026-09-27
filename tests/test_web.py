@@ -16,9 +16,12 @@ class _CollectingAdapter(WebChannelAdapter):
 def _make_session(name="agent1"):
     class Session:
         conv_session_id = "s1"
+        model = "m1"
+        mode = "default"
 
         def record_turn(self):
-            pass
+            return {"input": 10, "output": 5, "cached": 2, "seconds": 3,
+                    "model": "m1"}
 
         def stream(self, message, on_event=None):
             async def gen():
@@ -71,7 +74,9 @@ def test_finish_stream_payload():
     assert adapter.sent == [(
         "stream_complete",
         "",
-        {"session_id": "s1", "agent_id": "agent1", "is_final": True, "full_response": "full text"},
+        {"session_id": "s1", "agent_id": "agent1", "is_final": True,
+         "full_response": "full text", "model": "m1", "mode": "default",
+         "usage": {"input": 10, "output": 5, "cached": 2, "seconds": 3}},
     )]
 
 
@@ -162,3 +167,154 @@ def test_a_web_turn_stays_on_the_conversation_the_session_chose(tmp_path,
                                          session, runtime))
     assert session.conv_session_id == 'resumed-here'
     assert (tmp_path / 'resumed-here' / 'messages.jsonl').exists()
+
+
+class _Closed(Exception):
+    pass
+
+
+class _FakeWS:
+    def __init__(self, incoming):
+        self.incoming = list(incoming)
+        self.out = []
+
+    async def send_json(self, payload):
+        self.out.append(payload)
+
+    async def receive_json(self):
+        if not self.incoming:
+            raise _Closed()
+        item = self.incoming.pop(0)
+        await asyncio.sleep(0)
+        return item
+
+
+class _Lead:
+    def __init__(self):
+        self.aborts = 0
+
+    def abort_work(self):
+        self.aborts += 1
+
+
+class _Team:
+    lead = _Lead()
+
+
+class _WSSession:
+    _team = _Team()
+    name = "agent1"
+    conv_session_id = "conv1"
+
+    def record_turn(self):
+        pass
+
+    def stream(self, message, on_event=None):
+        async def gen():
+            yield "reply"
+        return gen()
+
+
+def _run_socket(adapter, incoming, get_session, runtime=None,
+                monkeypatch=None, tmp_path=None):
+    import pytest
+
+    from pyclaw.session import store as session_store
+
+    if tmp_path is not None:
+        monkeypatch.setattr(session_store, '_logs_dir', lambda: tmp_path)
+    runtime = runtime or _make_runtime()[0]
+    ws = _FakeWS(incoming)
+    with pytest.raises(_Closed):
+        asyncio.run(adapter.handle_websocket(ws, "conv1", get_session, runtime))
+    return ws
+
+
+def test_the_socket_announces_the_conversation_and_creates_the_session_upfront(monkeypatch, tmp_path):
+    """会话在连接时创建：环境/磁盘类错误在握手阶段就推给客户端，
+    而不是等第一条消息发出去才发现。"""
+    from pyclaw.channels.web import WebChannelAdapter
+
+    created = []
+
+    async def get_session():
+        created.append(1)
+        return _WSSession()
+
+    adapter = WebChannelAdapter({})
+    ws = _run_socket(adapter, [{"type": "ping"}], get_session,
+                     monkeypatch=monkeypatch, tmp_path=tmp_path)
+
+    assert created == [1]
+    assert ws.out[0]["type"] == "connected"
+    assert ws.out[0]["session_id"] == "conv1"
+    assert any(out.get("type") == "pong" for out in ws.out)
+
+
+def test_an_abort_reaches_the_team_lead_and_is_acknowledged(monkeypatch, tmp_path):
+    from pyclaw.channels.web import WebChannelAdapter
+
+    session = _WSSession()
+
+    async def get_session():
+        return session
+
+    adapter = WebChannelAdapter({})
+    ws = _run_socket(adapter,
+                     [{"type": "message", "text": "hi"}, {"type": "abort"}],
+                     get_session, monkeypatch=monkeypatch,
+                     tmp_path=tmp_path)
+
+    assert session._team.lead.aborts == 1
+    assert {"type": "aborted"} in ws.out
+
+
+def test_a_second_message_while_a_turn_runs_is_refused(monkeypatch, tmp_path):
+    from pyclaw.channels.web import WebChannelAdapter
+
+    class BusySession(_WSSession):
+        def stream(self, message, on_event=None):
+            async def gen():
+                yield "start"
+                await asyncio.Event().wait()
+            return gen()
+
+    async def get_session():
+        return BusySession()
+
+    adapter = WebChannelAdapter({})
+    ws = _run_socket(adapter,
+                     [{"type": "message", "text": "first"},
+                      {"type": "message", "text": "second"}],
+                     get_session, monkeypatch=monkeypatch,
+                     tmp_path=tmp_path)
+
+    errors = [out for out in ws.out if out.get("type") == "error"]
+    assert any("already running" in out.get("text", "") for out in errors)
+
+
+def test_tool_activity_reaches_the_page_as_structured_progress(tmp_path):
+    from chatchat.hooks.events import AGENT_TOOL_CALL, RuntimeEvent
+
+    from pyclaw.channels.web import WebChannelAdapter
+
+    class EventSession(_WSSession):
+        def stream(self, message, on_event=None):
+            async def gen():
+                await on_event(RuntimeEvent(AGENT_TOOL_CALL, agent='lead',
+                                            team='t',
+                                            data={'tool': 'Bash',
+                                                  'input': {'command': 'ls'}}))
+                yield "done"
+            return gen()
+
+    async def get_session():
+        return EventSession()
+
+    adapter = _CollectingAdapter()
+    runtime, _ = _make_runtime()
+    asyncio.run(adapter._process_message("c1", {"type": "message", "text": "hi"},
+                                         EventSession(), runtime))
+    progress = [s for s in adapter.sent if s[0] == "progress"]
+    assert progress and progress[0][2]["kind"] == "agent.tool_call"
+    assert progress[0][2]["tool"] == "Bash"

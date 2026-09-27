@@ -84,6 +84,43 @@ def load_transcript(session_id) -> list:
             for entry in load_entries(session_id)]
 
 
+def conversation_messages(session_id) -> list:
+    """The display log of a conversation, in order, for replaying it in a UI."""
+    path = _session_path(session_id) / "messages.jsonl"
+    if not path.exists():
+        return []
+    records = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            record = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
+def conversation_preview(session_id, limit: int = 80) -> str:
+    """The first thing the user said, for a list row with no title."""
+    path = _session_path(session_id) / "messages.jsonl"
+    if not path.exists():
+        return ''
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            try:
+                record = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(record, dict) and record.get('role') == 'user':
+                content = str(record.get('content') or '').strip()
+                if content:
+                    return ' '.join(content.split())[:limit]
+    return ''
+
+
 def session_meta(session_id) -> dict:
     path = _session_path(session_id) / "meta.json"
     if not path.exists():
@@ -106,13 +143,27 @@ def list_sessions() -> list:
         path = entry / 'transcript.jsonl'
         if not path.exists():
             continue
+        title = str(session_meta(entry.name).get('title') or '')
         sessions.append({'id': entry.name,
-                         'title': str(session_meta(entry.name).get('title')
-                                      or ''),
+                         'title': title,
+                         'preview': ('' if title
+                                     else conversation_preview(entry.name)),
                          'messages': len(load_entries(entry.name)),
                          'modified': path.stat().st_mtime})
     sessions.sort(key=lambda item: item['modified'], reverse=True)
     return sessions
+
+
+def delete_conversation(session_id) -> bool:
+    """Remove everything a conversation left behind: its artifacts, its plan
+    and its snapshots. Returns False when there is nothing to remove."""
+    session_dir = _session_path(session_id)
+    if not session_dir.is_dir():
+        return False
+    shutil.rmtree(session_dir, ignore_errors=True)
+    plan_file(session_id).unlink(missing_ok=True)
+    shutil.rmtree(history_dir(session_id), ignore_errors=True)
+    return True
 
 
 def named_sessions(title) -> list:

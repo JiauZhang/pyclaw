@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -8,16 +9,24 @@ from typing import Dict, Optional, Callable, Any, List
 from datetime import datetime
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
-from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import HTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 import uvicorn
 
 from pyclaw.version import __version__
+from pyclaw import config as app_config
+from pyclaw import cost
 
 from ..session import Session
 from ..session.store import (append_conv, follow_conversation, record_meta,
-                             resolve_session_id)
-from pyclaw.team.builder import IM_EXTRA, build_team
+                             resolve_session_id, list_sessions, title_of,
+                             conversation_messages, rename_session,
+                             delete_conversation, create_branch)
+from pyclaw.team.builder import IM_EXTRA, build_team, configured_context_window
+from pyclaw.tui.readout import git_label, git_status
+from pyclaw.tui.formatting import _display_cwd
 from chatchat.hooks.events import (
     AGENT_REASON_START,
     AGENT_TOOL_CALL,
@@ -25,7 +34,7 @@ from chatchat.hooks.events import (
 )
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
-from ..slash import handle_slash
+from ..slash import handle_slash, skill_rows, suggest
 from ..channels.im_formatter import IMStatusTracker, split_long_message
 from .im import (_friendly_channel_error, _im_progress_text,
                  run_im_interaction)
@@ -33,6 +42,13 @@ from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
 
 logger = logging.getLogger(__name__)
+
+
+def _clean_conversation_id(value) -> str:
+    """Conversation ids name a directory under the PyClaw home, so only hex
+    ids of the shape PyClaw itself issues are accepted from outside."""
+    value = str(value or '').strip().lower()
+    return value if re.fullmatch(r'[0-9a-f]{16,64}', value) else ''
 
 
 
@@ -46,6 +62,29 @@ class GatewayConfig:
     model: Optional[str] = None
     enabled_channels: List[str] = field(default_factory=lambda: ["wechat"])
     use_team: bool = False
+    # Headless API mode (`pyclaw api`): when set, every /chat/api and /chat/ws
+    # request must present this token, and the server binds the configured port
+    # even when it is 0 (OS-assigned) so the real port can be reported.
+    local_token: Optional[str] = None
+
+
+class LocalTokenMiddleware(BaseHTTPMiddleware):
+    """Guards /chat/api routes with a per-process token in headless API mode
+    (`pyclaw api`). The WebSocket route validates the token itself before
+    accepting, since HTTP middleware does not cover websocket scopes."""
+
+    def __init__(self, app, token: str):
+        super().__init__(app)
+        self._token = token
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/chat/api"):
+            supplied = (request.headers.get("x-pyclaw-token")
+                        or request.query_params.get("token"))
+            if supplied != self._token:
+                return JSONResponse(status_code=401,
+                                    content={"error": "invalid or missing token"})
+        return await call_next(request)
 
 
 class GatewayServer:
@@ -65,6 +104,8 @@ class GatewayServer:
         self._shutdown_event = asyncio.Event()
         self._recent_im: Dict[tuple, float] = {}
         self.web_channel = WebChannelAdapter({})
+        self._git_labels: Dict[str, str] = {}
+        self.bound_port: Optional[int] = None
         self._setup_middleware()
         self._setup_routes()
 
@@ -77,6 +118,8 @@ class GatewayServer:
                 allow_methods=["*"],
                 allow_headers=["*"],
             )
+        if self.config.local_token:
+            self.app.add_middleware(LocalTokenMiddleware, token=self.config.local_token)
 
     @property
     def webchat_enabled(self) -> bool:
@@ -96,6 +139,7 @@ class GatewayServer:
         session = self._sessions.get(session_key)
         if session is None:
             session = self._new_session(session_key, provider, model)
+            session.restore_transcript()
             self._sessions[session_key] = session
             self.runtime.get_or_create_session(session_key, session.name)
         return session
@@ -105,6 +149,89 @@ class GatewayServer:
         if session is not None:
             await session.close()
             self.runtime.delete_session(session_key)
+
+    async def commands_payload(self, q: str = "") -> dict:
+        session = next(iter(self._sessions.values()), None)
+        skills = skill_rows(session) if session is not None else []
+        return {"commands": [
+            {"name": row["name"], "desc": row["desc"],
+             "hint": row.get("hint", "")}
+            for row in suggest(f"/{q.strip().lstrip('/')}", skills)]}
+
+    async def session_status(self, conversation_id: str) -> dict:
+        """The numbers the status bar shows: the same readouts the TUI paints
+        in its hud rows, and an idle default before the first turn."""
+        session = self._sessions.get(conversation_id)
+        if session is None:
+            return {
+                "session_id": conversation_id, "idle": True,
+                "model": self.config.model or '',
+                "provider": self.config.provider or '',
+                "mode": "default",
+                "context": {"used": 0,
+                            "window": int(configured_context_window() or 0),
+                            "percent": None},
+                "usage": {"input": 0, "output": 0, "cached": 0, "total": 0},
+                "messages": 0, "elapsed": 0, "cost": None,
+            }
+        usage = session.usage
+        details = getattr(usage, 'prompt_tokens_details', None) or {}
+        amount = cost.usage_cost(session.model, usage,
+                                 app_config.load().get('pricing') or {})
+        window = int(session.context_window or 0)
+        used = int(session.used_context)
+        cwd = session.cwd
+        if cwd not in self._git_labels:
+            self._git_labels[cwd] = git_label(git_status(cwd))
+        return {
+            "session_id": conversation_id, "idle": False,
+            "model": session.model,
+            "provider": session.provider,
+            "mode": session.permission_mode,
+            "context": {"used": used, "window": window,
+                        "percent": round(used / window * 100) if window
+                        else None,
+                        "compact_threshold": int(session.compact_threshold),
+                        "auto_compact": session.auto_compact},
+            "usage": {"input": usage.prompt_tokens,
+                      "output": usage.completion_tokens,
+                      "cached": int(details.get('cached_tokens') or 0),
+                      "total": usage.total_tokens},
+            "messages": len(session.transcript()),
+            "elapsed": session.elapsed_seconds,
+            "cwd": _display_cwd(cwd),
+            "git": self._git_labels[cwd],
+            "cost": amount,
+        }
+
+    async def delete_conversation(self, conversation_id: str) -> dict:
+        conversation_id = _clean_conversation_id(conversation_id)
+        if not conversation_id:
+            raise HTTPException(status_code=400,
+                                detail="invalid conversation id")
+        session = self._sessions.pop(conversation_id, None)
+        if session is not None:
+            await session.close()
+        removed = delete_conversation(conversation_id)
+        return {"id": conversation_id, "deleted": removed}
+
+    def rename_conversation(self, conversation_id: str, title: str) -> dict:
+        conversation_id = _clean_conversation_id(conversation_id)
+        if not conversation_id:
+            raise HTTPException(status_code=400,
+                                detail="invalid conversation id")
+        return {"id": conversation_id,
+                "title": rename_session(conversation_id, title)}
+
+    def branch_conversation(self, conversation_id: str) -> dict:
+        conversation_id = _clean_conversation_id(conversation_id)
+        if not conversation_id:
+            raise HTTPException(status_code=400,
+                                detail="invalid conversation id")
+        try:
+            return create_branch(conversation_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     def _setup_routes(self):
         @self.app.get("/")
@@ -197,25 +324,93 @@ class GatewayServer:
 
         @self.app.websocket("/chat/ws")
         async def chat_websocket_endpoint(websocket: WebSocket):
+            if (self.config.local_token
+                    and websocket.query_params.get("token") != self.config.local_token):
+                await websocket.close(code=4401)
+                return
             await websocket.accept()
-            client_id = uuid.uuid4().hex
-            logger.info(f"WebChat client {client_id} connected")
+            conversation_id = _clean_conversation_id(
+                websocket.query_params.get("session_id"))
+            if not conversation_id:
+                conversation_id = uuid.uuid4().hex
+            logger.info("WebChat client for conversation %s connected",
+                        conversation_id)
 
-            session = await self._get_session(client_id)
             try:
                 await self.web_channel.handle_websocket(
                     websocket,
-                    client_id,
-                    session,
-                    self.runtime
+                    conversation_id,
+                    lambda: self._get_session(conversation_id),
+                    self.runtime,
                 )
             finally:
-                await self._remove_session(client_id)
+                logger.info("WebChat client for conversation %s disconnected",
+                            conversation_id)
 
-        @self.app.get("/chat", response_class=HTMLResponse)
-        async def chat_ui():
-            static_dir = os.path.join(os.path.dirname(__file__), "static")
-            return FileResponse(os.path.join(static_dir, "chat.html"))
+        @self.app.get("/chat/api/conversations")
+        async def conversations_api():
+            return JSONResponse(content={"conversations": [
+                {"id": item["id"], "title": item["title"],
+                 "preview": item["preview"], "messages": item["messages"],
+                 "modified": item["modified"]}
+                for item in list_sessions()]})
+
+        @self.app.get("/chat/api/conversations/{conversation_id}/messages")
+        async def conversation_messages_api(conversation_id: str):
+            conversation_id = _clean_conversation_id(conversation_id)
+            if not conversation_id:
+                raise HTTPException(status_code=400,
+                                    detail="invalid conversation id")
+            return JSONResponse(content={
+                "session_id": conversation_id,
+                "title": title_of(conversation_id),
+                "messages": conversation_messages(conversation_id)})
+
+        @self.app.get("/chat/api/commands")
+        async def commands_api(q: str = ""):
+            return JSONResponse(content=await self.commands_payload(q))
+
+        @self.app.get("/chat/api/session/{conversation_id}/status")
+        async def session_status_api(conversation_id: str):
+            conversation_id = _clean_conversation_id(conversation_id)
+            if not conversation_id:
+                raise HTTPException(status_code=400,
+                                    detail="invalid conversation id")
+            return JSONResponse(
+                content=await self.session_status(conversation_id))
+
+        @self.app.post("/chat/api/session/{conversation_id}/mode")
+        async def session_mode_api(conversation_id: str, request: Request):
+            conversation_id = _clean_conversation_id(conversation_id)
+            if not conversation_id:
+                raise HTTPException(status_code=400,
+                                    detail="invalid conversation id")
+            body = await request.json()
+            mode = str((body or {}).get("mode") or "")
+            try:
+                session = await self._get_session(conversation_id)
+                value = session.set_permission_mode(mode)
+            except ValueError as exc:
+                return JSONResponse(status_code=400,
+                                    content={"error": str(exc)})
+            return JSONResponse(content={"mode": value})
+
+        @self.app.post("/chat/api/conversations/{conversation_id}/rename")
+        async def conversation_rename_api(conversation_id: str,
+                                          request: Request):
+            body = await request.json()
+            return JSONResponse(content=self.rename_conversation(
+                conversation_id, str(body.get("title") or "")))
+
+        @self.app.post("/chat/api/conversations/{conversation_id}/branch")
+        async def conversation_branch_api(conversation_id: str):
+            return JSONResponse(content=self.branch_conversation(
+                conversation_id))
+
+        @self.app.delete("/chat/api/conversations/{conversation_id}")
+        async def conversation_delete_api(conversation_id: str):
+            return JSONResponse(
+                content=await self.delete_conversation(conversation_id))
 
         @self.app.get("/control")
         async def control_ui():
@@ -286,7 +481,12 @@ class GatewayServer:
         self.handlers[method] = handler
         logger.debug(f"Registered handler for method: {method}")
 
-    async def start(self):
+    async def start(self, on_started=None):
+        """Run the gateway until cancelled.
+
+        `on_started(port)` fires once uvicorn finished startup with the real
+        bound port — which differs from `config.port` when the caller passed
+        0 to request an OS-assigned port (`pyclaw api` mode)."""
         register_handlers(self)
         await self._init_channels()
         uvicorn_config = uvicorn.Config(
@@ -299,10 +499,22 @@ class GatewayServer:
         server = uvicorn.Server(uvicorn_config)
         logger.info(f"🦞 PyClaw Gateway starting on http://{self.config.host}:{self.config.port}")
         if self.webchat_enabled:
-            logger.info(f"WebChat available at http://{self.config.host}:{self.config.port}/chat")
+            if self.config.local_token:
+                logger.info("Local API mode (token-protected, headless)")
+            else:
+                logger.info("Chat API available at /chat/api")
         self.runtime.mark_started()
         try:
-            await server.serve()
+            serve_task = asyncio.create_task(server.serve())
+            while not server.started:
+                if serve_task.done():
+                    await serve_task  # surface the startup failure
+                    return
+                await asyncio.sleep(0.05)
+            self.bound_port = int(server.servers[0].sockets[0].getsockname()[1])
+            if on_started:
+                on_started(self.bound_port)
+            await serve_task
         except asyncio.CancelledError:
             logger.info("Server cancelled")
         finally:
@@ -418,7 +630,7 @@ class GatewayServer:
                         im_extra=IM_EXTRA,
                         progress_fn=_im_progress_text,
                     )
-                    s_log.info("IM '%s' replied to %s", _platform, msg.sender_id)
+                    logger.info("IM '%s' replied to %s", _platform, msg.sender_id)
                     self.runtime.increment_channel_messages(_adapter.channel_id)
                     self.runtime.increment_requests()
                 except Exception as exc:
