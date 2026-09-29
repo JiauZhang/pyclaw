@@ -97,6 +97,16 @@ async def start_api(args):
     def on_started(port: int):
         print(f"PYCLAW_ENDPOINT {json.dumps({'port': port, 'token': token})}",
               flush=True)
+        # stdout 从此只属于端点协议：桌面 sidecar 解析完端点行后可能不再读
+        # stdout，内核里任何 print（如 chatchat 的 hook 日志）都会 Broken
+        # pipe 并炸掉正在运行的 agent turn。日志一律改走 stderr。
+        sys.stdout = sys.stderr
+        # setup_logging 的 console handler 持有旧 stdout 的引用，一并改道，
+        # 否则内核日志继续写已关闭的端点管道（Logging error 刷屏）。
+        for handler in logging.getLogger().handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(
+                    handler, logging.FileHandler):
+                handler.stream = sys.stderr
 
     try:
         await gateway.start(on_started=on_started)
