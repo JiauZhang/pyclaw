@@ -6,7 +6,8 @@ from datetime import datetime
 from pyclaw.tui.formatting import duration
 from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.theme import ASTERISK
-from chatchat.tasks.cron_schedule import find_missed, SchedulerLock
+from chatchat.tasks.cron_schedule import (find_missed, missed_notification,
+                                          SchedulerLock)
 from pyclaw.cron import run
 
 
@@ -30,16 +31,18 @@ class DeliveryMixin:
         store = getattr(self._team, 'cron', None)
         if store is None:
             return []
-        return find_missed(store.durable(), now or datetime.now())
+        overdue = find_missed(store.durable(), now or datetime.now())
+        return [task for task in overdue if not task.get('recurring')]
 
     async def _note_missed_prompts(self):
         missed = self._missed_prompts()
-        if not missed:
+        store = getattr(self._team, 'cron', None)
+        if not missed or store is None:
             return
-        await self._append_note(
-            f'{len(missed)} scheduled prompt(s) came due while PyClaw was '
-            'not running: '
-            + ', '.join(str(task['prompt'])[:40] for task in missed))
+        for task in missed:
+            store.remove(task['id'])
+        await self._pending_inputs.put(
+            QueuedPrompt(missed_notification(missed), meta=True))
 
     def _start_cron(self):
 
@@ -56,9 +59,14 @@ class DeliveryMixin:
         prompt = str(task.get('prompt') or '')
         if not prompt:
             return
-        agent = (self._team.get_by_name(task['agent'])
-                 if task.get('agent') else None)
-        if agent is not None:
-            agent.submit(prompt)
+        name = task.get('agent')
+        if name:
+            agent = self._team.get_by_name(str(name))
+            if agent is not None:
+                agent.submit(prompt)
+                return
+            store = getattr(self._team, 'cron', None)
+            if store is not None:
+                store.remove(task.get('id'))
             return
         await self._pending_inputs.put(QueuedPrompt(prompt, meta=True))

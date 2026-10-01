@@ -129,6 +129,9 @@ class _FakeTeam:
         self.lead.messages = self._messages
         self.tool_context = ToolContext(cwd=Path.cwd())
 
+    def get_by_name(self, name):
+        return self.lead if name == 'lead' else None
+
     def provided_tools(self):
         return []
 

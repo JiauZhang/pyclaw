@@ -73,15 +73,16 @@ def test_a_durable_prompt_waits_while_another_session_owns_the_lock(tmp_path,
     assert 'last_fired_at' not in store.durable()[0]
 
 
-def test_a_prompt_that_aged_out_is_dropped_rather_than_delivered(tmp_path,
-                                                                  monkeypatch):
+def test_an_aged_out_prompt_fires_one_last_time_and_goes(tmp_path,
+                                                         monkeypatch):
     store, lock = _setup(tmp_path, monkeypatch,
-                        created_at=datetime(2026, 1, 1, 9, 0))
-    store.add('0 * * * *', 'stale', durable=True)
+                         created_at=datetime(2026, 1, 1, 9, 0))
+    added = store.add('0 * * * *', 'stale', durable=True)
     seen = []
-    assert _fired(store, lock, lambda task: seen.append(task['prompt']),
-                  datetime(2026, 5, 4, 10, 0)) == []
-    assert seen == []
+    fired = _fired(store, lock, lambda task: seen.append(task['prompt']),
+                   datetime(2026, 5, 4, 10, 0))
+    assert seen == ['stale']
+    assert [item['id'] for item in fired] == [added['id']]
     assert store.durable() == []
 
 
@@ -165,7 +166,7 @@ def test_the_owning_session_runs_the_durable_prompts(tmp_path):
     assert reacquired is True
 
 
-def test_work_missed_while_the_process_was_down_is_listed(tmp_path):
+def test_a_missed_one_shot_is_removed_and_left_to_the_model_to_confirm(tmp_path):
     import json
 
     from pyclaw.tui import PyClawApp
@@ -175,34 +176,8 @@ def test_work_missed_while_the_process_was_down_is_listed(tmp_path):
     async def scenario():
         team = _FakeTeam()
         store = CronStore(tmp_path / '.pyclaw')
-        store.add('0 9 * * *', 'the thing that was missed', durable=True)
-        body = json.loads(store.path.read_text(encoding='utf-8'))
-        body['tasks'][0]['created_at'] = '2026-05-01T08:00:00'
-        store.path.write_text(json.dumps(body), encoding='utf-8')
-        team.cron = store
-        async with PyClawApp(builder=lambda: team).run_test(
-                size=(90, 40)) as pilot:
-            app = pilot.app
-            for _ in range(4):
-                await pilot.pause()
-            return app._missed_prompts(datetime(2026, 5, 4, 10, 0))
-
-    missed = asyncio.run(scenario())
-    assert [task['prompt'] for task in missed] == [
-        'the thing that was missed']
-
-
-def test_a_missed_prompt_is_said_out_loud_when_the_app_opens(tmp_path):
-    import json
-
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam, _plain
-
-    async def scenario():
-        team = _FakeTeam()
-        store = CronStore(tmp_path / '.pyclaw')
-        store.add('0 9 * * *', 'water the plant', durable=True)
+        store.add('0 9 * * *', 'water the plant', recurring=False,
+                  durable=True)
         body = json.loads(store.path.read_text(encoding='utf-8'))
         body['tasks'][0]['created_at'] = '2026-05-01T08:00:00'
         store.path.write_text(json.dumps(body), encoding='utf-8')
@@ -212,8 +187,83 @@ def test_a_missed_prompt_is_said_out_loud_when_the_app_opens(tmp_path):
             app = pilot.app
             for _ in range(6):
                 await pilot.pause()
-            return _plain(app)
+            queued = [item.text for item in list(app._pending_inputs._queue)]
+            return store.durable(), queued, [m['content'] for m in
+                                             team._messages]
 
-    text = asyncio.run(scenario())
-    assert 'water the plant' in text
-    assert 'came due' in text
+    held, queued, messages = asyncio.run(scenario())
+    assert held == []
+    seen = queued + messages
+    assert any('water the plant' in text and 'Do NOT execute' in text
+               for text in seen)
+
+
+def test_a_missed_recurring_prompt_is_not_surfaced_as_missed(tmp_path):
+    import json
+
+    from pyclaw.tui import PyClawApp
+
+    from test_tui import _FakeTeam
+
+    async def scenario():
+        team = _FakeTeam()
+        store = CronStore(tmp_path / '.pyclaw')
+        store.add('0 9 * * *', 'the daily round', durable=True)
+        body = json.loads(store.path.read_text(encoding='utf-8'))
+        body['tasks'][0]['created_at'] = '2026-05-01T08:00:00'
+        body['tasks'][0]['recurring'] = True
+        store.path.write_text(json.dumps(body), encoding='utf-8')
+        team.cron = store
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(90, 40)) as pilot:
+            app = pilot.app
+            for _ in range(4):
+                await pilot.pause()
+            return app._missed_prompts(datetime(2026, 5, 4, 10, 0))
+
+    assert asyncio.run(scenario()) == []
+
+
+def test_a_cron_for_a_gone_teammate_is_removed_not_routed_to_the_lead(tmp_path):
+    from pyclaw.tui import PyClawApp
+
+    from test_tui import _FakeTeam
+
+    async def scenario():
+        team = _FakeTeam()
+        store = CronStore(tmp_path / '.pyclaw')
+        store.add('0 9 * * *', 'ghost work', durable=True, agent='ghost')
+        team.cron = store
+        async with PyClawApp(builder=lambda: team).run_test(
+                size=(90, 40)) as pilot:
+            app = pilot.app
+            await app._deliver_cron(store.durable()[0])
+            await pilot.pause()
+            return (store.durable(),
+                    list(app._pending_inputs._queue),
+                    team._messages)
+
+    held, queued, messages = asyncio.run(scenario())
+    assert held == []
+    assert queued == []
+    assert messages == []
+
+
+def test_a_dead_owner_lock_is_taken_over_by_the_next_tick(tmp_path,
+                                                          monkeypatch):
+    import json
+    import subprocess
+
+    store, lock = _setup(tmp_path, monkeypatch)
+    dead = subprocess.Popen(['sleep', '30'])
+    dead.kill()
+    dead.wait()
+    store.add('0 9 * * *', 'shared work', durable=True)
+    lock.path.write_text(json.dumps({'pid': dead.pid,
+                                     'session_id': 'other'}))
+    seen = []
+    fired = _fired(store, SchedulerLock(store.directory, 'session-a'),
+                   lambda task: seen.append(task['prompt']),
+                   datetime(2026, 5, 4, 9, 16))
+    assert seen == ['shared work']
+    assert len(fired) == 1

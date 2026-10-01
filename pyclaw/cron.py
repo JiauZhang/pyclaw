@@ -32,15 +32,13 @@ async def tick(store, lock, deliver, *, now: datetime | None = None,
         due += store.durable()
     fired = []
     for task in due:
-        if expired(task, now, cfg):
-            store.remove(task['id'])
-            continue
+        aged = expired(task, now, cfg)
         when = next_fire(task, now, cfg)
         if when is None or when > now:
             continue
         await send(task)
         fired.append(task)
-        if task.get('recurring'):
+        if task.get('recurring') and not aged:
             store.mark_fired(task['id'], now)
         else:
             store.remove(task['id'])
