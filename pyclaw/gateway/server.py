@@ -24,6 +24,8 @@ from ..session.store import (append_conv, follow_conversation, record_meta,
                              resolve_session_id, list_sessions, title_of,
                              conversation_messages, rename_session,
                              delete_conversation, create_branch)
+from ..cron import run as run_cron_loop
+from chatchat.tasks.cron_schedule import SchedulerLock
 from pyclaw.team.builder import IM_EXTRA, build_team, configured_context_window
 from pyclaw.tui.readout import git_label, git_status
 from pyclaw.tui.formatting import _display_cwd
@@ -103,6 +105,9 @@ class GatewayServer:
         self._sessions: Dict[str, Session] = {}
         self._shutdown_event = asyncio.Event()
         self._recent_im: Dict[tuple, float] = {}
+        self._cron_task: Optional[asyncio.Task] = None
+        self._cron_lock: Optional[SchedulerLock] = None
+        self._cron_busy = asyncio.Lock()
         self.web_channel = WebChannelAdapter({})
         self._git_labels: Dict[str, str] = {}
         self.bound_port: Optional[int] = None
@@ -149,6 +154,69 @@ class GatewayServer:
         if session is not None:
             await session.close()
             self.runtime.delete_session(session_key)
+
+    CRON_KEY = 'cron'
+
+    def _cron_conversation(self) -> str:
+        return resolve_session_id([self.CRON_KEY])
+
+    async def _start_cron(self):
+        session = await self._get_session(self._cron_conversation())
+        store = session.team.cron
+        self._cron_lock = SchedulerLock(store.directory,
+                                        f'gateway-{os.getpid()}')
+        self._cron_task = asyncio.create_task(
+            run_cron_loop(store, self._cron_lock, self._deliver_cron))
+
+    async def _stop_cron(self):
+        if self._cron_task is not None:
+            self._cron_task.cancel()
+            self._cron_task = None
+        if self._cron_lock is not None:
+            self._cron_lock.release()
+            self._cron_lock = None
+
+    async def _deliver_cron(self, task: dict):
+        prompt = str(task.get('prompt') or '')
+        if not prompt:
+            return
+        session = await self._get_session(self._cron_conversation())
+        name = task.get('agent')
+        if name:
+            agent = session.team.get_by_name(str(name))
+            if agent is None:
+                store = getattr(session.team, 'cron', None)
+                if store is not None:
+                    store.remove(task.get('id'))
+                return
+            agent.submit(prompt)
+            return
+        async with self._cron_busy:
+            conversation = session.conv_session_id
+            append_conv(conversation, 'user', prompt)
+            record_meta(conversation, {'channel': 'cron'})
+            try:
+                response = await session.chat(prompt)
+            finally:
+                session.record_turn()
+        if response:
+            await self._push_to_channels(response)
+
+    async def _push_to_channels(self, text: str):
+        for adapter in list(self.channels.values()):
+            contact = adapter.known_contact()
+            if not contact:
+                logger.info(
+                    "Channel '%s' has no known contact; cron push skipped",
+                    adapter.channel_id)
+                continue
+            for part in split_long_message(text, 1500):
+                try:
+                    await adapter.send_message(contact,
+                                               OutboundMessage(text=part))
+                except Exception as exc:
+                    logger.warning("Cron push via '%s' failed: %s",
+                                   adapter.channel_id, exc)
 
     async def commands_payload(self, q: str = "") -> dict:
         session = next(iter(self._sessions.values()), None)
@@ -489,6 +557,7 @@ class GatewayServer:
         0 to request an OS-assigned port (`pyclaw api` mode)."""
         register_handlers(self)
         await self._init_channels()
+        await self._start_cron()
         uvicorn_config = uvicorn.Config(
             self.app,
             host=self.config.host,
@@ -523,6 +592,7 @@ class GatewayServer:
     async def shutdown(self):
         logger.info("Shutting down Gateway...")
         self._shutdown_event.set()
+        await self._stop_cron()
         close_tasks = [
             self._close_websocket(cid, ws)
             for cid, ws in list(self.websocket_clients.items())

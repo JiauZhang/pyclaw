@@ -132,6 +132,10 @@ class Session(HistoryMixin, ReadoutMixin):
         team._cwd_changed = _note
 
     @property
+    def team(self) -> Team:
+        return self._team
+
+    @property
     def conv_session_id(self) -> str:
         return self._conv_session_id
 

@@ -97,14 +97,16 @@ class IMChannelAdapter(ChannelAdapter):
             pass
         return self._connected
 
+    def known_contact(self) -> str:
+        keys = load_keys(self.platform)
+        return keys.get('user_openid') or keys.get('user_id') or ''
+
     async def send_greeting_on_startup(self) -> bool:
         greeting_text = self.config.get("greeting_text", "")
         if not greeting_text or self._greeting_sent:
             return False
 
-        keys = load_keys(self.platform)
-
-        contact_id = keys.get("user_openid") or keys.get("user_id")
+        contact_id = self.known_contact()
         if not contact_id:
             logger.info(
                 "No saved contact for '%s' — greeting will be sent on next startup "

@@ -399,3 +399,228 @@ def fake_session_factory():
         return _FakeSession()
 
     return fake_get_session
+
+
+def test_a_cron_fire_runs_a_turn_and_pushes_the_answer_to_known_contacts(
+        monkeypatch):
+    import asyncio
+
+    from pyclaw.gateway import server as gateway_server
+    from pyclaw.gateway.server import GatewayConfig, GatewayServer
+
+    recorded = {'conv': [], 'meta': []}
+
+    class _FakeAdapter:
+        channel_id = 'wechat'
+        connected = True
+
+        def __init__(self):
+            self.sent = []
+
+        def known_contact(self):
+            return 'owner-1'
+
+        async def send_message(self, to, message):
+            self.sent.append((to, message.text))
+            return True
+
+    class _FakeSession:
+        name = 's'
+
+        def __init__(self):
+            self.chatted = []
+            self.recorded = False
+            self.conv_session_id = 'conv123'
+            self.team = None
+
+        async def chat(self, text, on_event=None):
+            self.chatted.append(text)
+            return 'the answer'
+
+        def record_turn(self):
+            self.recorded = True
+
+    server = GatewayServer(GatewayConfig())
+    adapter = _FakeAdapter()
+    server.channels['wechat'] = adapter
+    session = _FakeSession()
+
+    async def fake_get_session(key, provider=None, model=None):
+        return session
+
+    monkeypatch.setattr(server, '_get_session', fake_get_session)
+    monkeypatch.setattr(gateway_server, 'append_conv',
+                        lambda conv, role, text, **kw:
+                        recorded['conv'].append((conv, role, text)))
+    monkeypatch.setattr(gateway_server, 'record_meta',
+                        lambda conv, meta: recorded['meta'].append(meta))
+    asyncio.run(server._deliver_cron(
+        {'id': 't1', 'cron': '0 9 * * *', 'prompt': 'do the round'}))
+    assert session.chatted == ['do the round']
+    assert session.recorded is True
+    assert recorded['conv'] == [('conv123', 'user', 'do the round')]
+    assert adapter.sent and adapter.sent[0][0] == 'owner-1'
+    assert 'the answer' in adapter.sent[0][1]
+
+
+def test_a_cron_fire_without_contacts_still_runs_the_turn(monkeypatch):
+    import asyncio
+
+    from pyclaw.gateway import server as gateway_server
+    from pyclaw.gateway.server import GatewayConfig, GatewayServer
+
+    class _FakeAdapter:
+        channel_id = 'wechat'
+        connected = True
+
+        def known_contact(self):
+            return ''
+
+        async def send_message(self, to, message):
+            raise AssertionError('should not send')
+
+    class _FakeSession:
+        conv_session_id = 'conv'
+
+        async def chat(self, text, on_event=None):
+            return 'ok'
+
+        def record_turn(self):
+            pass
+
+    server = GatewayServer(GatewayConfig())
+    server.channels['wechat'] = _FakeAdapter()
+    session = _FakeSession()
+
+    async def fake_get_session(key, provider=None, model=None):
+        return session
+
+    monkeypatch.setattr(server, '_get_session', fake_get_session)
+    monkeypatch.setattr(gateway_server, 'append_conv',
+                        lambda *a, **kw: None)
+    monkeypatch.setattr(gateway_server, 'record_meta',
+                        lambda *a, **kw: None)
+    asyncio.run(server._deliver_cron({'id': 't1', 'prompt': 'round'}))
+
+
+def test_a_cron_for_a_gone_agent_is_removed_not_delivered(monkeypatch):
+    import asyncio
+
+    from pyclaw.gateway.server import GatewayConfig, GatewayServer
+
+    removed = []
+
+    class _Store:
+        def remove(self, task_id):
+            removed.append(task_id)
+
+    class _FakeTeam:
+        cron = _Store()
+
+        def get_by_name(self, name):
+            return None
+
+    class _FakeSession:
+        conv_session_id = 'conv'
+        team = _FakeTeam()
+
+        async def chat(self, text, on_event=None):
+            raise AssertionError('should not chat')
+
+        def record_turn(self):
+            pass
+
+    server = GatewayServer(GatewayConfig())
+    session = _FakeSession()
+
+    async def fake_get_session(key, provider=None, model=None):
+        return session
+
+    monkeypatch.setattr(server, '_get_session', fake_get_session)
+    asyncio.run(server._deliver_cron(
+        {'id': 't2', 'prompt': 'ghost work', 'agent': 'ghost'}))
+    assert removed == ['t2']
+
+
+def test_a_cron_for_a_live_teammate_is_submitted_not_chatted(monkeypatch):
+    import asyncio
+
+    from pyclaw.gateway.server import GatewayConfig, GatewayServer
+
+    class _Agent:
+        def __init__(self):
+            self.submitted = []
+
+        def submit(self, prompt):
+            self.submitted.append(prompt)
+
+    class _FakeTeam:
+        def __init__(self):
+            self.roster = {'helper': _Agent()}
+
+        def get_by_name(self, name):
+            return self.roster.get(name)
+
+    class _FakeSession:
+        conv_session_id = 'conv'
+
+        def __init__(self):
+            self.team = _FakeTeam()
+            self.chatted = []
+
+        async def chat(self, text, on_event=None):
+            self.chatted.append(text)
+
+        def record_turn(self):
+            pass
+
+    server = GatewayServer(GatewayConfig())
+    session = _FakeSession()
+
+    async def fake_get_session(key, provider=None, model=None):
+        return session
+
+    monkeypatch.setattr(server, '_get_session', fake_get_session)
+    asyncio.run(server._deliver_cron(
+        {'id': 't3', 'prompt': 'help out', 'agent': 'helper'}))
+    assert session.team.roster['helper'].submitted == ['help out']
+    assert session.chatted == []
+
+
+def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
+    import asyncio
+
+    from pyclaw.gateway import server as gateway_server
+    from pyclaw.gateway.server import GatewayConfig, GatewayServer
+
+    started = []
+
+    class _Store:
+        directory = 'unused'
+
+    class _FakeSession:
+        conv_session_id = 'cronconv'
+        team = type('T', (), {'cron': _Store()})()
+
+        def restore_transcript(self):
+            pass
+
+    server = GatewayServer(GatewayConfig())
+
+    async def fake_get_session(key, provider=None, model=None):
+        return _FakeSession()
+
+    def fake_run(store, lock, deliver, **kw):
+        started.append(store)
+        done = asyncio.Event()
+
+        async def wait():
+            await done.wait()
+
+        return wait()
+
+    monkeypatch.setattr(server, '_get_session', fake_get_session)
+    monkeypatch.setattr(gateway_server, 'run_cron_loop', fake_run)
+    asyncio.run(server._start_cron())
+    assert len(started) == 1
+    asyncio.run(server._stop_cron())
