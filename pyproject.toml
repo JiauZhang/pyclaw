@@ -22,7 +22,6 @@ dependencies = [
     "aiohttp>=3.9.0",
     "chatchat>=0.6.0",
     "conippets>=0.1.16",
-    "chatool>=0.0.2",
     "imchat>=0.0.1",
     "textual~=8.2.8",
 ]
