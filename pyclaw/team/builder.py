@@ -20,7 +20,7 @@ from pyclaw.team import defs as agent_defs
 from pyclaw.team import memory as agent_memory
 from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
-from pyclaw.plugins import discover_tools
+from pyclaw.plugins import discover_agents, discover_tools
 from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import BUILTIN_TOOLS
@@ -230,8 +230,9 @@ def build_team(
         team.register_agent_definition(defn)
     cli_defs = (agent_defs.parse_agents_json(agents_json, resolved)
                 if agents_json else [])
-    definitions = agent_defs.load_agent_defs(cwd, all_tools=resolved,
-                                             cli=cli_defs)
+    definitions = agent_defs.load_agent_defs(
+        cwd, all_tools=resolved, cli=cli_defs,
+        package=agent_defs.from_entry_points(discover_agents(), resolved))
     for defn in definitions:
         team.register_agent_definition(defn)
     team.cli_agent_defs = cli_defs

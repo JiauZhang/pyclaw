@@ -14,6 +14,7 @@ from pyclaw.tools.names import AGENT, BASH, EDIT, EXIT_PLAN_MODE, GLOB, GREP, RE
 _FRONTMATTER = re.compile(r'^---\s*\n([\s\S]*?)\n---\s*\n?')
 
 BUILT_IN = 'built-in'
+PACKAGE = 'package'
 USER = 'user'
 PROJECT = 'project'
 CLI = 'command line'
@@ -37,10 +38,11 @@ def agents_dir(scope: str, cwd: str) -> Path:
     raise ValueError(f'agents cannot be stored in the {scope} scope')
 
 
-SCOPE_LABELS = {BUILT_IN: 'Bundled agents', USER: 'Your agents',
-                PROJECT: 'This project', CLI: 'Given with --agents'}
-SCOPE_ORDER = (CLI, USER, PROJECT, BUILT_IN)
-READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI})
+SCOPE_LABELS = {BUILT_IN: 'Bundled agents', PACKAGE: 'Installed packages',
+                USER: 'Your agents', PROJECT: 'This project',
+                CLI: 'Given with --agents'}
+SCOPE_ORDER = (CLI, USER, PROJECT, PACKAGE, BUILT_IN)
+READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI, PACKAGE})
 _DISPLAY_DIRS = {USER: '~/.pyclaw/agents', PROJECT: '.pyclaw/agents'}
 
 _READ_ONLY = frozenset({GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP})
@@ -175,9 +177,11 @@ def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None
     return _definition_from_md(text, all_tools)
 
 
-def discover(cwd: str, all_tools: list, cli=()) -> list[AgentEntry]:
+def discover(cwd: str, all_tools: list, cli=(), package=()) -> list[AgentEntry]:
     entries = [AgentEntry(d.agent_type, BUILT_IN, None, d)
                for d in builtin_agent_defs(all_tools)]
+    entries += [AgentEntry(d.agent_type, PACKAGE, None, d)
+                for d in package]
     for scope in (USER, PROJECT):
         try:
             files = sorted(agents_dir(scope, cwd).glob('*.md'))
@@ -193,6 +197,36 @@ def discover(cwd: str, all_tools: list, cli=()) -> list[AgentEntry]:
         if winner[entry.agent_type] != entry.scope:
             entry.shadowed_by = winner[entry.agent_type]
     return entries
+
+
+def _definition_from_spec(spec, all_tools: list) -> AgentDefinition | None:
+    if not isinstance(spec, dict):
+        return None
+    name = str(spec.get('name') or '').strip()
+    system_prompt = str(spec.get('system_prompt') or '').strip()
+    if not name or len(system_prompt) < _PROMPT_MIN:
+        return None
+    by_name = {t.name: t for t in all_tools}
+    wanted = spec.get('tools')
+    if isinstance(wanted, str):
+        wanted = _parse_tools_field(wanted)
+    tools = (list(all_tools) if not wanted
+             else [by_name[n] for n in wanted if n in by_name])
+    return AgentDefinition(
+        name, system_prompt=system_prompt, tools=tools,
+        model=spec.get('model') or None,
+        permission_mode=spec.get('permissionMode') or None,
+        description=str(spec.get('description') or ''),
+        memory=_memory_scope(spec.get('memory')))
+
+
+def from_entry_points(specs, all_tools: list) -> list[AgentDefinition]:
+    defs = []
+    for spec in specs or ():
+        defn = _definition_from_spec(spec, all_tools)
+        if defn is not None:
+            defs.append(defn)
+    return defs
 
 
 def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
@@ -220,8 +254,9 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
 
 
 def load_agent_defs(cwd: str, all_tools: list,
-                    cli=()) -> list[AgentDefinition]:
-    return [e.defn for e in discover(cwd, all_tools=all_tools, cli=cli)
+                    cli=(), package=()) -> list[AgentDefinition]:
+    return [e.defn for e in discover(cwd, all_tools=all_tools, cli=cli,
+                                     package=package)
             if e.shadowed_by is None]
 
 
