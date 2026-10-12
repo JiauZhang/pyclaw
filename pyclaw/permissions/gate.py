@@ -85,7 +85,8 @@ class PermissionChoice:
 class PermissionController:
 
     def __init__(self, *, mode: str = 'default', cwd, allow=(),
-                 ask=(), deny=(), request=None, tools=None, extra_dirs=()):
+                 ask=(), deny=(), request=None, tools=None, extra_dirs=(),
+                 bypass_unlocked=False):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
         self.extra_dirs = [Path(path).resolve() for path in (extra_dirs or ())]
@@ -115,7 +116,9 @@ class PermissionController:
         self._allow = merged['allow']
         self._ask = merged['ask']
         self._deny = merged['deny']
-        self.bypass_available = self.mode is PermissionMode.bypass_permissions
+        self.bypass_unlocked = (bool(bypass_unlocked)
+                                or self.mode is PermissionMode.bypass_permissions)
+        self.bypass_available = self.bypass_unlocked
         self.request = request
         self.permission_hooks = None
         self.config_changed = None
@@ -292,6 +295,14 @@ class PermissionController:
         if is_read_only(command):
             return 'allow'
         return 'ask'
+
+    def check_switch(self, mode) -> PermissionMode:
+        parsed = parse_mode(mode)
+        if parsed is PermissionMode.bypass_permissions and not self.bypass_unlocked:
+            raise ValueError('Cannot set permission mode to bypassPermissions '
+                             'because the session was not launched with '
+                             '--dangerously-skip-permissions')
+        return parsed
 
     def decide(self, tool_name: str, tool_input, mode=None) -> str:
         mode = self._effective_mode(mode)

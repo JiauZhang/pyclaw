@@ -131,6 +131,7 @@ def build_team(
     agents_json: Optional[str] = None,
     use_team: bool = False,
     conversation_id: Optional[str] = None,
+    bypass_unlocked: bool = False,
 ) -> Team:
     conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
@@ -145,6 +146,7 @@ def build_team(
     gate = PermissionController(mode=permission_mode, cwd=cwd,
                                 allow=allowed_tools or (),
                                 ask=ask or (), deny=refused,
+                                bypass_unlocked=bypass_unlocked,
                                 tools=candidates,
                                 extra_dirs=config.load().get(
                                     'additionalDirectories') or ())

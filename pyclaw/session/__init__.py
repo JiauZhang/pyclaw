@@ -279,7 +279,7 @@ class Session(HistoryMixin, ReadoutMixin):
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:
             raise ValueError('Permission gate not available for this session.')
-        parsed = parse_mode(mode)
+        parsed = self._gate.check_switch(mode)
         self._gate.mode = parsed
         self._team.hooks.permission_mode = parsed.value
         return parsed.value

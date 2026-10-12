@@ -87,6 +87,9 @@ async def start_api(args):
         model=settings.get("model"),
         enabled_channels=["web"],
         use_team=bool(settings.get("use_team")),
+        permission_mode=args.permission_mode,
+        bypass_unlocked=bool(getattr(args, 'bypass_unlocked',
+                                args.dangerously_skip_permissions)),
         local_token=token,
         # 桌面端 webview 与 127.0.0.1:port 是跨源访问，REST 必须允许跨源读响应；
         # token 校验（middleware + WS 前置检查）仍然是唯一准入凭证。
@@ -133,6 +136,9 @@ async def start_server(args):
         model=settings["model"],
         enabled_channels=settings["enabled_channels"],
         use_team=args.use_team or bool(settings.get("use_team")),
+        permission_mode=args.permission_mode,
+        bypass_unlocked=bool(getattr(args, 'bypass_unlocked',
+                                args.dangerously_skip_permissions)),
     )
 
     gateway = GatewayServer(gateway_config, app_config=config)
@@ -171,8 +177,10 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
                       resume=False, resume_from=None, allowed_tools=None,
                       ask=None, disallowed_tools=None, base_tools=None,
                       use_team=False, agents=None,
-                      json_schema=None, worktree=None) -> dict:
+                      json_schema=None, worktree=None,
+                      bypass_unlocked=False) -> dict:
     team = build_team(provider, model, permission_mode=permission_mode,
+                      bypass_unlocked=bypass_unlocked,
                       allowed_tools=allowed_tools, ask=ask,
                       disallowed_tools=disallowed_tools,
                       base_tools=base_tools, use_team=use_team,
@@ -247,6 +255,8 @@ async def run_headless(args):
     try:
         out = await prompt_once(provider, model, args.print,
                                 permission_mode=args.permission_mode,
+                                bypass_unlocked=bool(getattr(args, 'bypass_unlocked',
+                                args.dangerously_skip_permissions)),
                                 session_id=session_id, resume=_cli_resume(args),
                                 resume_from=resume_from,
                                 allowed_tools=args.allowed_tools,
@@ -286,6 +296,8 @@ def run_tui(args):
                        or config.get("includeHookEvents"))
     app = PyClawApp(builder=lambda: build_team(
         provider, model, permission_mode=args.permission_mode,
+        bypass_unlocked=bool(getattr(args, 'bypass_unlocked',
+                                args.dangerously_skip_permissions)),
         allowed_tools=args.allowed_tools, ask=args.ask,
         disallowed_tools=args.disallowed_tools, base_tools=args.tools,
         use_team=args.use_team, agents_json=args.agents,
@@ -399,8 +411,15 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-d", "--debug", action="store_true",
                         help="Log every streamed event to the conversation log")
     parser.add_argument("--permission-mode", type=str, default=None,
-                        choices=["default", "acceptEdits", "plan"],
+                        choices=["default", "acceptEdits", "plan",
+                                 "bypassPermissions"],
                         help="Session permission mode")
+    parser.add_argument("--dangerously-skip-permissions", action="store_true",
+                        default=False,
+                        help="Unlock bypassPermissions for this whole process: "
+                             "every session it creates (TUI, IM, web, cron) "
+                             "skips permission prompts. Refused under "
+                             "root/sudo. allow/ask/deny rules still apply.")
     _add_session_args(parser)
     subparsers = parser.add_subparsers(dest="command")
 
@@ -413,11 +432,21 @@ def _build_parser() -> argparse.ArgumentParser:
                              help="Give every conversation a team to work with")
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    serve_parser.add_argument("--dangerously-skip-permissions", action="store_true",
+                              default=False,
+                              help="Unlock bypassPermissions for this gateway: "
+                                   "every IM/web/cron session skips permission "
+                                   "prompts. Refused under root/sudo.")
 
     api_parser = subparsers.add_parser("api", help="Run the headless local API server (used by pyclaw-desktop)")
     api_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     api_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     api_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    api_parser.add_argument("--dangerously-skip-permissions", action="store_true",
+                            default=False,
+                            help="Unlock bypassPermissions for this gateway: "
+                                 "every session skips permission prompts. "
+                                 "Refused under root/sudo.")
 
     channel_parser = subparsers.add_parser("channel", help="Manage IM channels")
     channel_sub = channel_parser.add_subparsers(dest="channel_command")
@@ -437,8 +466,13 @@ def _build_parser() -> argparse.ArgumentParser:
     tui_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     tui_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
     tui_parser.add_argument("--permission-mode", type=str, default=None,
-                            choices=["default", "acceptEdits", "plan"],
+                            choices=["default", "acceptEdits", "plan",
+                                     "bypassPermissions"],
                             help="Session permission mode")
+    tui_parser.add_argument("--dangerously-skip-permissions", action="store_true",
+                            default=False,
+                            help="Unlock bypassPermissions for this session. "
+                                 "Refused under root/sudo.")
     _add_session_args(tui_parser)
 
     cli_config(subparsers)
@@ -458,10 +492,34 @@ def _finalize_args(args) -> argparse.Namespace:
         args.continue_session = False
     if not hasattr(args, "use_team") or args.use_team is False:
         args.use_team = bool(load_config().get("agentTeams", False))
-    if not hasattr(args, "permission_mode") or args.permission_mode is None:
-        args.permission_mode = (load_config().get("permissions", {})
-                                .get("defaultMode", "default"))
+    if not hasattr(args, "dangerously_skip_permissions"):
+        args.dangerously_skip_permissions = False
+    if not hasattr(args, "bypass_unlocked"):
+        args.bypass_unlocked = False
+    explicit_mode = getattr(args, "permission_mode", None)
+    if not explicit_mode:
+        explicit_mode = (load_config().get("permissions", {})
+                         .get("defaultMode", None))
+    if args.dangerously_skip_permissions:
+        args.bypass_unlocked = True
+        args.permission_mode = explicit_mode or "bypassPermissions"
+    else:
+        if explicit_mode == "bypassPermissions":
+            print("Cannot set permission mode to bypassPermissions because "
+                  "the session was not launched with "
+                  "--dangerously-skip-permissions")
+            raise SystemExit(1)
+        args.permission_mode = explicit_mode or "default"
     return args
+
+
+def _refuse_bypass_under_root(args) -> None:
+    if not getattr(args, "dangerously_skip_permissions", False):
+        return
+    if hasattr(os, "geteuid") and os.geteuid() == 0:
+        print("--dangerously-skip-permissions cannot be used with root/sudo "
+              "privileges for security reasons")
+        raise SystemExit(1)
 
 
 def main():
@@ -469,6 +527,7 @@ def main():
     args = _finalize_args(parser.parse_args())
     if getattr(args, "debug", False):
         os.environ["PYCLAW_DEBUG"] = "1"
+    _refuse_bypass_under_root(args)
 
     if args.version:
         print(__version__)
