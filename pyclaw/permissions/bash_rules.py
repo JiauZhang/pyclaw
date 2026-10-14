@@ -48,7 +48,7 @@ OPERATORS = ('&&', '||')
 # A redirect is one piece of the command, not a place to cut it: `2>&1` used to
 # split into `2>` and `1`, which made every rule and safety check about it wrong.
 REDIRECT_RE = re.compile(r'\d*(?:&>>|&>|>>|<<|<>|[<>])\S*')
-HEREDOC_RE = re.compile('<<(-?)(["\']?)([A-Za-z_][A-Za-z0-9_]*)\\2')
+HEREDOC_RE = re.compile('<<[ \t]*(-?)[ \t]*(["\']?)([A-Za-z_][A-Za-z0-9_]*)\\2')
 OUTPUT_REDIRECT_RE = re.compile(r'\d*(?:&>>|&>|>>|>)[^|;&\n]*')
 EXPANSION_CHARS = frozenset({'$', '`', '*', '?'})
 

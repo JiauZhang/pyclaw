@@ -95,3 +95,11 @@ def test_stop_command_all_kills_serve_processes(capsys, monkeypatch):
     run.assert_any_call(["pgrep", "-f", "pyclaw serve"], capture_output=True,
                         text=True, check=False)
     assert "34004" in out.out
+
+
+def test_a_heredoc_with_space_before_the_delimiter_still_matches_the_prefix():
+    from pyclaw.permissions.bash_rules import bash_allowed_by
+
+    command = ("chatool-paper mark << 'JSON'\n"
+               '{"date": "2026-10-08", "papers": [{"id": "1"}]}')
+    assert bash_allowed_by(['Bash(chatool-paper:*)'], command)

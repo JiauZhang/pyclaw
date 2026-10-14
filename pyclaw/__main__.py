@@ -496,14 +496,14 @@ def _finalize_args(args) -> argparse.Namespace:
         args.dangerously_skip_permissions = False
     if not hasattr(args, "bypass_unlocked"):
         args.bypass_unlocked = False
-    explicit_mode = getattr(args, "permission_mode", None)
-    if not explicit_mode:
-        explicit_mode = (load_config().get("permissions", {})
-                         .get("defaultMode", None))
+    cli_mode = getattr(args, "permission_mode", None)
+    config_mode = (load_config().get("permissions", {})
+                   .get("defaultMode", None))
     if args.dangerously_skip_permissions:
         args.bypass_unlocked = True
-        args.permission_mode = explicit_mode or "bypassPermissions"
+        args.permission_mode = cli_mode or "bypassPermissions"
     else:
+        explicit_mode = cli_mode or config_mode
         if explicit_mode == "bypassPermissions":
             print("Cannot set permission mode to bypassPermissions because "
                   "the session was not launched with "

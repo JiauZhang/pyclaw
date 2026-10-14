@@ -108,3 +108,11 @@ def test_the_gateway_threads_the_mode_into_every_new_session(monkeypatch):
     server._new_session('conv-1')
     assert seen['team']['permission_mode'] == 'bypassPermissions'
     assert seen['team']['bypass_unlocked'] is True
+
+
+def test_the_flag_beats_a_default_mode_from_settings(monkeypatch):
+    args = _finalize(['--dangerously-skip-permissions'],
+                     config={'permissions': {'defaultMode': 'default'}},
+                     monkeypatch=monkeypatch)
+    assert args.permission_mode == 'bypassPermissions'
+    assert args.bypass_unlocked is True

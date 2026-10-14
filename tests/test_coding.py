@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import re
 import tempfile
@@ -103,6 +104,46 @@ def test_read_caps_long_files_at_the_line_count_it_promises():
         assert "2000\tl1999" in out and "2001\tl2000" not in out
         assert "2000" in dict((t.name, t) for t in BUILTIN_TOOLS)[
             "Read"].describe(ToolContext(cwd=Path("/w")))
+
+
+_MIN_PNG = base64.b64decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
+    'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+
+
+def test_read_returns_an_image_block_for_image_files():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "px.png").write_bytes(_MIN_PNG)
+        Path(d, "px.jpg").write_bytes(_MIN_PNG)
+        png = _tools(d)["Read"](file_path="px.png")
+        assert isinstance(png, ToolResult)
+        assert png.blocks[0]['type'] == 'image'
+        assert png.blocks[0]['source']['media_type'] == 'image/png'
+        assert base64.b64decode(png.blocks[0]['source']['data']) == _MIN_PNG
+        assert 'px.png' in png.text
+        jpg = _tools(d)["Read"](file_path="px.jpg")
+        assert jpg.blocks[0]['source']['media_type'] == 'image/jpeg'
+
+
+def test_read_rejects_an_oversized_image():
+    from pyclaw.tools import read as read_mod
+
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "big.png").write_bytes(_MIN_PNG)
+        limit = getattr(read_mod, '_IMAGE_MAX_BYTES')
+        try:
+            read_mod._IMAGE_MAX_BYTES = 1
+            out = _text(_tools(d)["Read"](file_path="big.png"))
+        finally:
+            read_mod._IMAGE_MAX_BYTES = limit
+        assert out.startswith('Error:') and '10 MB' in out
+
+
+def test_read_still_refuses_non_image_binary_files():
+    with tempfile.TemporaryDirectory() as d:
+        Path(d, "bin.dat").write_bytes(b'\x00\xff\xfe\x01')
+        out = _text(_tools(d)["Read"](file_path="bin.dat"))
+        assert out.startswith('Error:') and 'Invalid UTF-8' in out
 
 
 def _text(result):
