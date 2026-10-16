@@ -54,12 +54,18 @@ class ApprovalFlowMixin:
     def _withdraw_approval(self, approval: _Approval):
         if approval in self._approvals:
             self._approvals.remove(approval)
+        self._clear_pending_selection()
         approval.prompt.remove()
         block = approval.block
         if isinstance(block, _ToolBlock):
             block.set_waiting_permission(False)
         if not approval.future.done():
             approval.future.cancel()
+    def _clear_pending_selection(self):
+        screen = self.screen
+        screen._selecting = False
+        screen.clear_selection
+        screen._select_state = None
     def _badge(self, agent: str | None) -> str:
         if not agent:
             return ''
@@ -77,6 +83,7 @@ class ApprovalFlowMixin:
     def _settle_approval(self, approval: _Approval, choice: PermissionChoice):
         if approval in self._approvals:
             self._approvals.remove(approval)
+        self._clear_pending_selection()
         approval.prompt.remove()
         block = approval.block
         if isinstance(block, _ToolBlock):

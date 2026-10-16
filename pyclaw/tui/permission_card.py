@@ -86,6 +86,11 @@ class _PermissionPrompt(Vertical):
 
     def on_unmount(self):
         self.app.unregister_overlay("select")
+        try:
+            self.screen._selecting = False
+            self.screen.clear_selection
+        except Exception:
+            pass
 
     def _options(self) -> list[_PermOption]:
         options = [_PermOption("approved", "Yes", "accept")]
