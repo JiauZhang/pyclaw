@@ -47,11 +47,25 @@ def isolated_config(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def _home_dir_is_a_temp_folder(tmp_path, monkeypatch):
     """Nothing in a test may write into the real ~/.pyclaw."""
+    import json
+    import os
+    import tempfile
+
     from pyclaw import home
 
     folder = tmp_path / 'pyclaw-home'
     folder.mkdir()
     monkeypatch.setenv('PYCLAW_HOME', str(folder))
-    monkeypatch.setenv('CHATCHAT_SECRET_FILE', str(folder / 'secrets.json'))
+    fd, secret_path = tempfile.mkstemp(prefix='chatchat-secrets-')
+    with os.fdopen(fd, 'w') as f:
+        f.write(json.dumps({
+            name: {'type': 'openai', 'base_url': f'https://{name}.test/v1',
+                   'api_key': 'test-key'}
+            for name in ('agnes', 'deepseek', 'openai', 'anthropic')}))
+    monkeypatch.setenv('CHATCHAT_SECRET_FILE', secret_path)
     monkeypatch.setattr(home, '__pyclaw_home__', str(folder))
-    return folder
+    yield folder
+    try:
+        os.unlink(secret_path)
+    except OSError:
+        pass
