@@ -79,9 +79,7 @@ class IMChannelAdapter(ChannelAdapter):
     async def receive_messages(self) -> AsyncIterator[InboundMessage]:
         while self._connected and not self._stop_event.is_set():
             try:
-                msg = await asyncio.wait_for(
-                    self._message_queue.get(), timeout=1.0
-                )
+                msg = await asyncio.wait_for(self._message_queue.get(), timeout=1.0)
                 yield msg
             except asyncio.TimeoutError:
                 continue
@@ -99,7 +97,7 @@ class IMChannelAdapter(ChannelAdapter):
 
     def known_contact(self) -> str:
         keys = load_keys(self.platform)
-        return keys.get('user_openid') or keys.get('user_id') or ''
+        return keys.get("user_openid") or keys.get("user_id") or ""
 
     async def send_greeting_on_startup(self) -> bool:
         greeting_text = self.config.get("greeting_text", "")
@@ -109,25 +107,18 @@ class IMChannelAdapter(ChannelAdapter):
         contact_id = self.known_contact()
         if not contact_id:
             logger.info(
-                "No saved contact for '%s' — greeting will be sent on next startup "
-                "after someone messages the bot",
+                "No saved contact for '%s' — greeting will be sent on next startup after someone messages the bot",
                 self.platform,
             )
             return False
 
-        ok = await self.send_message(
-            contact_id, OutboundMessage(text=greeting_text)
-        )
+        ok = await self.send_message(contact_id, OutboundMessage(text=greeting_text))
         if ok:
-            logger.info(
-                "Greeting sent proactively to %s on '%s'", contact_id, self.platform
-            )
+            logger.info("Greeting sent proactively to %s on '%s'", contact_id, self.platform)
             self._greeting_sent = True
             return True
 
-        logger.warning(
-            "Failed to send greeting to %s on '%s'", contact_id, self.platform
-        )
+        logger.warning("Failed to send greeting to %s on '%s'", contact_id, self.platform)
         return False
 
     async def save_known_contact(self, sender_id: str):
@@ -191,10 +182,7 @@ class IMChannelAdapter(ChannelAdapter):
     async def _connect_qq(self) -> bool:
         client = QQClient.from_saved_keys()
         if client is None:
-            logger.error(
-                "QQ credentials not configured. "
-                "Run a setup script first or ensure ~/.imchat/qq.json exists."
-            )
+            logger.error("QQ credentials not configured. Run a setup script first or ensure ~/.imchat/qq.json exists.")
             return False
 
         @client.on_ready

@@ -72,8 +72,4 @@ class ChannelAdapter(ABC):
         return self._connected
 
     async def health_check(self) -> Dict[str, Any]:
-        return {
-            "channel_id": self.channel_id,
-            "connected": self._connected,
-            "healthy": self._connected
-        }
+        return {"channel_id": self.channel_id, "connected": self._connected, "healthy": self._connected}

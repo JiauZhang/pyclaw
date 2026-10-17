@@ -11,7 +11,7 @@ __config_file__ = Path(__pyclaw_home__) / "config.json"
 def debug_on() -> bool:
     """Verbose logging is off unless asked for: a conversation log is meant to
     be a record of decisions and failures, not of every streamed token."""
-    return bool(os.environ.get('PYCLAW_DEBUG')) or bool(load().get('debug'))
+    return bool(os.environ.get("PYCLAW_DEBUG")) or bool(load().get("debug"))
 
 
 @lru_cache(maxsize=1)
@@ -26,8 +26,7 @@ def load() -> dict:
         "enabled_channels": ["wechat"],
         "greeting_text": "PyClaw 已上线，随时为您服务！",
         "permissions": {"defaultMode": "default"},
-        "banner": {"style": "random", "from": "#0084E4", "to": "#F0CC00",
-                   "angle": 60.0, "seed": None},
+        "banner": {"style": "random", "from": "#0084E4", "to": "#F0CC00", "angle": 60.0, "seed": None},
         "welcome": {"seen": 0, "lastVersion": ""},
         "notifications": {"backend": "auto", "idleSeconds": 60},
         "pricing": {},

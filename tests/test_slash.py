@@ -6,12 +6,10 @@ from markup import plain
 from pyclaw import config, slash
 
 
-HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost",
-                 "/agents", "/context")
+HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost", "/agents", "/context")
 
 
 class _Bare:
-
     def user_skills(self):
         return []
 
@@ -35,8 +33,7 @@ def _fake_session(**kwargs):
         lead_instruction = "You solve the task."
         instruction_files = [{"path": "AGENTS.md", "content": "# rules"}]
         working_dirs = ["/work/project"]
-        schemas = [{"name": "Read", "description": "read a file",
-                    "input_schema": {"type": "object"}}]
+        schemas = [{"name": "Read", "description": "read a file", "input_schema": {"type": "object"}}]
 
         def tool_schemas(self):
             return list(self.schemas)
@@ -45,7 +42,8 @@ def _fake_session(**kwargs):
             return []
 
         def transcript(self):
-            return list(getattr(self, 'messages', []))
+            return list(getattr(self, "messages", []))
+
         active_agents = 0
         usage = Usage()
 
@@ -68,7 +66,7 @@ def _fake_session(**kwargs):
             self.remembered = True
 
         def agent_usage(self):
-            return list(getattr(self, 'agents', ()))
+            return list(getattr(self, "agents", ()))
 
         async def end_session(self, reason):
             self.ended.append(reason)
@@ -112,9 +110,10 @@ def test_non_slash_returns_none():
 
 def test_agents_command_lists_the_types():
     from types import SimpleNamespace
-    session = SimpleNamespace(agent_types=[('reviewer', 'Reviews code')])
-    reply = asyncio.run(_call('/agents', session))
-    assert 'reviewer: Reviews code' in reply
+
+    session = SimpleNamespace(agent_types=[("reviewer", "Reviews code")])
+    reply = asyncio.run(_call("/agents", session))
+    assert "reviewer: Reviews code" in reply
 
 
 def test_clear_command():
@@ -176,11 +175,8 @@ def test_memory_lists_the_rules_that_wait_for_a_matching_file(tmp_path):
 
     rules = tmp_path / ".pyclaw" / "rules"
     rules.mkdir(parents=True)
-    (rules / "python.md").write_text("---\npaths: src/*.py\n---\n"
-                                     "Annotate every argument.\n",
-                                     encoding="utf-8")
-    (rules / "style.md").write_text("---\npaths: \n---\nTwo spaces.\n",
-                                    encoding="utf-8")
+    (rules / "python.md").write_text("---\npaths: src/*.py\n---\nAnnotate every argument.\n", encoding="utf-8")
+    (rules / "style.md").write_text("---\npaths: \n---\nTwo spaces.\n", encoding="utf-8")
     out = asyncio.run(_call("/memory", _S()))
     assert "rule for src/*.py" in out
     assert "style.md" not in out
@@ -242,20 +238,21 @@ def test_cost_command_unpriced(monkeypatch):
 
 
 def test_cost_command_with_pricing(monkeypatch):
-    monkeypatch.setattr(config, "load", lambda: {
-        "pricing": {"m": {"input": 1, "output": 2}}})
+    monkeypatch.setattr(config, "load", lambda: {"pricing": {"m": {"input": 1, "output": 2}}})
     session = _fake_session(usage=Usage(1000, 500, 1500))
     out = asyncio.run(_call("/cost", session))
     assert "$0.0020" in out
 
 
 def test_cost_breaks_the_spend_down_by_agent(monkeypatch):
-    monkeypatch.setattr(config, "load", lambda: {
-        "pricing": {"m": {"input": 1, "output": 2}}})
-    session = _fake_session(usage=Usage(1500, 600, 2100), agents=[
-        ("team-lead", "m", Usage(1000, 500, 1500)),
-        ("researcher", "cheap-m", Usage(500, 100, 600)),
-    ])
+    monkeypatch.setattr(config, "load", lambda: {"pricing": {"m": {"input": 1, "output": 2}}})
+    session = _fake_session(
+        usage=Usage(1500, 600, 2100),
+        agents=[
+            ("team-lead", "m", Usage(1000, 500, 1500)),
+            ("researcher", "cheap-m", Usage(500, 100, 600)),
+        ],
+    )
     out = asyncio.run(_call("/cost", session))
 
     assert "By agent:" in out
@@ -274,8 +271,8 @@ def test_mode_switch_commands_removed():
     assert "Unknown command" in out
     out = asyncio.run(_call("/team", _fake_session()))
     assert "Unknown command" in out
-    names = {entry['name'] for entry in slash.COMMANDS}
-    assert 'agent' not in names and 'team' not in names
+    names = {entry["name"] for entry in slash.COMMANDS}
+    assert "agent" not in names and "team" not in names
 
 
 def test_statusline_command_queues_the_setup_agent():
@@ -285,13 +282,12 @@ def test_statusline_command_queues_the_setup_agent():
     assert "statusline-setup" in prompt
     assert "Set up my status line from my shell PS1 configuration" in prompt
     assert "/statusline" in slash.HELP
-    assert session.granted[0] == ('Read(~/**)',) + session.granted[0][1:]
-    assert str(session.granted[0][1]).startswith('Edit(')
+    assert session.granted[0] == ("Read(~/**)",) + session.granted[0][1:]
+    assert str(session.granted[0][1]).startswith("Edit(")
 
 
 def test_statusline_command_forwards_the_user_instructions():
-    _, prompt = asyncio.run(_call("/statusline show the model in green",
-                                  _fake_session()))
+    _, prompt = asyncio.run(_call("/statusline show the model in green", _fake_session()))
     assert "show the model in green" in prompt
     assert "statusline-setup" in prompt
     assert "Configure my statusLine" not in prompt
@@ -303,7 +299,7 @@ def test_compact_calls_session_compactor():
 
         async def compact(self):
             self.compacted = True
-            return 'Compacted: 10 -> 4 messages'
+            return "Compacted: 10 -> 4 messages"
 
     s = _S()
     out = asyncio.run(_call("/compact", s))
@@ -316,8 +312,7 @@ def test_permissions_lists_mode_and_rules_with_sources():
         permission_mode = "default"
 
         def permission_rules(self):
-            return [("allow", "Bash(git commit:*)", "local"),
-                    ("deny", "Bash(curl:*)", "user")]
+            return [("allow", "Bash(git commit:*)", "local"), ("deny", "Bash(curl:*)", "user")]
 
     out = asyncio.run(_call("/permissions", _S()))
     assert "default" in out
@@ -413,16 +408,23 @@ def test_handle_slash_tracks_usage():
 
 
 CONTEXT_SESSION = dict(
-    model="m", used_context=40_000, context_window=200_000,
-    compact_threshold=160_000, context_messages=12,
+    model="m",
+    used_context=40_000,
+    context_window=200_000,
+    compact_threshold=160_000,
+    context_messages=12,
     lead_instruction="You solve the task.",
     instruction_files=[{"path": "AGENTS.md", "content": "# project rules\n"}],
-    schemas=[{"name": "Read", "description": "d", "input_schema": {}},
-             {"name": "Bash", "description": "e" * 400, "input_schema": {}}],
-    agent_types=[("reviewer", "reads diffs")], messages=[
+    schemas=[
+        {"name": "Read", "description": "d", "input_schema": {}},
+        {"name": "Bash", "description": "e" * 400, "input_schema": {}},
+    ],
+    agent_types=[("reviewer", "reads diffs")],
+    messages=[
         {"role": "user", "content": "do the thing"},
         {"role": "assistant", "content": "on it"},
-    ])
+    ],
+)
 
 
 def test_context_reports_what_the_model_is_shown_in_characters(monkeypatch):
@@ -444,15 +446,14 @@ def test_context_shows_only_the_measured_token_numbers(monkeypatch):
     assert "Measured: 40,000 of 200,000 tokens (20%) \u00b7 160,000 free" in out
     assert "Auto-compact at 160,000 tokens" in out
     assert "in characters" in out
-    assert "token" not in out.split('in characters')[1]
+    assert "token" not in out.split("in characters")[1]
 
 
 def test_rewind_lists_the_turns_that_can_be_given_back():
-    session = _fake_session(
-        turns=lambda: [(0, 'set up the parser'), (2, 'fix the tests')])
-    out = _strip(asyncio.run(_call('/rewind', session)))
-    assert '1. set up the parser' in out
-    assert '2. fix the tests' in out
+    session = _fake_session(turns=lambda: [(0, "set up the parser"), (2, "fix the tests")])
+    out = _strip(asyncio.run(_call("/rewind", session)))
+    assert "1. set up the parser" in out
+    assert "2. fix the tests" in out
 
 
 def test_rewind_puts_a_turn_back_and_reports_what_moved():
@@ -460,13 +461,13 @@ def test_rewind_puts_a_turn_back_and_reports_what_moved():
 
     def rewind(mark, code, conversation):
         seen.update(mark=mark, code=code, conversation=conversation)
-        return {'files': ['a.py'], 'messages': 3}
+        return {"files": ["a.py"], "messages": 3}
 
-    session = _fake_session(turns=lambda: [(0, 'a'), (2, 'b')], rewind=rewind)
-    out = _strip(asyncio.run(_call('/rewind 1', session)))
-    assert seen == {'mark': 0, 'code': True, 'conversation': True}
-    assert '1 file' in out
-    assert '3 messages' in out
+    session = _fake_session(turns=lambda: [(0, "a"), (2, "b")], rewind=rewind)
+    out = _strip(asyncio.run(_call("/rewind 1", session)))
+    assert seen == {"mark": 0, "code": True, "conversation": True}
+    assert "1 file" in out
+    assert "3 messages" in out
 
 
 def test_rewind_can_be_limited_to_the_files():
@@ -474,150 +475,168 @@ def test_rewind_can_be_limited_to_the_files():
 
     def rewind(mark, code, conversation):
         seen.update(code=code, conversation=conversation)
-        return {'files': ['a.py', 'b.py'], 'messages': 0}
+        return {"files": ["a.py", "b.py"], "messages": 0}
 
-    session = _fake_session(turns=lambda: [(0, 'a')], rewind=rewind)
-    out = _strip(asyncio.run(_call('/rewind 1 code', session)))
-    assert seen == {'code': True, 'conversation': False}
-    assert '2 files' in out
-    assert 'messages' not in out
+    session = _fake_session(turns=lambda: [(0, "a")], rewind=rewind)
+    out = _strip(asyncio.run(_call("/rewind 1 code", session)))
+    assert seen == {"code": True, "conversation": False}
+    assert "2 files" in out
+    assert "messages" not in out
 
 
 def test_rewind_can_be_limited_to_the_conversation():
     def rewind(mark, code, conversation):
-        return {'files': [], 'messages': 5}
+        return {"files": [], "messages": 5}
 
-    session = _fake_session(turns=lambda: [(0, 'a')], rewind=rewind)
-    out = _strip(asyncio.run(_call('/rewind 1 conversation', session)))
-    assert '5 messages' in out
-    assert 'files' not in out
+    session = _fake_session(turns=lambda: [(0, "a")], rewind=rewind)
+    out = _strip(asyncio.run(_call("/rewind 1 conversation", session)))
+    assert "5 messages" in out
+    assert "files" not in out
 
 
 def test_rewind_refuses_a_turn_it_has_no_record_of():
     called = []
-    session = _fake_session(turns=lambda: [(0, 'a')],
-                            rewind=lambda **kw: called.append(kw))
-    out = _strip(asyncio.run(_call('/rewind 9', session)))
-    assert 'no turn 9' in out
+    session = _fake_session(turns=lambda: [(0, "a")], rewind=lambda **kw: called.append(kw))
+    out = _strip(asyncio.run(_call("/rewind 9", session)))
+    assert "no turn 9" in out
     assert called == []
 
 
 def test_rewind_says_so_when_nothing_is_recorded():
     session = _fake_session(turns=lambda: [])
-    out = _strip(asyncio.run(_call('/rewind', session)))
-    assert 'file history' in out
+    out = _strip(asyncio.run(_call("/rewind", session)))
+    assert "file history" in out
 
 
 def test_tasks_lists_what_is_running_in_the_background():
-    session = _fake_session(task_rows=lambda: [
-        {'kind': 'teammate', 'id': 'worker', 'label': '@worker',
-         'detail': 'working', 'stoppable': True},
-        {'kind': 'shell', 'id': 'b1', 'label': 'npm run dev',
-         'detail': 'running 12s', 'stoppable': True}])
-    out = _strip(asyncio.run(_call('/tasks', session)))
-    assert '@worker · working' in out
-    assert 'b1 npm run dev · running 12s' in out
-    assert 'panel' in out
+    session = _fake_session(
+        task_rows=lambda: [
+            {"kind": "teammate", "id": "worker", "label": "@worker", "detail": "working", "stoppable": True},
+            {"kind": "shell", "id": "b1", "label": "npm run dev", "detail": "running 12s", "stoppable": True},
+        ]
+    )
+    out = _strip(asyncio.run(_call("/tasks", session)))
+    assert "@worker · working" in out
+    assert "b1 npm run dev · running 12s" in out
+    assert "panel" in out
 
 
 def test_tasks_says_so_when_nothing_runs():
     session = _fake_session(task_rows=lambda: [])
-    assert _strip(asyncio.run(_call('/tasks', session))) == (
-        'No background tasks are running.')
+    assert _strip(asyncio.run(_call("/tasks", session))) == ("No background tasks are running.")
 
 
 def test_skills_lists_what_was_found_and_where_it_came_from():
-    session = _fake_session(skill_problems=lambda: [], skill_rows=lambda: [
-        {'name': 'notes', 'description': 'turn a log into bullets',
-         'source': 'project', 'allowed_tools': ('Read',),
-         'argument_hint': '[which log]', 'user_invocable': True,
-         'disable_model_invocation': False},
-        {'name': 'pdf', 'description': 'work with pdfs', 'source': 'user',
-         'allowed_tools': (), 'argument_hint': '', 'user_invocable': True,
-         'disable_model_invocation': True},
-        {'name': 'hidden', 'description': 'not for the terminal',
-         'source': 'user', 'allowed_tools': (), 'argument_hint': '',
-         'user_invocable': False, 'disable_model_invocation': False}])
-    out = asyncio.run(_call('/skills', session))
-    assert 'notes' in out and 'project' in out
-    assert 'allows Read' in out
-    assert '/notes [which log]' in out
-    assert 'pdf' in out and 'only when you ask for it' in out
-    assert 'hidden' in out and 'not offered to the terminal' in out
+    session = _fake_session(
+        skill_problems=lambda: [],
+        skill_rows=lambda: [
+            {
+                "name": "notes",
+                "description": "turn a log into bullets",
+                "source": "project",
+                "allowed_tools": ("Read",),
+                "argument_hint": "[which log]",
+                "user_invocable": True,
+                "disable_model_invocation": False,
+            },
+            {
+                "name": "pdf",
+                "description": "work with pdfs",
+                "source": "user",
+                "allowed_tools": (),
+                "argument_hint": "",
+                "user_invocable": True,
+                "disable_model_invocation": True,
+            },
+            {
+                "name": "hidden",
+                "description": "not for the terminal",
+                "source": "user",
+                "allowed_tools": (),
+                "argument_hint": "",
+                "user_invocable": False,
+                "disable_model_invocation": False,
+            },
+        ],
+    )
+    out = asyncio.run(_call("/skills", session))
+    assert "notes" in out and "project" in out
+    assert "allows Read" in out
+    assert "/notes [which log]" in out
+    assert "pdf" in out and "only when you ask for it" in out
+    assert "hidden" in out and "not offered to the terminal" in out
 
 
 def test_skills_reports_the_directories_it_could_not_use():
-    session = _fake_session(skill_rows=lambda: [],
-                            skill_problems=lambda: ['vague: no description'])
-    out = _strip(asyncio.run(_call('/skills', session)))
-    assert 'vague: no description' in out
+    session = _fake_session(skill_rows=lambda: [], skill_problems=lambda: ["vague: no description"])
+    out = _strip(asyncio.run(_call("/skills", session)))
+    assert "vague: no description" in out
 
 
 def test_skills_says_so_when_none_are_installed():
     session = _fake_session(skill_rows=lambda: [], skill_problems=lambda: [])
-    assert 'No skills are installed' in _strip(asyncio.run(_call('/skills', session)))
+    assert "No skills are installed" in _strip(asyncio.run(_call("/skills", session)))
 
 
 def test_hooks_lists_what_will_run_and_where_it_came_from():
-    session = _fake_session(hook_rows=lambda: [
-        {'event': 'PreToolUse', 'matcher': 'Bash', 'type': 'command',
-         'source': 'projectSettings', 'detail': 'npm test'},
-        {'event': 'Stop', 'matcher': '*', 'type': 'prompt',
-         'source': 'sessionHook', 'detail': 'check the tests'}])
-    out = _strip(asyncio.run(_call('/hooks', session)))
-    assert 'PreToolUse' in out and 'projectSettings' in out
-    assert 'npm test' in out
-    assert 'Stop' in out
+    session = _fake_session(
+        hook_rows=lambda: [
+            {"event": "PreToolUse", "matcher": "Bash", "type": "command", "source": "projectSettings", "detail": "npm test"},
+            {"event": "Stop", "matcher": "*", "type": "prompt", "source": "sessionHook", "detail": "check the tests"},
+        ]
+    )
+    out = _strip(asyncio.run(_call("/hooks", session)))
+    assert "PreToolUse" in out and "projectSettings" in out
+    assert "npm test" in out
+    assert "Stop" in out
 
 
 def test_hooks_says_so_when_none_are_configured():
     session = _fake_session(hook_rows=lambda: [])
-    assert 'No hooks' in _strip(asyncio.run(_call('/hooks', session)))
+    assert "No hooks" in _strip(asyncio.run(_call("/hooks", session)))
 
 
 def test_status_names_the_active_team():
-    session = _fake_session(team_context={'name': 'parser',
-                                          'description': 'rework'})
-    out = _strip(asyncio.run(_call('/status', session)))
-    assert 'Team: parser' in out
+    session = _fake_session(team_context={"name": "parser", "description": "rework"})
+    out = _strip(asyncio.run(_call("/status", session)))
+    assert "Team: parser" in out
 
 
 def test_status_omits_the_team_line_without_one():
-    out = _strip(asyncio.run(_call('/status', _fake_session())))
-    assert 'Team:' not in out
+    out = _strip(asyncio.run(_call("/status", _fake_session())))
+    assert "Team:" not in out
 
 
 def test_status_names_the_worktree_the_session_moved_into():
-    session = _fake_session(worktree={'name': 'side', 'branch': 'wt/side',
-                                      'path': '/tmp/repo/.pyclaw/worktrees/side'})
-    out = _strip(asyncio.run(_call('/status', session)))
-    assert 'Worktree: wt/side' in out
+    session = _fake_session(worktree={"name": "side", "branch": "wt/side", "path": "/tmp/repo/.pyclaw/worktrees/side"})
+    out = _strip(asyncio.run(_call("/status", session)))
+    assert "Worktree: wt/side" in out
 
 
 def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
-    monkeypatch.setattr(config, 'load', lambda: {'thinking': {}})
-    monkeypatch.setattr(config, 'save', lambda cfg: None)
+    monkeypatch.setattr(config, "load", lambda: {"thinking": {}})
+    monkeypatch.setattr(config, "save", lambda cfg: None)
     session = _fake_session()
 
-    asyncio.run(_call('/effort high', session))
-    assert session.set[-1].effort == 'high'
+    asyncio.run(_call("/effort high", session))
+    assert session.set[-1].effort == "high"
     assert session.remembered
-    asyncio.run(_call('/effort auto', session))
-    assert session.set[-1].effort == ''
-    unknown = asyncio.run(_call('/effort extreme', session))
-    assert 'low, medium, high' in unknown
+    asyncio.run(_call("/effort auto", session))
+    assert session.set[-1].effort == ""
+    unknown = asyncio.run(_call("/effort extreme", session))
+    assert "low, medium, high" in unknown
 
 
 def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
     from chatchat.runtime.thinking import Thinking
 
-    monkeypatch.setattr(config, 'load', lambda: {'thinking': {}})
+    monkeypatch.setattr(config, "load", lambda: {"thinking": {}})
     session = _fake_session()
-    session.thinking = Thinking('adaptive', effort='medium')
+    session.thinking = Thinking("adaptive", effort="medium")
 
-    out = asyncio.run(_call('/status', session, session_key='k1'))
+    out = asyncio.run(_call("/status", session, session_key="k1"))
 
-    assert 'thinking adaptive' in out and 'effort medium' in out
+    assert "thinking adaptive" in out and "effort medium" in out
 
 
 def _history(monkeypatch, tmp_path, rows):
@@ -626,29 +645,37 @@ def _history(monkeypatch, tmp_path, rows):
 
     from pyclaw import usage_history
 
-    home = tmp_path / 'usage'
+    home = tmp_path / "usage"
     home.mkdir(exist_ok=True)
     today = date.today()
-    monkeypatch.setattr(usage_history, '_directory', lambda: home)
+    monkeypatch.setattr(usage_history, "_directory", lambda: home)
     for row in rows:
-        day = row['day']
-        path = home / f'{day}.jsonl'
-        with path.open('a', encoding='utf-8') as handle:
-            handle.write(json.dumps(row) + '\n')
+        day = row["day"]
+        path = home / f"{day}.jsonl"
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(row) + "\n")
     return today
 
 
 def _row(day, **kw):
     from chatchat.runtime.metrics import Metrics
 
-    base = {'at': f'{day}T09:00:00', 'day': day, 'session': 's1',
-            'provider': 'agnes', 'model': 'm', 'input': 1000, 'output': 200,
-            'cached': 400, 'turns': 1,
-            'metrics': Metrics().as_dict()}
-    if 'metrics' in kw:
-        base['metrics'] = {**base['metrics'], **kw.pop('metrics')}
+    base = {
+        "at": f"{day}T09:00:00",
+        "day": day,
+        "session": "s1",
+        "provider": "agnes",
+        "model": "m",
+        "input": 1000,
+        "output": 200,
+        "cached": 400,
+        "turns": 1,
+        "metrics": Metrics().as_dict(),
+    }
+    if "metrics" in kw:
+        base["metrics"] = {**base["metrics"], **kw.pop("metrics")}
     row = {**base, **kw}
-    row['total'] = row['input'] + row['output']
+    row["total"] = row["input"] + row["output"]
     return row
 
 
@@ -656,20 +683,23 @@ def test_usage_reports_the_measured_numbers_for_one_day(monkeypatch, tmp_path):
     from datetime import date
 
     today = date.today().isoformat()
-    _history(monkeypatch, tmp_path,
-             [_row(today, metrics={'tool_calls': 3}),
-              _row(today, input=500, output=50,
-                   metrics={'tool_calls': 2, 'api_ms': 1500,
-                            'lines_added': 7, 'denials': 1})])
+    _history(
+        monkeypatch,
+        tmp_path,
+        [
+            _row(today, metrics={"tool_calls": 3}),
+            _row(today, input=500, output=50, metrics={"tool_calls": 2, "api_ms": 1500, "lines_added": 7, "denials": 1}),
+        ],
+    )
 
-    out = plain(asyncio.run(_call('/usage', _fake_session())))
+    out = plain(asyncio.run(_call("/usage", _fake_session())))
 
-    assert '2 turns' in out
-    assert '1.8k' in out
-    assert '5 tool calls' in out
-    assert '1.5s' in out
-    assert '7 lines added' in out
-    assert '1 refused' in out
+    assert "2 turns" in out
+    assert "1.8k" in out
+    assert "5 tool calls" in out
+    assert "1.5s" in out
+    assert "7 lines added" in out
+    assert "1 refused" in out
 
 
 def test_usage_can_widen_to_a_week(monkeypatch, tmp_path):
@@ -679,73 +709,71 @@ def test_usage_can_widen_to_a_week(monkeypatch, tmp_path):
     old = (today - timedelta(days=5)).isoformat()
     _history(monkeypatch, tmp_path, [_row(today.isoformat()), _row(old)])
 
-    day = plain(asyncio.run(_call('/usage today', _fake_session())))
-    week = plain(asyncio.run(_call('/usage week', _fake_session())))
+    day = plain(asyncio.run(_call("/usage today", _fake_session())))
+    week = plain(asyncio.run(_call("/usage week", _fake_session())))
 
-    assert 'input: 1000' in day
-    assert 'input: 2000' in week
+    assert "input: 1000" in day
+    assert "input: 2000" in week
 
 
 def test_usage_says_so_when_nothing_has_been_recorded(monkeypatch, tmp_path):
     _history(monkeypatch, tmp_path, [])
 
-    out = plain(asyncio.run(_call('/usage', _fake_session())))
+    out = plain(asyncio.run(_call("/usage", _fake_session())))
 
-    assert 'Nothing recorded yet' in out
+    assert "Nothing recorded yet" in out
 
 
 def test_stats_lists_the_days_newest_first(monkeypatch, tmp_path):
     from datetime import date, timedelta
 
     today = date.today()
-    _history(monkeypatch, tmp_path,
-             [_row((today - timedelta(days=1)).isoformat()),
-              _row(today.isoformat(), output=900)])
+    _history(monkeypatch, tmp_path, [_row((today - timedelta(days=1)).isoformat()), _row(today.isoformat(), output=900)])
 
-    out = plain(asyncio.run(_call('/stats', _fake_session())))
+    out = plain(asyncio.run(_call("/stats", _fake_session())))
 
     lines = out.splitlines()
     assert lines[1].startswith(today.isoformat())
     assert today.isoformat() in out and (today - timedelta(days=1)).isoformat() in out
-    assert out.index('900') < out.index('200')
+    assert out.index("900") < out.index("200")
 
 
-def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch,
-                                                            tmp_path):
+def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch, tmp_path):
     from datetime import date, datetime
 
     from pyclaw import events
 
     today = date.today()
     _history(monkeypatch, tmp_path, [_row(today.isoformat())])
-    home = tmp_path / 'events'
+    home = tmp_path / "events"
     home.mkdir(exist_ok=True)
-    monkeypatch.setattr(events, '_directory', lambda: home)
-    sink = events.open_stream(at=datetime(today.year, today.month, today.day,
-                                          9, 0), session='s1')
-    sink.note_error('the provider went away')
+    monkeypatch.setattr(events, "_directory", lambda: home)
+    sink = events.open_stream(at=datetime(today.year, today.month, today.day, 9, 0), session="s1")
+    sink.note_error("the provider went away")
     sink.close()
 
-    out = plain(asyncio.run(_call('/stats', _fake_session())))
+    out = plain(asyncio.run(_call("/stats", _fake_session())))
 
-    assert '1 error recorded' in out
-    assert 'provider went away' in out
+    assert "1 error recorded" in out
+    assert "provider went away" in out
 
 
 def _clipboard(sequence: str) -> str:
     import base64
 
-    payload = sequence.split(';c;')[1].rstrip('\x07')
+    payload = sequence.split(";c;")[1].rstrip("\x07")
     return base64.b64decode(payload).decode()
 
 
 def _turn_session():
-    session = _fake_session(messages=[
-        {'role': 'user', 'content': 'fix the parser please'},
-        {'role': 'assistant', 'content': 'First reply\n\n```python\ndef f():\n    return 1\n```'},
-        {'role': 'user', 'content': [{'type': 'tool_result',
-                                      'tool_use_id': 't1', 'content': 'ok'}]},
-        {'role': 'assistant', 'content': 'Second reply with 中文'}])
+    session = _fake_session(
+        messages=[
+            {"role": "user", "content": "fix the parser please"},
+            {"role": "assistant", "content": "First reply\n\n```python\ndef f():\n    return 1\n```"},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+            {"role": "assistant", "content": "Second reply with 中文"},
+        ]
+    )
     return session
 
 
@@ -754,15 +782,15 @@ def test_export_writes_the_conversation_as_markdown(tmp_path):
 
     session = _turn_session()
     os.chdir(tmp_path)
-    out = asyncio.run(_call('/export', session))
+    out = asyncio.run(_call("/export", session))
 
-    written = sorted(tmp_path.glob('*.md'))
+    written = sorted(tmp_path.glob("*.md"))
     assert len(written) == 1 and out.endswith(written[0].name)
-    body = written[0].read_text(encoding='utf-8')
-    assert written[0].name.endswith('.md')
-    assert 'fix the parser please' in body
-    assert 'Second reply with 中文' in body
-    assert body.index('fix the parser') < body.index('First reply')
+    body = written[0].read_text(encoding="utf-8")
+    assert written[0].name.endswith(".md")
+    assert "fix the parser please" in body
+    assert "Second reply with 中文" in body
+    assert body.index("fix the parser") < body.index("First reply")
 
 
 def test_export_takes_a_name_when_given_one(tmp_path):
@@ -770,40 +798,38 @@ def test_export_takes_a_name_when_given_one(tmp_path):
 
     session = _turn_session()
     os.chdir(tmp_path)
-    asyncio.run(_call('/export notes.md', session))
+    asyncio.run(_call("/export notes.md", session))
 
-    assert (tmp_path / 'notes.md').exists()
+    assert (tmp_path / "notes.md").exists()
 
 
 def test_copy_reports_the_answer_and_the_fallback_file(tmp_path, monkeypatch):
     session = _turn_session()
     sent = []
-    monkeypatch.setattr('pyclaw.notify.set_title', lambda write, title: None)
-    out = plain(asyncio.run(_call('/copy', session, terminal=sent.append)))
+    monkeypatch.setattr("pyclaw.notify.set_title", lambda write, title: None)
+    out = plain(asyncio.run(_call("/copy", session, terminal=sent.append)))
 
-    assert 'Copied' in out and 'Second reply' not in out
-    assert any('\033]52;' in row for row in sent)
+    assert "Copied" in out and "Second reply" not in out
+    assert any("\033]52;" in row for row in sent)
 
 
 def test_copy_can_reach_an_older_answer_and_a_code_block(tmp_path, monkeypatch):
     session = _turn_session()
     sent = []
-    plain(asyncio.run(_call('/copy 2', session, terminal=sent.append)))
-    assert 'First reply' in _clipboard(sent[-1])
+    plain(asyncio.run(_call("/copy 2", session, terminal=sent.append)))
+    assert "First reply" in _clipboard(sent[-1])
     sent.clear()
-    out = plain(asyncio.run(_call('/copy 2:1', session, terminal=sent.append)))
-    assert 'code block' in out or 'python' in out
-    assert 'def f():' in _clipboard(sent[-1])
+    out = plain(asyncio.run(_call("/copy 2:1", session, terminal=sent.append)))
+    assert "code block" in out or "python" in out
+    assert "def f():" in _clipboard(sent[-1])
     sent.clear()
-    missing = plain(asyncio.run(_call('/copy 1:3', session,
-                                      terminal=sent.append)))
-    assert 'No code block' in missing and sent == []
+    missing = plain(asyncio.run(_call("/copy 1:3", session, terminal=sent.append)))
+    assert "No code block" in missing and sent == []
 
 
 def test_copy_says_so_when_there_is_nothing_to_copy(monkeypatch):
-    out = plain(asyncio.run(_call('/copy', _fake_session(),
-                                  terminal=lambda s: None)))
-    assert 'Nothing to copy' in out
+    out = plain(asyncio.run(_call("/copy", _fake_session(), terminal=lambda s: None)))
+    assert "Nothing to copy" in out
 
 
 def test_the_copy_targets_are_the_reply_and_its_code_blocks():
@@ -811,11 +837,11 @@ def test_the_copy_targets_are_the_reply_and_its_code_blocks():
 
     session = _turn_session()
     targets = copy_targets(session.transcript())
-    assert [target[0] for target in targets] == ['whole reply']
-    assert targets[0][1] == 'Second reply with 中文'
+    assert [target[0] for target in targets] == ["whole reply"]
+    assert targets[0][1] == "Second reply with 中文"
     older = copy_targets(session.transcript(), which=2)
-    assert [label for label, _ in older] == ['whole reply', 'python']
-    assert older[1][1] == 'def f():\n    return 1'
+    assert [label for label, _ in older] == ["whole reply", "python"]
+    assert older[1][1] == "def f():\n    return 1"
 
 
 def test_the_export_names_itself_after_the_first_prompt(tmp_path):
@@ -824,35 +850,34 @@ def test_the_export_names_itself_after_the_first_prompt(tmp_path):
     from pyclaw.export import export_text, filename_for
 
     session = _turn_session()
-    body = export_text(session.transcript(), session_id='abc123')
-    assert '# PyClaw session abc123' in body
-    assert '**you**' in body and '**pyclaw**' in body
-    name = filename_for(session.transcript(),
-                        when=datetime(2026, 5, 4, 9, 30, 12))
-    assert name == '2026-05-04-093012-fix-the-parser-please.md'
+    body = export_text(session.transcript(), session_id="abc123")
+    assert "# PyClaw session abc123" in body
+    assert "**you**" in body and "**pyclaw**" in body
+    name = filename_for(session.transcript(), when=datetime(2026, 5, 4, 9, 30, 12))
+    assert name == "2026-05-04-093012-fix-the-parser-please.md"
 
 
 def test_add_dir_names_the_directory_it_took_and_the_ones_it_refused(tmp_path):
     from pyclaw.session import Session
     from pyclaw.team.builder import build_team
 
-    project = tmp_path / 'project'
+    project = tmp_path / "project"
     project.mkdir()
-    elsewhere = tmp_path / 'elsewhere'
-    (elsewhere / 'inner').mkdir(parents=True)
+    elsewhere = tmp_path / "elsewhere"
+    (elsewhere / "inner").mkdir(parents=True)
 
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(project))
-        session = Session(team, session_id='add-dir')
+        session = Session(team, session_id="add-dir")
         added = await _call(f"/add-dir {elsewhere}", session)
         again = await _call(f"/add-dir {elsewhere / 'inner'}", session)
         listed = await _call("/add-dir", session)
         return added, again, listed, session
 
     added, again, listed, session = asyncio.run(main())
-    assert 'working directory for this session' in added
-    assert 'already reachable' in again
+    assert "working directory for this session" in added
+    assert "already reachable" in again
     assert str(elsewhere.resolve()) in listed
     assert session._team.tool_context.extra_dirs == (elsewhere.resolve(),)
     status = _strip(asyncio.run(_call("/status", session)))
-    assert 'Also working in: ' in status
+    assert "Also working in: " in status

@@ -22,78 +22,26 @@ from pyclaw.tools.bash import get_default_timeout_ms
 from pyclaw.usage_history import conversation_totals, record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
-from .store import (_session_path, append_conv, follow_conversation,
-                    adopt_artifacts, history_dir, load_transcript,
-                    load_worktree, plan_file, save_transcript, save_worktree)
-from pyclaw.team.builder import (_dispatch_event, checkpoints_enabled,
-                                 configured_context_window)
+from .store import (
+    _session_path,
+    append_conv,
+    follow_conversation,
+    adopt_artifacts,
+    history_dir,
+    load_transcript,
+    load_worktree,
+    plan_file,
+    save_transcript,
+    save_worktree,
+)
+from pyclaw.team.builder import _dispatch_event, checkpoints_enabled, configured_context_window
 from pyclaw.permissions import parse_mode
 
-_sessions_by_root: dict[str, 'Session'] = {}
+_sessions_by_root: dict[str, "Session"] = {}
 
 
-
-
-
-
-def session_for(team_name) -> Optional['Session']:
+def session_for(team_name) -> Optional["Session"]:
     return _sessions_by_root.get(team_name)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class Session(HistoryMixin, ReadoutMixin):
@@ -102,7 +50,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._provider = entity.provider
         self._model = entity.model
         self._tools = entity.provided_tools
-        self.mode = getattr(entity, '_pyclaw_mode', 'agent')
+        self.mode = getattr(entity, "_pyclaw_mode", "agent")
         self.name = entity.name
         self.resume_from = resume_from
         self._conv_reply = ""
@@ -112,7 +60,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._seen = self._seen_zero()
         self._unreg = None
         self._bind_gen = 0
-        self._gate = getattr(entity, '_pyclaw_gate', None)
+        self._gate = getattr(entity, "_pyclaw_gate", None)
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
         if entity.worktree is not None:
@@ -150,8 +98,7 @@ class Session(HistoryMixin, ReadoutMixin):
         team.plan_path = plan_file(value)
         if self._gate is not None:
             self._gate.plan_file = team.plan_path
-        follow_conversation(value, level=logging.DEBUG if config.debug_on()
-                            else logging.INFO)
+        follow_conversation(value, level=logging.DEBUG if config.debug_on() else logging.INFO)
 
     def _adopt_history(self):
         """Start the snapshot store of this conversation, which after a clear,
@@ -179,13 +126,9 @@ class Session(HistoryMixin, ReadoutMixin):
     def thinking(self) -> Thinking:
         return self._team.thinking
 
-
-
-
     @property
     def lead_instruction(self) -> str:
-        return str(self._team.lead.instruction or '')
-
+        return str(self._team.lead.instruction or "")
 
     def tool_schemas(self) -> list:
         return self._team.tool_schemas(self._team.tool_context)
@@ -209,54 +152,42 @@ class Session(HistoryMixin, ReadoutMixin):
         moment it is resumed. The same sums become the baseline for the next
         turn's own numbers."""
         seen = conversation_totals(str(source_id))
-        spent = (seen['input'] or seen['output'] or seen['seconds']
-                 or any(seen['metrics'].values()))
+        spent = seen["input"] or seen["output"] or seen["seconds"] or any(seen["metrics"].values())
         if not spent:
             return
         self._team.restore_totals(
-            {'prompt_tokens': seen['input'],
-             'completion_tokens': seen['output'],
-             'total_tokens': seen['total'],
-             'prompt_tokens_details': {'cached_tokens': seen['cached']}},
-            seen['metrics'])
-        self._seen = {'input': seen['input'], 'output': seen['output'],
-                      'cached': seen['cached'], 'seconds': seen['seconds'],
-                      **seen['metrics']}
-        self.carried_seconds = seen['seconds']
-
-
+            {
+                "prompt_tokens": seen["input"],
+                "completion_tokens": seen["output"],
+                "total_tokens": seen["total"],
+                "prompt_tokens_details": {"cached_tokens": seen["cached"]},
+            },
+            seen["metrics"],
+        )
+        self._seen = {
+            "input": seen["input"],
+            "output": seen["output"],
+            "cached": seen["cached"],
+            "seconds": seen["seconds"],
+            **seen["metrics"],
+        }
+        self.carried_seconds = seen["seconds"]
 
     async def note_config_change(self, source: str):
-        await self._team.hooks.execute_config_change_hooks(self._team.lead,
-                                                           source)
-
-
-
-
-
-
-
-
-
-
-
-
+        await self._team.hooks.execute_config_change_hooks(self._team.lead, source)
 
     def set_thinking(self, thinking: Thinking):
         self._team.set_thinking(thinking)
 
     def remember_thinking(self):
         saved = config.load()
-        saved['thinking'] = {'mode': self.thinking.mode,
-                             'budget': self.thinking.budget,
-                             'effort': self.thinking.effort}
+        saved["thinking"] = {"mode": self.thinking.mode, "budget": self.thinking.budget, "effort": self.thinking.effort}
         config.save(saved)
 
     def toggle_thinking(self) -> str:
         current = self.thinking
-        mode = 'on' if not current.enabled else 'off'
-        self.set_thinking(Thinking(mode=mode, budget=current.budget,
-                                   effort=current.effort))
+        mode = "on" if not current.enabled else "off"
+        self.set_thinking(Thinking(mode=mode, budget=current.budget, effort=current.effort))
         self.remember_thinking()
         return self.thinking.label()
 
@@ -265,20 +196,13 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.set_model(model)
         return self._model
 
-
-
     @property
     def cwd(self) -> str:
         return str(self._gate.cwd) if self._gate is not None else os.getcwd()
 
-
-
-
-
-
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:
-            raise ValueError('Permission gate not available for this session.')
+            raise ValueError("Permission gate not available for this session.")
         parsed = self._gate.check_switch(mode)
         self._gate.mode = parsed
         self._team.hooks.permission_mode = parsed.value
@@ -290,7 +214,6 @@ class Session(HistoryMixin, ReadoutMixin):
 
     def attach_question(self, coro):
         self._team.ask_user = coro
-
 
     def apply_snapshot_update(self, agent_type: str, scope: str) -> str:
         return self._team.agent_memory.apply_snapshot(agent_type, scope)
@@ -307,32 +230,33 @@ class Session(HistoryMixin, ReadoutMixin):
         await self._team.end_session(reason)
 
     def _seen_zero(self) -> dict:
-        return {'input': 0, 'output': 0, 'cached': 0, 'seconds': 0,
-                **{name: 0 for name in Metrics().as_dict()}}
+        return {"input": 0, "output": 0, "cached": 0, "seconds": 0, **{name: 0 for name in Metrics().as_dict()}}
 
     def record_turn(self) -> dict:
         usage = self._team.usage()
-        details = getattr(usage, 'prompt_tokens_details', None) or {}
+        details = getattr(usage, "prompt_tokens_details", None) or {}
         metrics = self._team.total_metrics().as_dict()
         seen = self._seen
         turn = datetime.datetime.now().astimezone()
-        entry = row(turn, str(self.conv_session_id or self.name),
-                    self._provider, self._model,
-                    input_tokens=usage.prompt_tokens - seen['input'],
-                    output_tokens=usage.completion_tokens - seen['output'],
-                    cached=(int(details.get('cached_tokens') or 0)
-                            - seen['cached']),
-                    turns=sum(1 for message in self._team.transcript()
-                              if message.get('role') == 'assistant'),
-                    seconds=int(time.monotonic() - self._started)
-                    - seen['seconds'],
-                    metrics={name: value - seen[name]
-                             for name, value in metrics.items()})
-        self._seen = {'input': usage.prompt_tokens,
-                      'output': usage.completion_tokens,
-                      'cached': int(details.get('cached_tokens') or 0),
-                      'seconds': int(time.monotonic() - self._started),
-                      **metrics}
+        entry = row(
+            turn,
+            str(self.conv_session_id or self.name),
+            self._provider,
+            self._model,
+            input_tokens=usage.prompt_tokens - seen["input"],
+            output_tokens=usage.completion_tokens - seen["output"],
+            cached=(int(details.get("cached_tokens") or 0) - seen["cached"]),
+            turns=sum(1 for message in self._team.transcript() if message.get("role") == "assistant"),
+            seconds=int(time.monotonic() - self._started) - seen["seconds"],
+            metrics={name: value - seen[name] for name, value in metrics.items()},
+        )
+        self._seen = {
+            "input": usage.prompt_tokens,
+            "output": usage.completion_tokens,
+            "cached": int(details.get("cached_tokens") or 0),
+            "seconds": int(time.monotonic() - self._started),
+            **metrics,
+        }
         record(entry)
         return entry
 
@@ -343,7 +267,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.lead.messages = []
         self._team.reset_usage()
         self._team.reset_rules()
-        self._team.begin_new_session('clear')
+        self._team.begin_new_session("clear")
         self._adopt_history()
 
     def resume_session(self, session_id: str) -> int:
@@ -352,7 +276,7 @@ class Session(HistoryMixin, ReadoutMixin):
             return 0
         self._team.restore(messages)
         self._team.reset_rules()
-        self._team.begin_new_session('resume')
+        self._team.begin_new_session("resume")
         self._carry_totals(session_id)
         resumed = uuid.uuid4().hex
         adopt_artifacts(session_id, resumed)
@@ -369,7 +293,7 @@ class Session(HistoryMixin, ReadoutMixin):
         saved = load_worktree(source_id)
         if saved and self._team.worktree is None:
             self._team.worktree = saved
-            self._team.set_cwd(saved['path'])
+            self._team.set_cwd(saved["path"])
 
     async def leave_worktree(self, keep: bool) -> str:
         return await self._team.exit_worktree(keep=keep, discard=not keep)
@@ -381,12 +305,11 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.tool_context.extra_dirs = tuple(self._gate.extra_dirs)
         return target
 
-
     def _member_names(self) -> set:
         return {agent.name for agent in self._team.agents.values()}
 
     def _in_scope(self, ev) -> bool:
-        return str(getattr(ev, 'team', '')) == str(self._team.name)
+        return str(getattr(ev, "team", "")) == str(self._team.name)
 
     def _bind(self, on_event: Callable):
         self._unbind()
@@ -403,36 +326,30 @@ class Session(HistoryMixin, ReadoutMixin):
         reply, thinking = self._conv_reply, self._conv_thinking
         self._conv_reply, self._conv_thinking = "", ""
         if reply or thinking:
-            append_conv(session_id, "assistant", reply,
-                        reasoning_content=thinking or None)
+            append_conv(session_id, "assistant", reply, reasoning_content=thinking or None)
 
     async def run_bash(self, command: str) -> dict:
         cwd = self.cwd
         limit = get_default_timeout_ms() / 1000
         try:
-            done = subprocess.run(command, shell=True, cwd=cwd,
-                                  capture_output=True, text=True,
-                                  errors='replace', timeout=limit)
+            done = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True, errors="replace", timeout=limit)
             out, err, code = done.stdout, done.stderr, done.returncode
         except subprocess.TimeoutExpired as exc:
-            out = exc.stdout or ''
-            err = (exc.stderr or '') + f'\nThe command ran past {int(limit)}s.'
+            out = exc.stdout or ""
+            err = (exc.stderr or "") + f"\nThe command ran past {int(limit)}s."
             code = None
         except OSError as exc:
-            out, err, code = '', str(exc), None
+            out, err, code = "", str(exc), None
+        self._team.lead.messages.append({"role": "user", "content": f"<bash-input>{command}</bash-input>"})
         self._team.lead.messages.append(
-            {'role': 'user', 'content': f'<bash-input>{command}</bash-input>'})
-        self._team.lead.messages.append(
-            {'role': 'user',
-             'content': (f'<bash-stdout>{out}</bash-stdout>'
-                         f'<bash-stderr>{err}</bash-stderr>')})
+            {"role": "user", "content": (f"<bash-stdout>{out}</bash-stdout><bash-stderr>{err}</bash-stderr>")}
+        )
         if self.conv_session_id:
-            append_conv(self.conv_session_id, 'user', f'!{command}')
-            body = (out + err).rstrip('\n')
+            append_conv(self.conv_session_id, "user", f"!{command}")
+            body = (out + err).rstrip("\n")
             if body:
-                append_conv(self.conv_session_id, 'user', body)
-        return {'command': command, 'stdout': out, 'stderr': err,
-                'exit_code': code}
+                append_conv(self.conv_session_id, "user", body)
+        return {"command": command, "stdout": out, "stderr": err, "exit_code": code}
 
     async def chat(self, message: str, on_event: Optional[Callable] = None) -> str:
         if on_event is not None:
@@ -446,6 +363,7 @@ class Session(HistoryMixin, ReadoutMixin):
         async def gen():
             async for text in self._stream(message, on_event):
                 yield text
+
         return gen()
 
     async def _run(self, message: str, on_event: Callable) -> str:
@@ -453,7 +371,7 @@ class Session(HistoryMixin, ReadoutMixin):
             if not self._in_scope(ev):
                 return
             if ev.kind == AGENT_TEXT:
-                self._conv_reply += ev.data.get('delta', '')
+                self._conv_reply += ev.data.get("delta", "")
             _dispatch_event(on_event, ev)
 
         self._bind(on_ev)
@@ -473,7 +391,7 @@ class Session(HistoryMixin, ReadoutMixin):
             if not self._in_scope(ev):
                 return
             if ev.kind == AGENT_TEXT:
-                delta = ev.data.get('delta', '')
+                delta = ev.data.get("delta", "")
                 if delta:
                     self._conv_reply += delta
                     queue.put_nowait(delta)
@@ -502,15 +420,13 @@ class Session(HistoryMixin, ReadoutMixin):
 
     @property
     def cwd(self):
-        return str(self._gate.cwd) if self._gate is not None else '.'
+        return str(self._gate.cwd) if self._gate is not None else "."
 
     async def compact(self) -> str:
         before = len(self._team.lead.messages)
-        result = await self._team.compact(list(self._team.lead.messages),
-                                          force=True)
+        result = await self._team.compact(list(self._team.lead.messages), force=True)
         self._team.lead.messages = list(result)
-        return f'Compacted: {before} -> {len(result)} messages'
-
+        return f"Compacted: {before} -> {len(result)} messages"
 
     def remove_rule(self, rule: str) -> bool:
         gate = self._gate

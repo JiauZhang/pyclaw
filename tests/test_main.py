@@ -9,9 +9,7 @@ from pyclaw import __main__
 
 
 def _args(**kw):
-    args = argparse.Namespace(
-        provider=None, model=None, channels=None, port=None, host=None, log_level="INFO"
-    )
+    args = argparse.Namespace(provider=None, model=None, channels=None, port=None, host=None, log_level="INFO")
     for k, v in kw.items():
         setattr(args, k, v)
     return args
@@ -36,9 +34,7 @@ def test_apply_overrides_none_no_change():
 
 def test_apply_overrides_all():
     saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    settings = __main__._apply_overrides(
-        dict(saved), _args(provider="p1", model="m1", channels=["web", "wechat"])
-    )
+    settings = __main__._apply_overrides(dict(saved), _args(provider="p1", model="m1", channels=["web", "wechat"]))
 
     assert settings["provider"] == "p1"
     assert settings["model"] == "m1"
@@ -58,8 +54,7 @@ def test_start_server_does_not_persist_cli_overrides(monkeypatch):
 
     monkeypatch.setattr(config_module, "save", lambda c: saved_calls.append(c))
 
-    args = __main__._finalize_args(__main__._build_parser().parse_args(
-        ["serve", "--provider", "other", "--channels", "qq"]))
+    args = __main__._finalize_args(__main__._build_parser().parse_args(["serve", "--provider", "other", "--channels", "qq"]))
     asyncio.run(__main__.start_server(args))
     assert saved_calls == []
 
@@ -67,18 +62,17 @@ def test_start_server_does_not_persist_cli_overrides(monkeypatch):
 def test_session_parsers_carry_the_flags_that_steer_a_run():
     for argv, team in ((["-p", "hi"], False), (["tui"], True)):
         args = __main__._build_parser().parse_args(
-            argv + ["--allowed-tools", "Bash(git push:*)",
-                    "--disallowed-tools", "Bash(curl:*)",
-                    "--ask", "Bash(docker:*)"]
-            + (["--use-team"] if team else []))
+            argv
+            + ["--allowed-tools", "Bash(git push:*)", "--disallowed-tools", "Bash(curl:*)", "--ask", "Bash(docker:*)"]
+            + (["--use-team"] if team else [])
+        )
         assert args.allowed_tools == ["Bash(git push:*)"]
         assert args.disallowed_tools == ["Bash(curl:*)"]
         assert args.ask == ["Bash(docker:*)"]
         assert args.use_team is team
         assert __main__._build_parser().parse_args(argv).use_team is False
         assert args.agents is None
-        given = __main__._build_parser().parse_args(
-            argv + ['--agents', '{"reviewer": {"description": "d"}}'])
+        given = __main__._build_parser().parse_args(argv + ["--agents", '{"reviewer": {"description": "d"}}'])
         assert given.agents == '{"reviewer": {"description": "d"}}'
 
 
@@ -99,7 +93,11 @@ def test_finalize_args_fills_serve_fields_with_none():
     args = __main__._build_parser().parse_args([])
     finalized = __main__._finalize_args(args)
     assert (finalized.provider, finalized.model, finalized.channels, finalized.port, finalized.host) == (
-        None, None, None, None, None,
+        None,
+        None,
+        None,
+        None,
+        None,
     )
 
 
@@ -132,8 +130,7 @@ def test_start_server_runs_with_default_args(monkeypatch):
 def _strip_root_handlers():
     root = logging.getLogger()
     saved = list(root.handlers)
-    root.handlers = [h for h in root.handlers
-                     if not isinstance(h, RotatingFileHandler)]
+    root.handlers = [h for h in root.handlers if not isinstance(h, RotatingFileHandler)]
     return saved
 
 
@@ -189,8 +186,7 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
     calls = []
     saved_handlers = _strip_root_handlers()
     saved_sinks = list(events._runtime_sinks)
-    monkeypatch.setattr(__main__, "setup_logging",
-                        lambda *a, **kw: calls.append((a, kw)))
+    monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: calls.append((a, kw)))
     monkeypatch.setattr(__main__, "load_config", lambda: {})
     try:
         headless = __main__._build_parser().parse_args(["-p", "hi"])
@@ -214,9 +210,8 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
     started = {}
 
     class _App:
-
-        _exit_note = ''
-        _startup_error = ''
+        _exit_note = ""
+        _startup_error = ""
 
         def __init__(self, **kw):
             started.update(kw)
@@ -224,8 +219,7 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config",
-                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
@@ -240,12 +234,10 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
     assert started["hook_events"] is False
 
 
-def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(
-        monkeypatch, capsys):
+def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(monkeypatch, capsys):
     class _App:
-
-        _exit_note = 'Back at /repo. The worktree was removed.'
-        _startup_error = ''
+        _exit_note = "Back at /repo. The worktree was removed."
+        _startup_error = ""
 
         def __init__(self, **kw):
             pass
@@ -253,20 +245,18 @@ def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config",
-                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
     __main__.run_tui(__main__._build_parser().parse_args(["tui"]))
-    assert 'The worktree was removed.' in capsys.readouterr().out
+    assert "The worktree was removed." in capsys.readouterr().out
 
 
 def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
     class _App:
-
-        _exit_note = ''
-        _startup_error = 'Error: this worktree could not be made'
+        _exit_note = ""
+        _startup_error = "Error: this worktree could not be made"
 
         def __init__(self, **kw):
             pass
@@ -274,38 +264,34 @@ def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config",
-                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
     args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
     with pytest.raises(SystemExit) as exit_info:
         __main__.run_tui(args)
     assert exit_info.value.code == 1
-    assert 'could not be made' in capsys.readouterr().err
+    assert "could not be made" in capsys.readouterr().err
 
 
-def test_the_terminal_builds_the_team_with_what_the_run_asked_for(
-        tmp_path, monkeypatch):
+def test_the_terminal_builds_the_team_with_what_the_run_asked_for(tmp_path, monkeypatch):
     """The builder is only called once the terminal mounts, so a keyword left
     behind in it crashes the real run rather than a test."""
     built = []
     holders = {}
 
     class _App:
-
-        _exit_note = ''
-        _startup_error = ''
+        _exit_note = ""
+        _startup_error = ""
 
         def __init__(self, *, builder, **kw):
-            holders['builder'] = builder
+            holders["builder"] = builder
             built.append(dict(kw, builder=None))
 
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config",
-                        lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
 
@@ -314,9 +300,9 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(
         return object()
 
     monkeypatch.setattr(__main__, "build_team", build_team)
-    args = __main__._build_parser().parse_args(['tui', '--worktree', 'side'])
+    args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
     __main__.run_tui(args)
-    holders['builder']()
+    holders["builder"]()
     import inspect
 
     from pyclaw.team.builder import build_team as the_real_builder
@@ -324,6 +310,6 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(
     app_kw, build_kw = built
     missing = set(build_kw) - set(inspect.signature(the_real_builder).parameters)
     assert missing == set()
-    assert 'worktree' not in build_kw
-    assert build_kw['conversation_id']
-    assert app_kw['worktree'] is None or app_kw['worktree'] == 'side'
+    assert "worktree" not in build_kw
+    assert build_kw["conversation_id"]
+    assert app_kw["worktree"] is None or app_kw["worktree"] == "side"

@@ -11,18 +11,19 @@ from pyclaw.tui.theme import MAX_RESULT_LINES, POINTER, RESULT_PREFIX
 
 TEAMMATE_MESSAGE_RE = re.compile(
     r'<teammate_message\s+teammate_id="([^"]*)"[^>]*>\s*(.*?)\s*'
-    r'</teammate_message>', re.S)
-HIDDEN_TEAMMATE_TYPES = frozenset({'idle_notification', 'shutdown_approved',
-                                   'teammate_terminated'})
-DIRECT_MESSAGE_RE = re.compile(r'^@([\w-]+)\s+(.+)$', re.S)
-_OPEN_BRACKET_RE = re.compile(r'(?<!\\)\[')
+    r"</teammate_message>",
+    re.S,
+)
+HIDDEN_TEAMMATE_TYPES = frozenset({"idle_notification", "shutdown_approved", "teammate_terminated"})
+DIRECT_MESSAGE_RE = re.compile(r"^@([\w-]+)\s+(.+)$", re.S)
+_OPEN_BRACKET_RE = re.compile(r"(?<!\\)\[")
 
 
 def escape(value) -> str:
     """The renderer opens a tag at any bracket, not only a tag-shaped one, so
     every one of them has to go: an unescaped ``[`` in tool output would
     otherwise swallow the markup of the rows that follow it."""
-    return _OPEN_BRACKET_RE.sub(r'\\[', str(value))
+    return _OPEN_BRACKET_RE.sub(r"\\[", str(value))
 
 
 def _summarize(value, limit: int = 60) -> str:
@@ -69,18 +70,15 @@ def _preview(text, width: int, limit: int = MAX_RESULT_LINES) -> str:
             rows.append("")
             continue
         for start in range(0, len(raw), max(20, width)):
-            rows.append(raw[start:start + max(20, width)])
+            rows.append(raw[start : start + max(20, width)])
     if len(rows) <= limit + 1:
         return "\n".join(rows)
-    return "\n".join(rows[:limit]
-                     + [f"\u2026 +{len(rows) - limit} lines "
-                        f"({keys.hint('toggle_transcript', 'shows the rest')})"])
+    return "\n".join(rows[:limit] + [f"\u2026 +{len(rows) - limit} lines ({keys.hint('toggle_transcript', 'shows the rest')})"])
 
 
 def _edit_summary(added: int, removed: int) -> str:
     if added and removed:
-        return (f"Added {_plural(added, 'line')}, "
-                f"removed {_plural(removed, 'line')}")
+        return f"Added {_plural(added, 'line')}, removed {_plural(removed, 'line')}"
     if added:
         return f"Added {_plural(added, 'line')}"
     return f"Removed {_plural(removed, 'line')}"
@@ -90,40 +88,39 @@ def _content_text(content) -> str:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        return "".join(b.get("text", "") for b in content
-                       if isinstance(b, dict) and b.get("type") == "text")
+        return "".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
     return ""
 
 
 def _visible_len(markup: str) -> int:
-    return len(re.sub(r'\[[^\]]*\]', '', markup))
+    return len(re.sub(r"\[[^\]]*\]", "", markup))
 
 
 def _format_count(n: int) -> str:
-    for unit, scale in (('m', 1_000_000), ('k', 1000)):
+    for unit, scale in (("m", 1_000_000), ("k", 1000)):
         if n >= scale:
-            return f'{n / scale:.1f}'.rstrip('0').rstrip('.') + unit
+            return f"{n / scale:.1f}".rstrip("0").rstrip(".") + unit
     return str(n)
 
 
 def _token_rate(tokens: int, seconds: int) -> str:
     rate = tokens / seconds
-    return f'{rate:.1f} tok/s' if rate < 10 else f'{round(rate)} tok/s'
+    return f"{rate:.1f} tok/s" if rate < 10 else f"{round(rate)} tok/s"
 
 
 def _fit(parts: tuple, room: int) -> str:
     kept = [part for part in parts if part]
-    while len(kept) > 1 and _visible_len(' \u00b7 '.join(kept)) > room:
+    while len(kept) > 1 and _visible_len(" \u00b7 ".join(kept)) > room:
         kept.pop()
-    return ' \u00b7 '.join(kept)
+    return " \u00b7 ".join(kept)
 
 
 def _display_cwd(path: str) -> str:
     home = str(Path.home())
     if path == home:
-        return '~'
-    if path.startswith(home + '/'):
-        return '~/' + path[len(home) + 1:]
+        return "~"
+    if path.startswith(home + "/"):
+        return "~/" + path[len(home) + 1 :]
     return path
 
 
@@ -131,11 +128,11 @@ def _single_line(value, limit: int) -> str:
     text = re.sub(r"\s+", " ", str(value if value is not None else "")).strip()
     if len(text) <= limit:
         return text
-    return text[:max(1, limit - 1)].rstrip() + "\u2026"
+    return text[: max(1, limit - 1)].rstrip() + "\u2026"
 
 
 def _teammate_blocks(text) -> list | None:
-    matches = TEAMMATE_MESSAGE_RE.findall(str(text or ''))
+    matches = TEAMMATE_MESSAGE_RE.findall(str(text or ""))
     if not matches:
         return None
     blocks = []
@@ -146,23 +143,21 @@ def _teammate_blocks(text) -> list | None:
             obj = json.loads(payload)
         except (TypeError, ValueError):
             obj = None
-        kind = obj.get('type') if isinstance(obj, dict) else None
+        kind = obj.get("type") if isinstance(obj, dict) else None
         if kind in HIDDEN_TEAMMATE_TYPES:
             continue
-        if kind == 'task_completed':
-            subject = obj.get('task_subject') or obj.get('subject') or ''
-            tail = f" ({subject})" if subject else ''
-            blocks.append((sender,
-                           "\n" + RESULT_PREFIX + "\u2713 Completed task #"
-                           f"{obj.get('task_id', '')}{tail}"))
+        if kind == "task_completed":
+            subject = obj.get("task_subject") or obj.get("subject") or ""
+            tail = f" ({subject})" if subject else ""
+            blocks.append((sender, "\n" + RESULT_PREFIX + f"\u2713 Completed task #{obj.get('task_id', '')}{tail}"))
             continue
-        line = payload.splitlines()[0].strip() if payload else ''
+        line = payload.splitlines()[0].strip() if payload else ""
         blocks.append((sender, line))
     return blocks
 
 
 def _direct_message(text: str):
-    match = DIRECT_MESSAGE_RE.match(str(text or ''))
+    match = DIRECT_MESSAGE_RE.match(str(text or ""))
     if not match:
         return None
     return match.group(1), match.group(2).strip()
@@ -175,7 +170,7 @@ def _user_markup(text: str, color_for=None) -> str:
     lines = []
     for sender, body in blocks:
         label = f"@{escape(str(sender))}"
-        color = color_for(str(sender)) if color_for is not None else ''
+        color = color_for(str(sender)) if color_for is not None else ""
         head = f"[{color}][bold]{label}[/][/]" if color else f"[bold]{label}[/]"
         lines.append(f"{head}{POINTER} {escape(body)}")
     return "\n".join(lines)
@@ -187,33 +182,34 @@ def _hang(prefix: str, body: str) -> str:
 
 def duration(seconds: int) -> str:
     if seconds < 60:
-        return f'{seconds}s'
-    return f'{seconds // 60}m {seconds % 60}s'
+        return f"{seconds}s"
+    return f"{seconds // 60}m {seconds % 60}s"
 
 
 def thinking_map(messages) -> dict:
     pairs = {}
     for message in messages:
-        if message.get('role') != 'assistant' or not message.get('thinking'):
+        if message.get("role") != "assistant" or not message.get("thinking"):
             continue
-        text = _content_text(message.get('content'))
+        text = _content_text(message.get("content"))
         if text:
-            pairs[text] = message['thinking']
+            pairs[text] = message["thinking"]
     return pairs
 
 
 def model_map(messages) -> dict:
     pairs = {}
     for message in messages:
-        if message.get('role') != 'assistant' or not message.get('model'):
+        if message.get("role") != "assistant" or not message.get("model"):
             continue
-        text = _content_text(message.get('content'))
+        text = _content_text(message.get("content"))
         if text:
-            pairs[text] = str(message['model'])
+            pairs[text] = str(message["model"])
     return pairs
 
 
 MAX_LOG_PAYLOAD = 1000
+
 
 def _log_data(data) -> str:
     try:

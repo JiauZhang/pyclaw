@@ -29,12 +29,12 @@ LAST_COL = max(len(row) for row in WORDMARK) - 1
 
 
 def hex_to_rgb(text: str) -> tuple:
-    digits = text.lstrip('#')
-    return tuple(int(digits[i:i + 2], 16) for i in (0, 2, 4))
+    digits = text.lstrip("#")
+    return tuple(int(digits[i : i + 2], 16) for i in (0, 2, 4))
 
 
 def rgb_to_hex(colour: tuple) -> str:
-    return '#%02X%02X%02X' % colour
+    return "#%02X%02X%02X" % colour
 
 
 def ramp(top: tuple, bottom: tuple, t: float) -> tuple:
@@ -58,22 +58,19 @@ def directional(top: tuple, bottom: tuple, angle: float) -> str:
     for r, row in enumerate(WORDMARK):
         cells = []
         for c, glyph in enumerate(row):
-            if glyph == ' ':
-                cells.append(' ')
+            if glyph == " ":
+                cells.append(" ")
                 continue
             colour = ramp(top, bottom, (c * dx + r * dy - lo) / (hi - lo))
-            cells.append('[rgb(%d,%d,%d)]%s[/]' % (*colour, glyph))
-        lines.append(''.join(cells))
-    return '\n'.join(lines)
+            cells.append("[rgb(%d,%d,%d)]%s[/]" % (*colour, glyph))
+        lines.append("".join(cells))
+    return "\n".join(lines)
 
 
 def random_triple(rng: random.Random) -> tuple:
     hue = rng.random()
-    top = _from_hsv(hue, rng.uniform(MIN_SATURATION, 1.0),
-                    rng.uniform(MIN_VALUE, 1.0))
-    bottom = _from_hsv((hue + rng.uniform(0.25, 0.58)) % 1.0,
-                       rng.uniform(MIN_SATURATION, 1.0),
-                       rng.uniform(MIN_VALUE, 1.0))
+    top = _from_hsv(hue, rng.uniform(MIN_SATURATION, 1.0), rng.uniform(MIN_VALUE, 1.0))
+    bottom = _from_hsv((hue + rng.uniform(0.25, 0.58)) % 1.0, rng.uniform(MIN_SATURATION, 1.0), rng.uniform(MIN_VALUE, 1.0))
     return top, bottom, rng.uniform(*ANGLE_RANGE)
 
 
@@ -82,9 +79,9 @@ def _from_hsv(h: float, s: float, v: float) -> tuple:
 
 
 def palette(cfg: dict) -> tuple:
-    if cfg.get('style') == 'gradient':
-        return hex_to_rgb(cfg['from']), hex_to_rgb(cfg['to']), float(cfg['angle'])
-    seed = cfg.get('seed')
+    if cfg.get("style") == "gradient":
+        return hex_to_rgb(cfg["from"]), hex_to_rgb(cfg["to"]), float(cfg["angle"])
+    seed = cfg.get("seed")
     return random_triple(random.Random(seed) if seed is not None else random.Random())
 
 

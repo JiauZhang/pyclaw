@@ -8,8 +8,7 @@ from chatchat.hooks.events import AGENT_WARN
 from starlette.websockets import WebSocketDisconnect
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
-from ..session.store import (append_conv, follow_conversation,
-                             record_meta)
+from ..session.store import append_conv, follow_conversation, record_meta
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +50,7 @@ class WebChannelAdapter(ChannelAdapter):
                 "type": "message",
                 "text": message.text,
                 "timestamp": datetime.now().isoformat(),
-                "metadata": message.metadata
+                "metadata": message.metadata,
             }
 
             await websocket.send_json(payload)
@@ -63,10 +62,7 @@ class WebChannelAdapter(ChannelAdapter):
     async def receive_messages(self) -> AsyncIterator[InboundMessage]:
         while self._connected:
             try:
-                message = await asyncio.wait_for(
-                    self._message_queue.get(),
-                    timeout=1.0
-                )
+                message = await asyncio.wait_for(self._message_queue.get(), timeout=1.0)
                 yield message
             except asyncio.TimeoutError:
                 continue
@@ -78,7 +74,7 @@ class WebChannelAdapter(ChannelAdapter):
                 "id": user_id,
                 "name": client.get("name", "Web User"),
                 "channel": "web",
-                "connected_at": client.get("connected_at")
+                "connected_at": client.get("connected_at"),
             }
         return {"id": user_id, "name": "Unknown"}
 
@@ -87,7 +83,7 @@ class WebChannelAdapter(ChannelAdapter):
             "websocket": websocket,
             "name": name,
             "connected_at": datetime.now().isoformat(),
-            "session_id": client_id
+            "session_id": client_id,
         }
         logger.info(f"Web client registered: {client_id}")
 
@@ -96,11 +92,7 @@ class WebChannelAdapter(ChannelAdapter):
             del self._clients[client_id]
             logger.info(f"Web client unregistered: {client_id}")
 
-    async def handle_incoming_message(
-        self,
-        client_id: str,
-        data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
+    async def handle_incoming_message(self, client_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         msg_type = data.get("type", "message")
 
         if msg_type == "message":
@@ -111,10 +103,7 @@ class WebChannelAdapter(ChannelAdapter):
                 sender_name=self._clients.get(client_id, {}).get("name", "Web User"),
                 channel_id=self.channel_id,
                 thread_id=data.get("thread_id"),
-                metadata={
-                    "client_id": client_id,
-                    "raw_data": data
-                }
+                metadata={"client_id": client_id, "raw_data": data},
             )
 
             await self._message_queue.put(inbound)
@@ -129,13 +118,7 @@ class WebChannelAdapter(ChannelAdapter):
 
         return None
 
-    async def send_response(
-        self,
-        client_id: str,
-        text: str,
-        message_type: str = "response",
-        extra_data: Optional[Dict] = None
-    ):
+    async def send_response(self, client_id: str, text: str, message_type: str = "response", extra_data: Optional[Dict] = None):
         if client_id not in self._clients:
             logger.warning(f"Cannot send response, client {client_id} not found")
             return
@@ -144,11 +127,7 @@ class WebChannelAdapter(ChannelAdapter):
         if not websocket:
             return
 
-        payload = {
-            "type": message_type,
-            "text": text,
-            "timestamp": datetime.now().isoformat()
-        }
+        payload = {"type": message_type, "text": text, "timestamp": datetime.now().isoformat()}
 
         if extra_data:
             payload.update(extra_data)
@@ -160,33 +139,31 @@ class WebChannelAdapter(ChannelAdapter):
         except Exception as e:
             logger.error(f"Failed to send response to {client_id}: {e}")
 
-    async def handle_websocket(
-        self,
-        websocket,
-        client_id: str,
-        get_session,
-        runtime
-    ):
+    async def handle_websocket(self, websocket, client_id: str, get_session, runtime):
         await self.register_client(client_id, websocket)
         session = None
         try:
-            await websocket.send_json({
-                "type": "connected",
-                "client_id": client_id,
-                "session_id": client_id,
-                "channel": "web",
-                "timestamp": datetime.now().isoformat()
-            })
+            await websocket.send_json(
+                {
+                    "type": "connected",
+                    "client_id": client_id,
+                    "session_id": client_id,
+                    "channel": "web",
+                    "timestamp": datetime.now().isoformat(),
+                }
+            )
             # 会话在连接时立即创建：环境/磁盘类错误（如 HOME 解析不出、
             # 目录不可写）在连接阶段就暴露给客户端，而不是第一条消息后。
             try:
                 session = await get_session()
             except Exception as exc:
                 logger.exception("Failed to create web session")
-                await websocket.send_json({
-                    "type": "error",
-                    "text": f"Failed to start the session: {exc}",
-                })
+                await websocket.send_json(
+                    {
+                        "type": "error",
+                        "text": f"Failed to start the session: {exc}",
+                    }
+                )
             while True:
                 try:
                     data = await websocket.receive_json()
@@ -195,10 +172,12 @@ class WebChannelAdapter(ChannelAdapter):
                     break
                 msg_type = data.get("type", "message")
                 if msg_type == "ping":
-                    await websocket.send_json({
-                        "type": "pong",
-                        "timestamp": datetime.now().isoformat(),
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "pong",
+                            "timestamp": datetime.now().isoformat(),
+                        }
+                    )
                     continue
                 if msg_type == "abort":
                     if session is not None:
@@ -212,26 +191,27 @@ class WebChannelAdapter(ChannelAdapter):
                         session = await get_session()
                     except Exception as exc:
                         logger.exception("Failed to create web session")
-                        await websocket.send_json({
-                            "type": "error",
-                            "text": f"Failed to start the session: {exc}",
-                        })
+                        await websocket.send_json(
+                            {
+                                "type": "error",
+                                "text": f"Failed to start the session: {exc}",
+                            }
+                        )
                         continue
                 if client_id in self._busy:
-                    await websocket.send_json({
-                        "type": "error",
-                        "text": "A turn is already running in this conversation.",
-                    })
+                    await websocket.send_json(
+                        {
+                            "type": "error",
+                            "text": "A turn is already running in this conversation.",
+                        }
+                    )
                     continue
                 self._busy.add(client_id)
-                asyncio.create_task(
-                    self._process_message(client_id, data, session, runtime)
-                )
+                asyncio.create_task(self._process_message(client_id, data, session, runtime))
         finally:
             await self.unregister_client(client_id)
 
-    async def _finish_stream(self, client_id, session_id, session,
-                            full_response):
+    async def _finish_stream(self, client_id, session_id, session, full_response):
         entry = session.record_turn() or {}
         await self.send_response(
             client_id,
@@ -242,22 +222,18 @@ class WebChannelAdapter(ChannelAdapter):
                 "agent_id": session.name,
                 "is_final": True,
                 "full_response": full_response,
-                "model": entry.get('model') or getattr(session, 'model', ''),
-                "mode": getattr(session, 'mode', ''),
-                "usage": {"input": entry.get('input', 0),
-                          "output": entry.get('output', 0),
-                          "cached": entry.get('cached', 0),
-                          "seconds": entry.get('seconds', 0)},
+                "model": entry.get("model") or getattr(session, "model", ""),
+                "mode": getattr(session, "mode", ""),
+                "usage": {
+                    "input": entry.get("input", 0),
+                    "output": entry.get("output", 0),
+                    "cached": entry.get("cached", 0),
+                    "seconds": entry.get("seconds", 0),
+                },
             },
         )
 
-    async def _process_message(
-        self,
-        client_id: str,
-        data: Dict[str, Any],
-        session,
-        runtime
-    ):
+    async def _process_message(self, client_id: str, data: Dict[str, Any], session, runtime):
         try:
             session_id = session.conv_session_id
             self._client_sessions[client_id] = session_id
@@ -292,19 +268,18 @@ class WebChannelAdapter(ChannelAdapter):
 
             async def on_event(ev):
                 if ev.kind == AGENT_WARN:
-                    await self.send_response(client_id, text=ev.data.get('text', ''),
-                                             message_type="error")
+                    await self.send_response(client_id, text=ev.data.get("text", ""), message_type="error")
                     return
-                if ev.kind in ('agent.text',):
+                if ev.kind in ("agent.text",):
                     return
                 await self.send_response(
                     client_id,
-                    text='',
+                    text="",
                     message_type="progress",
                     extra_data={
                         "kind": ev.kind,
-                        "tool": ev.data.get('tool') or ev.data.get('name', ''),
-                        "input": ev.data.get('input'),
+                        "tool": ev.data.get("tool") or ev.data.get("name", ""),
+                        "input": ev.data.get("input"),
                         "agent": ev.agent,
                     },
                 )

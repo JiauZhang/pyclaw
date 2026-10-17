@@ -6,70 +6,175 @@ import shlex
 
 from pyclaw.tools.names import AGENT, BASH
 
-SAFE_ENV_VARS = frozenset({
-    'NODE_ENV', 'GOOS', 'GOARCH', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE',
-    'TZ', 'CI', 'PYTHONUNBUFFERED', 'PYTHONDONTWRITEBYTECODE',
-})
-SHELL_WRAPPERS = frozenset({'timeout', 'time', 'nice', 'nohup', 'stdbuf'})
-ENV_ASSIGN = re.compile(r'^[A-Za-z_][A-Za-z0-9_]*=')
+SAFE_ENV_VARS = frozenset(
+    {
+        "NODE_ENV",
+        "GOOS",
+        "GOARCH",
+        "LANG",
+        "LANGUAGE",
+        "LC_ALL",
+        "LC_CTYPE",
+        "TZ",
+        "CI",
+        "PYTHONUNBUFFERED",
+        "PYTHONDONTWRITEBYTECODE",
+    }
+)
+SHELL_WRAPPERS = frozenset({"timeout", "time", "nice", "nohup", "stdbuf"})
+ENV_ASSIGN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
-READ_ONLY_COMMANDS = frozenset({
-    'ls', 'cat', 'head', 'tail', 'wc', 'stat', 'strings', 'hexdump', 'od',
-    'nl', 'id', 'uname', 'free', 'df', 'du', 'locale', 'groups', 'nproc',
-    'basename', 'dirname', 'realpath', 'readlink', 'cut', 'paste', 'tr',
-    'column', 'tac', 'rev', 'fold', 'expand', 'unexpand', 'fmt', 'comm',
-    'cmp', 'numfmt', 'diff', 'true', 'false', 'which', 'type', 'expr',
-    'test', '[', 'getconf', 'seq', 'tsort', 'pr', 'pwd', 'whoami', 'hostname',
-    'date', 'cal', 'uptime', 'echo', 'grep', 'rg', 'fd', 'file', 'id',
-})
-GIT_READ_ONLY_COMMANDS = frozenset({
-    'diff', 'log', 'show', 'shortlog', 'reflog', 'ls-remote', 'status',
-    'blame', 'ls-files', 'remote', 'merge-base', 'rev-parse', 'rev-list',
-    'describe', 'cat-file', 'for-each-ref', 'grep', 'tag', 'branch',
-})
+READ_ONLY_COMMANDS = frozenset(
+    {
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "stat",
+        "strings",
+        "hexdump",
+        "od",
+        "nl",
+        "id",
+        "uname",
+        "free",
+        "df",
+        "du",
+        "locale",
+        "groups",
+        "nproc",
+        "basename",
+        "dirname",
+        "realpath",
+        "readlink",
+        "cut",
+        "paste",
+        "tr",
+        "column",
+        "tac",
+        "rev",
+        "fold",
+        "expand",
+        "unexpand",
+        "fmt",
+        "comm",
+        "cmp",
+        "numfmt",
+        "diff",
+        "true",
+        "false",
+        "which",
+        "type",
+        "expr",
+        "test",
+        "[",
+        "getconf",
+        "seq",
+        "tsort",
+        "pr",
+        "pwd",
+        "whoami",
+        "hostname",
+        "date",
+        "cal",
+        "uptime",
+        "echo",
+        "grep",
+        "rg",
+        "fd",
+        "file",
+        "id",
+    }
+)
+GIT_READ_ONLY_COMMANDS = frozenset(
+    {
+        "diff",
+        "log",
+        "show",
+        "shortlog",
+        "reflog",
+        "ls-remote",
+        "status",
+        "blame",
+        "ls-files",
+        "remote",
+        "merge-base",
+        "rev-parse",
+        "rev-list",
+        "describe",
+        "cat-file",
+        "for-each-ref",
+        "grep",
+        "tag",
+        "branch",
+    }
+)
 GIT_READ_ONLY_SUBCOMMAND_FLAGS = {
-    'branch': frozenset({'-a', '--all', '-r', '--remotes', '-l', '--list',
-                         '-v', '-vv', '--verbose', '--no-color', '--column',
-                         '--merged', '--no-merged', '--points-at'}),
-    'tag': frozenset({'-l', '--list', '-n', '--no-color', '--column',
-                      '--merged', '--no-merged', '--points-at'}),
-    'reflog': frozenset({'show', '--no-color', '--all'}),
-    'remote': frozenset({'-v', '--verbose', 'show', 'get-url'}),
+    "branch": frozenset(
+        {
+            "-a",
+            "--all",
+            "-r",
+            "--remotes",
+            "-l",
+            "--list",
+            "-v",
+            "-vv",
+            "--verbose",
+            "--no-color",
+            "--column",
+            "--merged",
+            "--no-merged",
+            "--points-at",
+        }
+    ),
+    "tag": frozenset({"-l", "--list", "-n", "--no-color", "--column", "--merged", "--no-merged", "--points-at"}),
+    "reflog": frozenset({"show", "--no-color", "--all"}),
+    "remote": frozenset({"-v", "--verbose", "show", "get-url"}),
 }
-DOCKER_READ_ONLY_COMMANDS = frozenset({'ps', 'images'})
-EDIT_COMMANDS = frozenset({'mkdir', 'touch', 'rm', 'rmdir', 'mv', 'cp', 'sed'})
-FIND_WRITING_FLAGS = frozenset({
-    '-delete', '-exec', '-execdir', '-ok', '-okdir', '-fprint', '-fls',
-    '-fprintf',
-})
-DANGEROUS_REMOVAL_PATHS = frozenset({'/', '/*', '~', '~/*', '*'})
-DANGEROUS_CHARS = frozenset({'$', '`', '*', '?', '>', '<'})
-OPERATORS = ('&&', '||')
+DOCKER_READ_ONLY_COMMANDS = frozenset({"ps", "images"})
+EDIT_COMMANDS = frozenset({"mkdir", "touch", "rm", "rmdir", "mv", "cp", "sed"})
+FIND_WRITING_FLAGS = frozenset(
+    {
+        "-delete",
+        "-exec",
+        "-execdir",
+        "-ok",
+        "-okdir",
+        "-fprint",
+        "-fls",
+        "-fprintf",
+    }
+)
+DANGEROUS_REMOVAL_PATHS = frozenset({"/", "/*", "~", "~/*", "*"})
+DANGEROUS_CHARS = frozenset({"$", "`", "*", "?", ">", "<"})
+OPERATORS = ("&&", "||")
 # A redirect is one piece of the command, not a place to cut it: `2>&1` used to
 # split into `2>` and `1`, which made every rule and safety check about it wrong.
-REDIRECT_RE = re.compile(r'\d*(?:&>>|&>|>>|<<|<>|[<>])\S*')
-HEREDOC_RE = re.compile('<<[ \t]*(-?)[ \t]*(["\']?)([A-Za-z_][A-Za-z0-9_]*)\\2')
-OUTPUT_REDIRECT_RE = re.compile(r'\d*(?:&>>|&>|>>|>)[^|;&\n]*')
-EXPANSION_CHARS = frozenset({'$', '`', '*', '?'})
+REDIRECT_RE = re.compile(r"\d*(?:&>>|&>|>>|<<|<>|[<>])\S*")
+HEREDOC_RE = re.compile("<<[ \t]*(-?)[ \t]*([\"']?)([A-Za-z_][A-Za-z0-9_]*)\\2")
+OUTPUT_REDIRECT_RE = re.compile(r"\d*(?:&>>|&>|>>|>)[^|;&\n]*")
+EXPANSION_CHARS = frozenset({"$", "`", "*", "?"})
 
 
 def _expands_unquoted(text: str) -> bool:
     """Whether the shell would substitute something we cannot see the result
     of, which makes an exact rule meaningless. A redirect is not one: it is
     copied into the rule as written."""
-    quote = ''
+    quote = ""
     index = 0
     text = str(text)
     while index < len(text):
         char = text[index]
         if quote:
             if char == quote:
-                quote = ''
+                quote = ""
             index += 1
             continue
         if char in ('"', "'"):
             quote = char
-        elif char == '\\':
+        elif char == "\\":
             index += 1
         elif char in EXPANSION_CHARS:
             return True
@@ -83,7 +188,7 @@ def _heredoc_end(text: str, match: re.Match) -> int:
     delimiter = match.group(3)
     position = match.end()
     for line_start in iter(lambda: position, len(text)):
-        end = text.find('\n', line_start)
+        end = text.find("\n", line_start)
         end = len(text) if end < 0 else end + 1
         if text[line_start:end].strip() == delimiter:
             return end
@@ -97,10 +202,10 @@ def _command_head(text: str) -> str:
     """The part of a command that describes it: what is written into a file or
     fed from a heredoc changes every time, the words before it do not."""
     command = str(text).strip()
-    if '\n' in command:
-        command = command.split('\n', 1)[0].strip()
-    command = command.split('<<', 1)[0]
-    return OUTPUT_REDIRECT_RE.sub(' ', command).strip()
+    if "\n" in command:
+        command = command.split("\n", 1)[0].strip()
+    command = command.split("<<", 1)[0]
+    return OUTPUT_REDIRECT_RE.sub(" ", command).strip()
 
 
 def _tokenize(command: str) -> list[str]:
@@ -111,13 +216,13 @@ def _tokenize(command: str) -> list[str]:
 
 
 def _normalize(command: str) -> str:
-    return ' '.join(str(command).strip().split())
+    return " ".join(str(command).strip().split())
 
 
 def split_commands(command: str) -> list[str]:
     parts: list[str] = []
     buf: list[str] = []
-    quote = ''
+    quote = ""
     i = 0
     text = str(command)
     while i < len(text):
@@ -125,7 +230,7 @@ def split_commands(command: str) -> list[str]:
         if quote:
             buf.append(ch)
             if ch == quote:
-                quote = ''
+                quote = ""
             i += 1
             continue
         if ch in ('"', "'"):
@@ -133,12 +238,12 @@ def split_commands(command: str) -> list[str]:
             buf.append(ch)
             i += 1
             continue
-        if ch == '\\' and i + 1 < len(text):
-            buf.append(text[i:i + 2])
+        if ch == "\\" and i + 1 < len(text):
+            buf.append(text[i : i + 2])
             i += 2
             continue
         if any(text.startswith(op, i) for op in OPERATORS):
-            parts.append(''.join(buf))
+            parts.append("".join(buf))
             buf = []
             i += 2
             continue
@@ -150,17 +255,17 @@ def split_commands(command: str) -> list[str]:
             continue
         redirect = REDIRECT_RE.match(text, i)
         if redirect:
-            buf.append(text[i:redirect.end()])
+            buf.append(text[i : redirect.end()])
             i = redirect.end()
             continue
-        if ch in (';', '|', '&', '\n'):
-            parts.append(''.join(buf))
+        if ch in (";", "|", "&", "\n"):
+            parts.append("".join(buf))
             buf = []
             i += 1
             continue
         buf.append(ch)
         i += 1
-    parts.append(''.join(buf))
+    parts.append("".join(buf))
     return [p.strip() for p in parts if p.strip()]
 
 
@@ -171,10 +276,10 @@ def is_compound(command: str) -> bool:
 def has_unescaped_star(text: str) -> bool:
     i = 0
     while i < len(text):
-        if text[i] == '\\':
+        if text[i] == "\\":
             i += 2
             continue
-        if text[i] == '*':
+        if text[i] == "*":
             return True
         i += 1
     return False
@@ -182,42 +287,42 @@ def has_unescaped_star(text: str) -> bool:
 
 def parse_bash_rule(rule) -> tuple[str, str]:
     text = rule_content(rule)
-    if text.endswith(':*') and len(text) > 2:
-        return 'prefix', text[:-2]
+    if text.endswith(":*") and len(text) > 2:
+        return "prefix", text[:-2]
     if has_unescaped_star(text):
-        return 'wildcard', text
-    return 'exact', text
+        return "wildcard", text
+    return "exact", text
 
 
 def _wildcard_regex(pattern: str) -> re.Pattern:
-    optional_tail = pattern.endswith(' *')
+    optional_tail = pattern.endswith(" *")
     core = pattern[:-2] if optional_tail else pattern
     out = []
     i = 0
     while i < len(core):
         ch = core[i]
-        if ch == '\\' and i + 1 < len(core) and core[i + 1] in ('*', '\\'):
+        if ch == "\\" and i + 1 < len(core) and core[i + 1] in ("*", "\\"):
             # Only `\*` and `\\` mean something to a rule: a backslash the
             # shell put there (`\( `) is part of the command and stays literal.
             out.append(re.escape(core[i + 1]))
             i += 2
             continue
-        out.append('.*' if ch == '*' else re.escape(ch))
+        out.append(".*" if ch == "*" else re.escape(ch))
         i += 1
-    body = ''.join(out)
+    body = "".join(out)
     if optional_tail:
-        body += r'( .*)?'
-    return re.compile(rf'^{body}$', re.S)
+        body += r"( .*)?"
+    return re.compile(rf"^{body}$", re.S)
 
 
 def strip_env(command: str, safe_only: bool) -> str:
     tokens = _tokenize(command)
     i = 0
     while i < len(tokens) and ENV_ASSIGN.match(tokens[i]):
-        if safe_only and tokens[i].split('=', 1)[0] not in SAFE_ENV_VARS:
+        if safe_only and tokens[i].split("=", 1)[0] not in SAFE_ENV_VARS:
             break
         i += 1
-    return ' '.join(tokens[i:])
+    return " ".join(tokens[i:])
 
 
 def strip_wrappers(command: str) -> str:
@@ -225,19 +330,18 @@ def strip_wrappers(command: str) -> str:
     i = 0
     while i < len(tokens) and tokens[i] in SHELL_WRAPPERS:
         i += 1
-        while i < len(tokens) and (tokens[i].startswith('-')
-                                  or tokens[i].replace('.', '', 1).isdigit()):
+        while i < len(tokens) and (tokens[i].startswith("-") or tokens[i].replace(".", "", 1).isdigit()):
             i += 1
-    return ' '.join(tokens[i:])
+    return " ".join(tokens[i:])
 
 
 def base_command(command: str) -> str:
     tokens = _tokenize(strip_wrappers(strip_env(command, safe_only=False)))
-    return tokens[0] if tokens else ''
+    return tokens[0] if tokens else ""
 
 
-_REDIR_OP = re.compile(r'\d*>>?|&>')
-_REDIR_MERGED = re.compile(r'(?:\d*&?)>>?\S+')
+_REDIR_OP = re.compile(r"\d*>>?|&>")
+_REDIR_MERGED = re.compile(r"(?:\d*&?)>>?\S+")
 
 
 def _strip_redirects(command: str) -> str:
@@ -251,15 +355,14 @@ def _strip_redirects(command: str) -> str:
             end -= 2
         else:
             break
-    return ' '.join(tokens[:end])
+    return " ".join(tokens[:end])
 
 
 def strip_prefixes(command: str, env_all: bool = False) -> list[str]:
     text = str(command).strip()
     bare = strip_wrappers(text)
     env_safe = strip_env(bare, safe_only=True)
-    candidates = [text, _strip_redirects(text), bare, env_safe,
-                  strip_wrappers(env_safe), _command_head(text)]
+    candidates = [text, _strip_redirects(text), bare, env_safe, strip_wrappers(env_safe), _command_head(text)]
     if env_all:
         all_env = strip_env(bare, safe_only=False)
         candidates += [all_env, strip_wrappers(all_env)]
@@ -271,15 +374,15 @@ def bash_rule_matches(rule, command, env_all: bool = False) -> bool:
     target = _normalize(pattern)
     for candidate in strip_prefixes(command, env_all):
         candidate = _normalize(candidate)
-        if kind == 'exact':
+        if kind == "exact":
             if candidate == target:
                 return True
             continue
         if is_compound(candidate):
             continue
-        if kind == 'prefix':
-            for form in (target, 'xargs ' + target):
-                if candidate == form or candidate.startswith(form + ' '):
+        if kind == "prefix":
+            for form in (target, "xargs " + target):
+                if candidate == form or candidate.startswith(form + " "):
                     return True
             continue
         if _wildcard_regex(pattern).match(candidate):
@@ -288,21 +391,21 @@ def bash_rule_matches(rule, command, env_all: bool = False) -> bool:
 
 
 def _has_unquoted_special(command: str) -> bool:
-    quote = ''
+    quote = ""
     i = 0
     text = str(command)
     while i < len(text):
         ch = text[i]
         if quote:
             if ch == quote:
-                quote = ''
+                quote = ""
             i += 1
             continue
         if ch in ('"', "'"):
             quote = ch
             i += 1
             continue
-        if ch == '\\':
+        if ch == "\\":
             i += 2
             continue
         if ch in DANGEROUS_CHARS:
@@ -316,27 +419,26 @@ def _part_read_only(command: str) -> bool:
     if not tokens:
         return False
     name, args = tokens[0], tokens[1:]
-    if name == 'git':
+    if name == "git":
         if not args or args[0] not in GIT_READ_ONLY_COMMANDS:
             return False
         allowed = GIT_READ_ONLY_SUBCOMMAND_FLAGS.get(args[0])
         return allowed is None or all(a in allowed for a in args[1:])
-    if name == 'docker':
+    if name == "docker":
         return bool(args) and args[0] in DOCKER_READ_ONLY_COMMANDS
-    if name == 'find':
+    if name == "find":
         return not any(a in FIND_WRITING_FLAGS for a in args)
     return name in READ_ONLY_COMMANDS
 
 
 def is_read_only(command) -> bool:
-    text = str(command).replace('2>&1', ' ').strip()
+    text = str(command).replace("2>&1", " ").strip()
     if not text or _has_unquoted_special(text):
         return False
     parts = split_commands(text)
     if not parts:
         return False
-    if any(base_command(p) == 'git' for p in parts) \
-            and any(base_command(p) == 'cd' for p in parts):
+    if any(base_command(p) == "git" for p in parts) and any(base_command(p) == "cd" for p in parts):
         return False
     return all(_part_read_only(p) for p in parts)
 
@@ -346,19 +448,19 @@ def _dangerous_path(arg: str) -> bool:
     if text in DANGEROUS_REMOVAL_PATHS:
         return True
     expanded = os.path.expanduser(text)
-    if expanded in ('/', os.path.expanduser('~')):
+    if expanded in ("/", os.path.expanduser("~")):
         return True
-    if not expanded.startswith('/'):
+    if not expanded.startswith("/"):
         return False
     normalized = os.path.normpath(expanded)
-    return normalized == '/' or normalized.count('/') == 1
+    return normalized == "/" or normalized.count("/") == 1
 
 
 def is_dangerous_removal(command) -> bool:
     tokens = _tokenize(strip_wrappers(strip_env(str(command), safe_only=False)))
-    if not tokens or tokens[0] not in ('rm', 'rmdir'):
+    if not tokens or tokens[0] not in ("rm", "rmdir"):
         return False
-    return any(not a.startswith('-') and _dangerous_path(a) for a in tokens[1:])
+    return any(not a.startswith("-") and _dangerous_path(a) for a in tokens[1:])
 
 
 def is_workspace_edit_command(command) -> bool:
@@ -372,42 +474,77 @@ def is_workspace_edit_command(command) -> bool:
     if not tokens or tokens[0] not in EDIT_COMMANDS:
         return False
     for arg in tokens[1:]:
-        if arg.startswith('-'):
+        if arg.startswith("-"):
             continue
-        if arg.startswith('~') or os.path.isabs(arg):
+        if arg.startswith("~") or os.path.isabs(arg):
             return False
-        if '..' in arg.split('/'):
+        if ".." in arg.split("/"):
             return False
     return True
 
 
-BARE_SHELL_PREFIXES = frozenset({
-    'sh', 'bash', 'zsh', 'fish', 'csh', 'tcsh', 'ksh', 'dash', 'pwsh',
-    'powershell', 'cmd', 'env', 'xargs', 'nice', 'sudo', 'doas', 'pkexec',
-    'nohup', 'stdbuf', 'timeout', 'time',
-})
+BARE_SHELL_PREFIXES = frozenset(
+    {
+        "sh",
+        "bash",
+        "zsh",
+        "fish",
+        "csh",
+        "tcsh",
+        "ksh",
+        "dash",
+        "pwsh",
+        "powershell",
+        "cmd",
+        "env",
+        "xargs",
+        "nice",
+        "sudo",
+        "doas",
+        "pkexec",
+        "nohup",
+        "stdbuf",
+        "timeout",
+        "time",
+    }
+)
 # An allow rule over one of these hands the model a way to run anything, which
 # is why a rule naming them is never suggested and is reported as a hole.
-CROSS_PLATFORM_CODE_EXEC = ('python', 'python2', 'python3', 'node', 'deno',
-                            'tsx', 'ruby', 'perl', 'php', 'lua', 'npx', 'bunx',
-                            'npm run', 'yarn run', 'pnpm run', 'bun run',
-                            'bash', 'sh', 'ssh')
-DANGEROUS_BASH_PATTERNS = CROSS_PLATFORM_CODE_EXEC + ('zsh', 'fish', 'eval',
-                                                      'exec', 'env', 'xargs',
-                                                      'sudo')
+CROSS_PLATFORM_CODE_EXEC = (
+    "python",
+    "python2",
+    "python3",
+    "node",
+    "deno",
+    "tsx",
+    "ruby",
+    "perl",
+    "php",
+    "lua",
+    "npx",
+    "bunx",
+    "npm run",
+    "yarn run",
+    "pnpm run",
+    "bun run",
+    "bash",
+    "sh",
+    "ssh",
+)
+DANGEROUS_BASH_PATTERNS = CROSS_PLATFORM_CODE_EXEC + ("zsh", "fish", "eval", "exec", "env", "xargs", "sudo")
 
 
 def is_dangerous_bash_rule(content) -> bool:
     """Whether a Bash rule content would allow arbitrary code: nothing at all
     (`Bash`, `Bash(*)`), a bare `*`, or any shape of prefix or wildcard over a
     listed interpreter - `python:*`, `python*`, `python *`, `python -*`."""
-    text = str(content or '').strip().lower()
-    if not text or text == '*':
+    text = str(content or "").strip().lower()
+    if not text or text == "*":
         return True
     for pattern in DANGEROUS_BASH_PATTERNS:
-        if text in (pattern, f'{pattern}:*', f'{pattern}*', f'{pattern} *'):
+        if text in (pattern, f"{pattern}:*", f"{pattern}*", f"{pattern} *"):
             return True
-        if text.startswith(f'{pattern} -') and text.endswith('*'):
+        if text.startswith(f"{pattern} -") and text.endswith("*"):
             return True
     return False
 
@@ -422,9 +559,11 @@ def is_dangerous_rule(rule) -> bool:
     if name != BASH:
         return False
     return is_dangerous_bash_rule(rule_content(rule))
-_SUBCOMMAND = re.compile(r'^[a-z][a-z0-9]*(-[a-z0-9]+)*$')
-_RULE_ESCAPED = ('\\', '(', ')')
-_REDIR_TOKEN = re.compile(r'^\d*&?[<>]{1,2}\d*&?$')
+
+
+_SUBCOMMAND = re.compile(r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$")
+_RULE_ESCAPED = ("\\", "(", ")")
+_REDIR_TOKEN = re.compile(r"^\d*&?[<>]{1,2}\d*&?$")
 MAX_SUGGESTED_RULES = 5
 MAX_SPLIT_PARTS = 50
 
@@ -435,8 +574,8 @@ def escape_rule_content(content) -> str:
     text = str(content)
     out: list[str] = []
     for char in text:
-        out.append('\\' + char if char in _RULE_ESCAPED else char)
-    return ''.join(out)
+        out.append("\\" + char if char in _RULE_ESCAPED else char)
+    return "".join(out)
 
 
 def unescape_rule_content(content) -> str:
@@ -445,47 +584,47 @@ def unescape_rule_content(content) -> str:
     index = 0
     while index < len(text):
         char = text[index]
-        if char == '\\' and index + 1 < len(text):
+        if char == "\\" and index + 1 < len(text):
             out.append(text[index + 1])
             index += 2
             continue
         out.append(char)
         index += 1
-    return ''.join(out)
+    return "".join(out)
 
 
 def bash_rule(content) -> str:
-    return f'Bash({escape_rule_content(content)})'
+    return f"Bash({escape_rule_content(content)})"
 
 
 def rule_content(rule) -> str:
     """What is inside `Tool(...)`, with the escaping undone; empty when the
     rule names the tool as a whole."""
-    _, separator, rest = str(rule).strip().partition('(')
+    _, separator, rest = str(rule).strip().partition("(")
     if not separator:
-        return ''
-    if rest.endswith(')'):
+        return ""
+    if rest.endswith(")"):
         rest = rest[:-1]
     return unescape_rule_content(rest)
 
 
 def _rule_name(rule) -> str:
-    return str(rule).partition('(')[0].strip()
+    return str(rule).partition("(")[0].strip()
 
 
 def _raw_tokens(text: str) -> list[str]:
     """Whitespace-separated words with their quoting left exactly as it is,
     because a rule has to be able to describe a quoted argument."""
     out: list[str] = []
-    buf = ''
-    quote = ''
+    buf = ""
+    quote = ""
     index = 0
     while index < len(text):
         char = text[index]
         if quote:
             buf += char
             if char == quote:
-                quote = ''
+                quote = ""
             index += 1
             continue
         if char in ('"', "'"):
@@ -493,14 +632,14 @@ def _raw_tokens(text: str) -> list[str]:
             buf += char
             index += 1
             continue
-        if char == '\\' and index + 1 < len(text):
-            buf += text[index:index + 2]
+        if char == "\\" and index + 1 < len(text):
+            buf += text[index : index + 2]
             index += 2
             continue
         if char.isspace():
             if buf:
                 out.append(buf)
-                buf = ''
+                buf = ""
             index += 1
             continue
         buf += char
@@ -523,21 +662,16 @@ def _drop_leading(text: str) -> str:
     index = 0
     while index < len(tokens):
         token = tokens[index]
-        if ENV_ASSIGN.match(token) \
-                and token.split('=', 1)[0] in SAFE_ENV_VARS:
+        if ENV_ASSIGN.match(token) and token.split("=", 1)[0] in SAFE_ENV_VARS:
             index += 1
             continue
         if _unquote(token) in SHELL_WRAPPERS:
             index += 1
-            while index < len(tokens) and (tokens[index].startswith('-')
-                                           or tokens[index].replace(
-                                               '.', '', 1).isdigit()):
+            while index < len(tokens) and (tokens[index].startswith("-") or tokens[index].replace(".", "", 1).isdigit()):
                 index += 1
             continue
         break
-    return ' '.join(tokens[index:])
-
-
+    return " ".join(tokens[index:])
 
 
 def _rule_for_part(text: str) -> str | None:
@@ -548,20 +682,18 @@ def _rule_for_part(text: str) -> str | None:
     changes from call to call while its head does not; an exact rule keeps the
     whole text, since half a command would describe a different one."""
     written = str(text).strip()
-    if '\n' in written:
-        written = written.split('\n', 1)[0].strip()
+    if "\n" in written:
+        written = written.split("\n", 1)[0].strip()
     head = _command_head(written)
     if not head or is_dangerous_removal(head) or _has_unquoted_special(head):
         return None
     tokens = _raw_tokens(head)
-    if tokens and ENV_ASSIGN.match(tokens[0]) \
-            and tokens[0].split('=', 1)[0] not in SAFE_ENV_VARS:
+    if tokens and ENV_ASSIGN.match(tokens[0]) and tokens[0].split("=", 1)[0] not in SAFE_ENV_VARS:
         return None
     tokens = _raw_tokens(_drop_leading(head))
-    if len(tokens) >= 2 and _unquote(tokens[0]) not in BARE_SHELL_PREFIXES \
-            and _SUBCOMMAND.fullmatch(_unquote(tokens[1])):
-        return bash_rule(f'{tokens[0]} {tokens[1]}:*')
-    if '<<' in str(text):
+    if len(tokens) >= 2 and _unquote(tokens[0]) not in BARE_SHELL_PREFIXES and _SUBCOMMAND.fullmatch(_unquote(tokens[1])):
+        return bash_rule(f"{tokens[0]} {tokens[1]}:*")
+    if "<<" in str(text):
         # A heredoc body is different every time, so only the words before it
         # can be described - and a head that gives no usable prefix (python3,
         # a bare interpreter, would authorize arbitrary code) is left unsaved.
@@ -575,7 +707,7 @@ def suggested_rules(command) -> list[str]:
     """The rules to remember for one approval. A compound command is answered
     part by part, so the next command that reuses any of those parts is already
     covered; a part that cannot be described yields no rule at all."""
-    text = str(command or '').strip()
+    text = str(command or "").strip()
     if not text or is_dangerous_removal(text):
         return []
     parts = split_commands(text)
@@ -605,13 +737,11 @@ def bash_allowed_by(rules, command) -> bool:
     parts = split_commands(command)
     if not parts:
         return False
-    return all(any(bash_rule_matches(rule, part) for rule in rules)
-               for part in parts)
+    return all(any(bash_rule_matches(rule, part) for rule in rules) for part in parts)
 
 
 def bash_covered_by(rules, command) -> bool:
     """A deny or ask rule reaches into a compound command: one unsafe part is
     enough to stop the whole line."""
     parts = split_commands(command) or [command]
-    return any(bash_rule_matches(rule, part, env_all=True)
-               for rule in rules for part in parts)
+    return any(bash_rule_matches(rule, part, env_all=True) for rule in rules for part in parts)

@@ -47,7 +47,7 @@ class GatewayRuntimeState:
         self.agents: Dict[str, AgentState] = {}
         self._request_count = 0
         self._error_count = 0
-    
+
     def mark_started(self):
         self.started_at = datetime.now()
 
@@ -59,10 +59,7 @@ class GatewayRuntimeState:
 
     def get_or_create_session(self, session_id: str, agent_id: str = "default") -> SessionState:
         if session_id not in self.sessions:
-            self.sessions[session_id] = SessionState(
-                id=session_id,
-                agent_id=agent_id
-            )
+            self.sessions[session_id] = SessionState(id=session_id, agent_id=agent_id)
         return self.sessions[session_id]
 
     def get_session(self, session_id: str) -> Optional[SessionState]:
@@ -87,10 +84,7 @@ class GatewayRuntimeState:
             del self.clients[client_id]
 
     def register_channel(self, channel_id: str, enabled: bool = False):
-        self.channels[channel_id] = ChannelState(
-            id=channel_id,
-            enabled=enabled
-        )
+        self.channels[channel_id] = ChannelState(id=channel_id, enabled=enabled)
 
     def set_channel_connected(self, channel_id: str, connected: bool):
         if channel_id in self.channels:
@@ -116,7 +110,7 @@ class GatewayRuntimeState:
                 "enabled": state.enabled,
                 "connected": state.connected,
                 "message_count": state.message_count,
-                "last_error": state.last_error
+                "last_error": state.last_error,
             }
             for channel_id, state in self.channels.items()
         }
@@ -127,7 +121,7 @@ class GatewayRuntimeState:
                 "name": state.name,
                 "active": state.active,
                 "request_count": state.request_count,
-                "error_count": state.error_count
+                "error_count": state.error_count,
             }
             for agent_id, state in self.agents.items()
         }
@@ -140,5 +134,5 @@ class GatewayRuntimeState:
             "active_sessions": len(self.sessions),
             "connected_clients": len(self.clients),
             "registered_channels": len(self.channels),
-            "registered_agents": len(self.agents)
+            "registered_agents": len(self.agents),
         }

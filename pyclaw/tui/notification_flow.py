@@ -12,8 +12,8 @@ class NotifyMixin:
             driver.write(sequence)
 
     def _title(self, working: bool) -> str:
-        brand = self.brand if isinstance(self.brand, str) else 'PyClaw'
-        return f'{brand} · working' if working else brand
+        brand = self.brand if isinstance(self.brand, str) else "PyClaw"
+        return f"{brand} · working" if working else brand
 
     def _set_title(self, working: bool) -> None:
         notify.set_title(self._terminal, self._title(working))
@@ -24,8 +24,7 @@ class NotifyMixin:
             return
         body = notify.message(self._live_text, len(self._tools))
         self._last_notified = time.monotonic()
-        notify.notify(self._terminal, title=self._title(False), body=body,
-                      backend=self._notify_backend)
+        notify.notify(self._terminal, title=self._title(False), body=body, backend=self._notify_backend)
 
     async def on_key(self, event) -> None:
         self._last_interaction = time.monotonic()

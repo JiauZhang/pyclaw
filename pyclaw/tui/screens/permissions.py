@@ -11,11 +11,13 @@ from textual.widgets import Static
 
 
 class _RuleList(VerticalScroll):
-
-    BINDINGS = [keys.binding('prev', 'Up'), keys.binding('next', 'Down'),
-                keys.binding('remove_rule', 'Remove rule'),
-                keys.binding('dismiss', 'Close'),
-                Binding('q', 'dismiss', 'Close')]
+    BINDINGS = [
+        keys.binding("prev", "Up"),
+        keys.binding("next", "Down"),
+        keys.binding("remove_rule", "Remove rule"),
+        keys.binding("dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+    ]
 
     def __init__(self, screen, **kw):
         super().__init__(**kw)
@@ -33,13 +35,15 @@ class _RuleList(VerticalScroll):
     def action_dismiss(self):
         self._screen.action_dismiss()
 
-class PermissionsScreen(Screen):
 
-    BINDINGS = [keys.binding('dismiss', 'Close'),
-                Binding('q', 'dismiss', 'Close'),
-                keys.binding('remove_rule', 'Remove rule'),
-                keys.binding('prev', 'Up'),
-                keys.binding('next', 'Down')]
+class PermissionsScreen(Screen):
+    BINDINGS = [
+        keys.binding("dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+        keys.binding("remove_rule", "Remove rule"),
+        keys.binding("prev", "Up"),
+        keys.binding("next", "Down"),
+    ]
 
     def __init__(self, session, **kw):
         super().__init__(**kw)
@@ -48,33 +52,34 @@ class PermissionsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         with _RuleList(self, id="permissions"):
-            yield Static('...', id="permissions-body")
+            yield Static("...", id="permissions-body")
 
     def on_mount(self):
         self.query_one("#permissions", _RuleList).focus()
         self._refresh_body()
 
     def _rules(self) -> list:
-        getter = getattr(self._session, 'permission_rules', None)
+        getter = getattr(self._session, "permission_rules", None)
         return list(getter()) if getter else []
 
     def _refresh_body(self):
         rules = self._rules()
-        mode = getattr(self._session, 'permission_mode', 'default')
-        unlocked = bool(getattr(self._session, 'allow_all_available', False))
-        lines = [f'[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]',
-                 f'[dim]allow-all available: {unlocked} · '
-                 f'{keys.hint("cycle_permission", "cycles")} · '
-                 f'/permissions <mode> switches[/]', '']
+        mode = getattr(self._session, "permission_mode", "default")
+        unlocked = bool(getattr(self._session, "allow_all_available", False))
+        lines = [
+            f"[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]",
+            f"[dim]allow-all available: {unlocked} · "
+            f"{keys.hint('cycle_permission', 'cycles')} · "
+            f"/permissions <mode> switches[/]",
+            "",
+        ]
         if not rules:
-            lines.append('[dim]No permission rules.[/]')
+            lines.append("[dim]No permission rules.[/]")
         else:
-            lines.append('[bold]Rules[/bold] '
-                         '[dim](up/down to move, d to remove)[/]')
+            lines.append("[bold]Rules[/bold] [dim](up/down to move, d to remove)[/]")
             for index, (behavior, rule, source) in enumerate(rules):
-                lines.append(ui.row(f'[{behavior}] {rule}  ({source})',
-                                    selected=index == self._selected))
-        self.query_one('#permissions-body', Static).update('\n'.join(lines))
+                lines.append(ui.row(f"[{behavior}] {rule}  ({source})", selected=index == self._selected))
+        self.query_one("#permissions-body", Static).update("\n".join(lines))
 
     def action_dismiss(self):
         self.app.pop_screen()
@@ -94,9 +99,9 @@ class PermissionsScreen(Screen):
             return
         index = min(self._selected, len(rules) - 1)
         _behavior, rule, _source = rules[index]
-        remover = getattr(self._session, 'remove_rule', None)
+        remover = getattr(self._session, "remove_rule", None)
         if remover is None or not remover(rule):
             return
-        await self._session.note_config_change('permissions')
+        await self._session.note_config_change("permissions")
         self._selected = max(0, self._selected - 1)
         self._refresh_body()

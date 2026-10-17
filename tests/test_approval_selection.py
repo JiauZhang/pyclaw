@@ -11,7 +11,6 @@ from pyclaw.tui.permission_card import _Approval, _PermissionPrompt
 
 
 class _Host(ApprovalFlowMixin, App):
-
     def register_overlay(self, name):
         pass
 
@@ -19,21 +18,21 @@ class _Host(ApprovalFlowMixin, App):
         pass
 
     def compose(self) -> ComposeResult:
-        yield _PermissionPrompt('Bash', {'command': 'ls'}, cwd='/tmp')
-        yield _PromptInput(id='input')
+        yield _PermissionPrompt("Bash", {"command": "ls"}, cwd="/tmp")
+        yield _PromptInput(id="input")
 
 
 def _mouse_down(x, y):
-    return events.MouseDown(None, x=x, y=y, delta_x=0, delta_y=0, button=1,
-                            shift=False, meta=False, ctrl=False,
-                            screen_x=x, screen_y=y)
+    return events.MouseDown(
+        None, x=x, y=y, delta_x=0, delta_y=0, button=1, shift=False, meta=False, ctrl=False, screen_x=x, screen_y=y
+    )
 
 
 def test_settle_clears_selection_state():
     async def scenario():
         app = _Host()
         async with app.run_test() as pilot:
-            body = app.query_one('#perm-body', Static)
+            body = app.query_one("#perm-body", Static)
             await pilot.pause()
             x, y = body.region.center
 
@@ -43,10 +42,9 @@ def test_settle_clears_selection_state():
             assert app.screen._select_state is not None
 
             prompt = app.query_one(_PermissionPrompt)
-            approval = _Approval('t1', 'Bash', prompt, None,
-                                 asyncio.get_running_loop().create_future())
+            approval = _Approval("t1", "Bash", prompt, None, asyncio.get_running_loop().create_future())
             app._approvals = [approval]
-            app._settle_approval(approval, PermissionChoice('approved'))
+            app._settle_approval(approval, PermissionChoice("approved"))
             await pilot.pause()
 
             assert app.screen._selecting is False
@@ -59,7 +57,7 @@ def test_withdraw_clears_selection_state():
     async def scenario():
         app = _Host()
         async with app.run_test() as pilot:
-            body = app.query_one('#perm-body', Static)
+            body = app.query_one("#perm-body", Static)
             await pilot.pause()
             x, y = body.region.center
 
@@ -68,8 +66,7 @@ def test_withdraw_clears_selection_state():
             assert app.screen._selecting is True
 
             prompt = app.query_one(_PermissionPrompt)
-            approval = _Approval('t1', 'Bash', prompt, None,
-                                 asyncio.get_running_loop().create_future())
+            approval = _Approval("t1", "Bash", prompt, None, asyncio.get_running_loop().create_future())
             app._approvals = [approval]
             app._withdraw_approval(approval)
             await pilot.pause()

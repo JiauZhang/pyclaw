@@ -4,8 +4,9 @@ from pyclaw import cli
 
 
 def _main(capsys, argv, monkeypatch, stdout=""):
-    with mock.patch("pyclaw.cli.subprocess.run") as run, mock.patch(
-        "pyclaw.config.load", return_value={"gateway": {"http": {"port": 12321, "host": "127.0.0.1"}}}
+    with (
+        mock.patch("pyclaw.cli.subprocess.run") as run,
+        mock.patch("pyclaw.config.load", return_value={"gateway": {"http": {"port": 12321, "host": "127.0.0.1"}}}),
     ):
         from pyclaw.__main__ import main
 
@@ -24,8 +25,7 @@ def test_pid_lookup_parses_one_pid_per_line():
 
 
 def test_pid_lookup_returns_empty_on_blank_output():
-    for finder, args in ((cli.find_listener_pids, (12321,)),
-                         (cli.find_serve_pids, ())):
+    for finder, args in ((cli.find_listener_pids, (12321,)), (cli.find_serve_pids, ())):
         with mock.patch("pyclaw.cli.subprocess.run") as run:
             run.return_value.stdout = ""
             assert finder(*args) == []
@@ -55,13 +55,13 @@ def test_stop_server_resolves_the_port_from_the_argument_or_the_config():
         ({}, 12321, "", [], "tcp:12321"),
     )
     for kwargs, configured, stdout, killed, target in cases:
-        with mock.patch("pyclaw.cli.subprocess.run") as run, mock.patch(
-            "pyclaw.config.load", return_value={"gateway": {"http": {"port": configured}}}
+        with (
+            mock.patch("pyclaw.cli.subprocess.run") as run,
+            mock.patch("pyclaw.config.load", return_value={"gateway": {"http": {"port": configured}}}),
         ):
             run.return_value.stdout = stdout
             assert cli.stop_server(**kwargs) == killed
-            run.assert_any_call(["lsof", "-ti", target], capture_output=True,
-                                text=True, check=False)
+            run.assert_any_call(["lsof", "-ti", target], capture_output=True, text=True, check=False)
 
 
 def test_stop_server_all_kills_every_serve_process():
@@ -92,14 +92,12 @@ def test_stop_command_force_uses_sigkill(capsys, monkeypatch):
 
 def test_stop_command_all_kills_serve_processes(capsys, monkeypatch):
     run, out = _main(capsys, ["stop", "--all"], monkeypatch, stdout="34004\n")
-    run.assert_any_call(["pgrep", "-f", "pyclaw serve"], capture_output=True,
-                        text=True, check=False)
+    run.assert_any_call(["pgrep", "-f", "pyclaw serve"], capture_output=True, text=True, check=False)
     assert "34004" in out.out
 
 
 def test_a_heredoc_with_space_before_the_delimiter_still_matches_the_prefix():
     from pyclaw.permissions.bash_rules import bash_allowed_by
 
-    command = ("chatool-paper mark << 'JSON'\n"
-               '{"date": "2026-10-08", "papers": [{"id": "1"}]}')
-    assert bash_allowed_by(['Bash(chatool-paper:*)'], command)
+    command = 'chatool-paper mark << \'JSON\'\n{"date": "2026-10-08", "papers": [{"id": "1"}]}'
+    assert bash_allowed_by(["Bash(chatool-paper:*)"], command)

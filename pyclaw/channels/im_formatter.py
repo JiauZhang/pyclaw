@@ -44,7 +44,7 @@ def _split_block(block: str, limit: int) -> List[str]:
                 out.append(sentence)
             else:
                 for i in range(0, len(sentence), limit):
-                    out.append(sentence[i:i + limit])
+                    out.append(sentence[i : i + limit])
     return out
 
 

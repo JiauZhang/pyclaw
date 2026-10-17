@@ -25,8 +25,7 @@ class ScrollFollowMixin:
         text = f"[#B1B9F9]\u2193 Scroll to latest \u00b7 {self._new_messages} new[/]"
         if self._hint is None:
             self._hint = _JumpToBottom(text)
-            await self.screen.mount(self._hint,
-                                    before=self.query_one("#prompt"))
+            await self.screen.mount(self._hint, before=self.query_one("#prompt"))
         else:
             self._hint.update(text)
 

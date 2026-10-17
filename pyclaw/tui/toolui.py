@@ -3,12 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 
 from pyclaw.tui.formatting import _clip_lines, _display_path, _preview
-from pyclaw.tui.theme import (DISPLAY_NAMES, MAX_COMMAND_CHARS,
-                              MAX_COMMAND_LINES, MEMORY_FILE_NAME)
+from pyclaw.tui.theme import DISPLAY_NAMES, MAX_COMMAND_CHARS, MAX_COMMAND_LINES, MEMORY_FILE_NAME
 
 
 def is_memory_path(value) -> bool:
-    return Path(str(value or '')).name == MEMORY_FILE_NAME
+    return Path(str(value or "")).name == MEMORY_FILE_NAME
 
 
 def _data(tool_input) -> dict:
@@ -33,7 +32,7 @@ class ToolUI:
 
     def key(self, name, tool_input) -> str:
         data = _data(tool_input)
-        return str(data.get('file_path') or data.get('path') or name)
+        return str(data.get("file_path") or data.get("path") or name)
 
     def hidden(self, name, tool_input) -> bool:
         return False
@@ -68,11 +67,11 @@ def _safe(method: str, name: str, *args):
 
 
 def tool_label(name: str, tool_input) -> str:
-    return _safe('label', name, tool_input)
+    return _safe("label", name, tool_input)
 
 
 def tool_args(name: str, tool_input, cwd) -> str:
-    return _safe('args', name, tool_input, cwd)
+    return _safe("args", name, tool_input, cwd)
 
 
 def result_summary(name: str, output, width: int) -> str:
@@ -81,19 +80,19 @@ def result_summary(name: str, output, width: int) -> str:
         return "Done"
     if text.startswith("Error"):
         return text.split("\n")[0]
-    return _safe('summary', name, output, width)
+    return _safe("summary", name, output, width)
 
 
 def collapse_kinds(name: str, tool_input) -> set:
-    return _safe('kinds', name, tool_input)
+    return _safe("kinds", name, tool_input)
 
 
 def read_key(name: str, tool_input) -> str:
-    return _safe('key', name, tool_input)
+    return _safe("key", name, tool_input)
 
 
 def hidden_card(name: str, tool_input) -> bool:
-    return _safe('hidden', name, tool_input)
+    return _safe("hidden", name, tool_input)
 
 
 def path_args(tool_input, cwd) -> str:

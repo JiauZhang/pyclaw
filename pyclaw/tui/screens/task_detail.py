@@ -12,11 +12,12 @@ from pyclaw.tui.task_panel import task_detail_lines
 
 
 class TaskDetailScreen(Screen):
-
-    BINDINGS = [keys.binding('dismiss', 'Close'),
-                Binding('q', 'dismiss', 'Close'),
-                Binding('ctrl+c', 'dismiss', 'Close'),
-                keys.binding('stop_selected', 'Stop')]
+    BINDINGS = [
+        keys.binding("dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+        Binding("ctrl+c", "dismiss", "Close"),
+        keys.binding("stop_selected", "Stop"),
+    ]
 
     def __init__(self, owner, row, **kw):
         super().__init__(**kw)
@@ -30,26 +31,26 @@ class TaskDetailScreen(Screen):
     def on_mount(self):
         self.query_one("#task-detail", VerticalScroll).focus()
         self._draw()
-        if self._row.get('stoppable'):
+        if self._row.get("stoppable"):
             self.set_interval(1.0, self._refresh)
 
     def _draw(self):
         data = self._owner._task_detail(self._row)
-        lines = task_detail_lines(data['row'], output=data['output'],
-                                  state=data['state'],
-                                  subagent=data['subagent'], now=data['now'])
-        lines.append('')
-        pairs = [('dismiss', 'closes')]
-        if data['row'].get('stoppable'):
-            pairs.insert(0, ('stop_selected', 'stops it'))
+        lines = task_detail_lines(
+            data["row"], output=data["output"], state=data["state"], subagent=data["subagent"], now=data["now"]
+        )
+        lines.append("")
+        pairs = [("dismiss", "closes")]
+        if data["row"].get("stoppable"):
+            pairs.insert(0, ("stop_selected", "stops it"))
         lines += ui.footer(*pairs)
-        self.query_one("#td-body", Static).update('\n'.join(lines))
+        self.query_one("#td-body", Static).update("\n".join(lines))
 
     def _refresh(self):
         self._draw()
 
     async def action_stop_selected(self):
-        if not self._row.get('stoppable'):
+        if not self._row.get("stoppable"):
             return
         note = await self._owner._stop_task_row(self._row)
         self._draw()

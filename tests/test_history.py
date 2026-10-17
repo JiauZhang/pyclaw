@@ -20,14 +20,12 @@ async def _answer(messages, tools=None, *, stream_cb=None):
 
 
 def _session(handler, session_id):
-    team = Team("t1", client_factory=lambda inst, model=None:
-                MockClient(handler=handler, model=model))
+    team = Team("t1", client_factory=lambda inst, model=None: MockClient(handler=handler, model=model))
     return session_mod.Session(team, session_id=session_id)
 
 
 def test_transcript_roundtrip():
-    messages = [{"role": "user", "content": "hi"},
-                {"role": "assistant", "content": "ok"}]
+    messages = [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}]
     session_store.save_transcript("s1", messages)
     assert session_store.load_transcript("s1") == messages
     assert session_store.load_transcript("missing") == []
@@ -36,14 +34,12 @@ def test_transcript_roundtrip():
 def test_transcript_skips_broken_lines():
     path = session_store.transcript_path("s1")
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text('{"role": "user", "content": "a"}\nnot json\n\n',
-                    encoding="utf-8")
+    path.write_text('{"role": "user", "content": "a"}\nnot json\n\n', encoding="utf-8")
     assert session_store.load_transcript("s1") == [{"role": "user", "content": "a"}]
 
 
 def test_transcript_appends_and_chains_uuids():
-    first = [{"role": "user", "content": "a"},
-             {"role": "assistant", "content": "b"}]
+    first = [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}]
     session_store.save_transcript("s1", first)
     path = session_store.transcript_path("s1")
     size_after_first = path.stat().st_size
@@ -61,8 +57,7 @@ def test_transcript_appends_and_chains_uuids():
 
 
 def test_transcript_rewrites_when_history_is_compacted():
-    session_store.save_transcript("s1", [{"role": "user", "content": "a"},
-                                  {"role": "assistant", "content": "b"}])
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}])
     session_store.save_transcript("s1", [{"role": "user", "content": "summary"}])
     entries = session_store.load_entries("s1")
     assert [e["content"] for e in entries] == ["summary"]
@@ -88,8 +83,7 @@ def test_session_persists_and_restores_history():
 
     restored = asyncio.run(main())
     assert restored == 2
-    assert [m["content"] for m in seen[1]] == [
-        "first question", "answer", "second question"]
+    assert [m["content"] for m in seen[1]] == ["first question", "answer", "second question"]
 
 
 def test_session_id_rotates_unless_continuing():
@@ -150,8 +144,8 @@ def test_clear_rotates_session_id_and_keeps_the_old_transcript():
 
 def test_slash_resume_lists_and_loads_a_saved_session():
     from pyclaw import slash
-    session_store.save_transcript("old", [{"role": "user", "content": "hi"},
-                                   {"role": "assistant", "content": "ok"}])
+
+    session_store.save_transcript("old", [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}])
 
     async def main():
         session = _session(_answer, "fresh")
@@ -163,23 +157,21 @@ def test_slash_resume_lists_and_loads_a_saved_session():
 
         out = await slash.handle_slash("/resume old", session)
         assert "Resumed 2 messages" in out
-        assert session.transcript() == [{"role": "user", "content": "hi"},
-                                        {"role": "assistant", "content": "ok"}]
+        assert session.transcript() == [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}]
         assert session.conv_session_id != "old"
 
     asyncio.run(main())
 
 
 def _saved(session_id, title):
-    session_store.save_transcript(
-        session_id, [{"role": "user", "content": "hi"},
-                     {"role": "assistant", "content": "ok"}])
+    session_store.save_transcript(session_id, [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}])
     if title:
         session_store.rename_session(session_id, title)
 
 
 def test_resuming_by_name_loads_the_named_conversation():
     from pyclaw import slash
+
     _saved("deadbeef", "git-ssh-key")
 
     async def main():
@@ -191,6 +183,7 @@ def test_resuming_by_name_loads_the_named_conversation():
 
 def test_a_name_two_conversations_share_is_not_guessed_at():
     from pyclaw import slash
+
     _saved("aaaa1111", "same name")
     _saved("bbbb2222", "same name")
 
@@ -206,12 +199,12 @@ def test_a_name_two_conversations_share_is_not_guessed_at():
 
 def test_a_name_has_to_be_the_whole_name():
     from pyclaw import slash
+
     _saved("deadbeef", "git-ssh-key")
 
     async def main():
         session = _session(_answer, "fresh")
-        return (await slash.handle_slash("/resume git", session),
-                await slash.handle_slash("/resume ssh-keys", session))
+        return (await slash.handle_slash("/resume git", session), await slash.handle_slash("/resume ssh-keys", session))
 
     by_prefix, by_wrong = asyncio.run(main())
     assert by_prefix == 'Session "git" was not found.'
@@ -235,33 +228,33 @@ def test_reading_a_conversation_that_is_not_there_creates_nothing(tmp_path):
     assert not (tmp_path / "not-a-session").exists()
 
 
-async def _talked_session(session_id='talk'):
+async def _talked_session(session_id="talk"):
     """A session that has one exchange behind it, on disk."""
     session = _session(_answer, session_id)
-    await session.chat('hi')
+    await session.chat("hi")
     return session
 
 
 def test_renaming_names_the_conversation_for_the_resume_list():
     async def main():
         session = await _talked_session()
-        session.rename('  parser   work  ')
+        session.rename("  parser   work  ")
         return session.title, session_store.list_sessions()
 
     title, sessions = asyncio.run(main())
-    assert title == 'parser work'
-    assert sessions[0]['title'] == 'parser work'
+    assert title == "parser work"
+    assert sessions[0]["title"] == "parser work"
 
 
 def test_a_conversation_cannot_be_named_nothing():
     async def main():
         session = await _talked_session()
         try:
-            session.rename('   ')
+            session.rename("   ")
         except ValueError as exc:
             return str(exc)
 
-    assert 'name' in asyncio.run(main())
+    assert "name" in asyncio.run(main())
 
 
 def test_branching_copies_the_conversation_and_moves_into_it():
@@ -269,14 +262,13 @@ def test_branching_copies_the_conversation_and_moves_into_it():
         session = await _talked_session()
         original = session.conv_session_id
         fork = session.branch()
-        return original, fork, session.conv_session_id, session_store.load_entries(fork['id'])
+        return original, fork, session.conv_session_id, session_store.load_entries(fork["id"])
 
     original, fork, current, entries = asyncio.run(main())
-    assert current == fork['id'] != original
-    assert fork['messages'] == len(entries) > 0
-    assert fork['title'] == 'hi (Branch)'
-    assert all(entry['forkedFrom']['sessionId'] == original
-               for entry in entries)
+    assert current == fork["id"] != original
+    assert fork["messages"] == len(entries) > 0
+    assert fork["title"] == "hi (Branch)"
+    assert all(entry["forkedFrom"]["sessionId"] == original for entry in entries)
     assert session_store.load_entries(original)
 
 
@@ -284,37 +276,38 @@ def test_a_second_branch_of_the_same_conversation_is_numbered():
     async def main():
         session = await _talked_session()
         session.branch()
-        return session.branch('parser work')
+        return session.branch("parser work")
 
     fork = asyncio.run(main())
-    assert fork['title'] == 'parser work (Branch)'
+    assert fork["title"] == "parser work (Branch)"
 
 
 def test_branching_nothing_refuses():
     async def main():
-        session = _session(_answer, 'empty')
+        session = _session(_answer, "empty")
         session._team.lead.messages = []
         try:
             session.branch()
         except ValueError as exc:
             return str(exc)
 
-    assert 'no conversation' in asyncio.run(main())
+    assert "no conversation" in asyncio.run(main())
 
 
 def test_the_rename_and_branch_commands_reach_the_session():
     async def main():
         from pyclaw import slash
+
         session = await _talked_session()
-        renamed = await slash.handle_slash('/rename parser work', session)
-        branched = await slash.handle_slash('/branch', session)
-        named = await slash.handle_slash('/branch the other way', session)
+        renamed = await slash.handle_slash("/rename parser work", session)
+        branched = await slash.handle_slash("/branch", session)
+        named = await slash.handle_slash("/branch the other way", session)
         return renamed, branched, named
 
     renamed, branched, named = asyncio.run(main())
-    assert 'parser work' in renamed
-    assert 'You are now in the branch' in branched
-    assert '/resume talk' in branched
+    assert "parser work" in renamed
+    assert "You are now in the branch" in branched
+    assert "/resume talk" in branched
     assert '"the other way (Branch)"' in named
 
 
@@ -322,32 +315,32 @@ def test_naming_a_conversation_without_a_name_uses_what_it_was_asked():
     from pyclaw import slash
 
     async def main():
-        session = _session(_answer, 'auto-name')
-        await session.chat('fix the flaky parser test')
-        out = await slash.handle_slash('/rename', session)
+        session = _session(_answer, "auto-name")
+        await session.chat("fix the flaky parser test")
+        out = await slash.handle_slash("/rename", session)
         return session.title, out
 
     title, out = asyncio.run(main())
-    assert title == 'fix the flaky parser test'
-    assert 'is now called' in out
+    assert title == "fix the flaky parser test"
+    assert "is now called" in out
 
 
 def test_an_unnamed_conversation_says_so_in_status():
     from pyclaw import slash
 
     async def main():
-        session = _session(_answer, 'status-name')
-        return await slash.handle_slash('/status', session)
+        session = _session(_answer, "status-name")
+        return await slash.handle_slash("/status", session)
 
-    assert 'Name: none yet' in asyncio.run(main())
+    assert "Name: none yet" in asyncio.run(main())
 
 
 def test_a_named_conversation_shows_its_name_in_status():
     from pyclaw import slash
 
     async def main():
-        session = _session(_answer, 'status-named')
-        session.rename('parser work')
-        return await slash.handle_slash('/status', session)
+        session = _session(_answer, "status-named")
+        session.rename("parser work")
+        return await slash.handle_slash("/status", session)
 
-    assert 'Name: parser work' in asyncio.run(main())
+    assert "Name: parser work" in asyncio.run(main())

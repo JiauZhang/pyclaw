@@ -20,12 +20,12 @@ TREE_BRANCH = ("\u251c\u2500", "\u255e\u2550")
 TREE_LAST = ("\u2514\u2500", "\u2558\u2550")
 TREE_INDENT = "   "
 TREE_POINTER = POINTER
-SELECT_HINT = keys.chord('agent_prev', 'agent_next', 'picks a row')
-VIEW_HINT = keys.hint('open', 'opens it')
-COLLAPSE_HINT = keys.hint('open', 'closes it')
+SELECT_HINT = keys.chord("agent_prev", "agent_next", "picks a row")
+VIEW_HINT = keys.hint("open", "opens it")
+COLLAPSE_HINT = keys.hint("open", "closes it")
 IDLE_TEXT = "Idle"
 AGENT_TEAMMATES_HINT = "subagents are active"
-TEAMMATE_VIEW_HINT = keys.hint('dismiss', 'to return to team lead')
+TEAMMATE_VIEW_HINT = keys.hint("dismiss", "to return to team lead")
 STOPPING_TEXT = "Stopping\u2026"
 STOPPED_TEXT = "Stopped"
 
@@ -40,8 +40,7 @@ PREVIEW_CHARS = 80
 RECENT_ACTIVITIES = 5
 
 
-PLAN_ICONS = {"completed": "\u2713", "in_progress": "\u25aa",
-              "pending": "\u25ab"}
+PLAN_ICONS = {"completed": "\u2713", "in_progress": "\u25aa", "pending": "\u25ab"}
 DONE_COLOR = "#4EBA65"
 PLAN_MAX_LINES = 10
 PLAN_MIN_ROWS = 10
@@ -54,7 +53,7 @@ PLAN_HIDDEN = " \u2026 +"
 AGENT_TRAIL_LIMIT = 3
 DONE_TEXT = "Done"
 INITIALIZING_TEXT = "Starting up\u2026"
-EXPAND_HINT = keys.hint('toggle_transcript', 'shows more')
+EXPAND_HINT = keys.hint("toggle_transcript", "shows more")
 
 
 WAITING_PERMISSION_TEXT = "Needs your approval\u2026"
@@ -70,21 +69,27 @@ DESTRUCTIVE_NOTE = "This cannot be undone. Allow it anyway?"
 ANSWER_HINT = "answer in your own words"
 
 
-OVERLAY_GATED_ACTIONS = frozenset({
-    'suggest_tab', 'prompt_next', 'prompt_prev', 'agent_next', 'agent_prev',
-    'stop_agent', 'cycle_permission', 'focus_next', 'focus_previous'})
+OVERLAY_GATED_ACTIONS = frozenset(
+    {
+        "suggest_tab",
+        "prompt_next",
+        "prompt_prev",
+        "agent_next",
+        "agent_prev",
+        "stop_agent",
+        "cycle_permission",
+        "focus_next",
+        "focus_previous",
+    }
+)
 
 
-AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
-                "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
+AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107", "#AF87FF", "#D77757", "#FD5DB1", "#48968C")
 
 
-MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5",
-                "allowAll": "\u23f5\u23f5", "plan": "\u23f8"}
-MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode",
-               "allowAll": "skip permission prompts"}
-MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C",
-               "allowAll": "#FF6B80"}
+MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5", "allowAll": "\u23f5\u23f5", "plan": "\u23f8"}
+MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode", "allowAll": "skip permission prompts"}
+MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C", "allowAll": "#FF6B80"}
 
 
 SPINNER_CHARS = ["\u00b7", "\u2722", "\u2733", "\u2736", "\u273b", "\u273d"]
@@ -98,20 +103,19 @@ MAX_RESULT_LINES = 3
 MAX_USE_ARG_CHARS = 80
 
 
-DISPLAY_NAMES = {"Edit": "Update", "Grep": "Search",
-                 "Glob": "Search"}
+DISPLAY_NAMES = {"Edit": "Update", "Grep": "Search", "Glob": "Search"}
 
-MEMORY_FILE_NAME = 'AGENTS.md'
+MEMORY_FILE_NAME = "AGENTS.md"
 
 
 GROUP_PARTS = (
-    ('search', 'Looking for', 'Looked for', 'pattern', 'patterns'),
-    ('read', 'Opening', 'Opened', 'file', 'files'),
-    ('list', 'Walking', 'Walked', 'folder', 'folders'),
-    ('bash', 'Executing', 'Executed', 'shell command', 'shell commands'),
-    ('memory_read', 'Remembering', 'Remembered', 'memory', 'memories'),
-    ('memory_write', 'Saving', 'Saved', 'memory', 'memories'),
+    ("search", "Looking for", "Looked for", "pattern", "patterns"),
+    ("read", "Opening", "Opened", "file", "files"),
+    ("list", "Walking", "Walked", "folder", "folders"),
+    ("bash", "Executing", "Executed", "shell command", "shell commands"),
+    ("memory_read", "Remembering", "Remembered", "memory", "memories"),
+    ("memory_write", "Saving", "Saved", "memory", "memories"),
 )
 
 
-ROLLUP_KINDS = frozenset(kind for kind, *_ in GROUP_PARTS) - {'bash'}
+ROLLUP_KINDS = frozenset(kind for kind, *_ in GROUP_PARTS) - {"bash"}

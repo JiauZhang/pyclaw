@@ -4,10 +4,11 @@ from pyclaw.channels.im_formatter import split_long_message, IMStatusTracker
 def test_split_keeps_every_part_under_the_limit_and_lossless():
     paragraphs = "\n\n".join(["para one " * 50, "para two " * 50])
     for text, limit, stays_whole in (
-            ("hello world", 1500, True),
-            ("a" * 5000, 1500, False),
-            (paragraphs, 200, False),
-            ("句子内容。" * 100, 200, False)):
+        ("hello world", 1500, True),
+        ("a" * 5000, 1500, False),
+        (paragraphs, 200, False),
+        ("句子内容。" * 100, 200, False),
+    ):
         parts = split_long_message(text, limit)
         assert all(len(p) <= limit for p in parts)
         assert "".join(parts) == text

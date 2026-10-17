@@ -2,20 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from chatchat.knowledge.rules import RuleSet
+from chatchat.team.rules import RuleSet
 from pyclaw.home import pyclaw_home
 
 
 def _user_memory_file() -> Path:
-    return pyclaw_home() / 'AGENTS.md'
+    return pyclaw_home() / "AGENTS.md"
 
 
 def rule_set(cwd: str):
-    return RuleSet.discover(cwd=Path(cwd), home=pyclaw_home(),
-                            subdir='.pyclaw')
+    return RuleSet.discover(cwd=Path(cwd), home=pyclaw_home(), subdir=".pyclaw")
 
 
-SCOPES = {'user': 'User', 'project': 'Project'}
+SCOPES = {"user": "User", "project": "Project"}
 
 
 def load_instruction_files(cwd: str) -> list[dict]:
@@ -23,48 +22,48 @@ def load_instruction_files(cwd: str) -> list[dict]:
     user = _user_memory_file()
     if user.exists():
         try:
-            files.append({'path': str(user),
-                          'content': user.read_text(encoding='utf-8'),
-                          'memory_type': 'User',
-                          'load_reason': 'session_start'})
+            files.append(
+                {
+                    "path": str(user),
+                    "content": user.read_text(encoding="utf-8"),
+                    "memory_type": "User",
+                    "load_reason": "session_start",
+                }
+            )
         except OSError:
             pass
     current = Path(cwd).resolve()
     for directory in [current, *current.parents]:
-        candidate = directory / 'AGENTS.md'
+        candidate = directory / "AGENTS.md"
         if not candidate.exists():
             continue
         try:
-            content = candidate.read_text(encoding='utf-8')
+            content = candidate.read_text(encoding="utf-8")
         except OSError:
             continue
-        files.append({'path': str(candidate), 'content': content,
-                      'memory_type': 'Project',
-                      'load_reason': 'session_start'})
+        files.append({"path": str(candidate), "content": content, "memory_type": "Project", "load_reason": "session_start"})
     for rule in rule_set(cwd).always():
         if not rule.content:
             continue
-        files.append({'path': str(rule.path), 'content': rule.content,
-                      'memory_type': SCOPES[rule.scope],
-                      'load_reason': 'rules_dir'})
+        files.append(
+            {"path": str(rule.path), "content": rule.content, "memory_type": SCOPES[rule.scope], "load_reason": "rules_dir"}
+        )
     return files
 
 
 def load_project_memory(cwd: str) -> str:
-    return '\n\n'.join(item['content']
-                       for item in load_instruction_files(cwd))
+    return "\n\n".join(item["content"] for item in load_instruction_files(cwd))
 
 
 def memory_targets(cwd: str) -> list[tuple[str, Path]]:
     current = Path(cwd).resolve()
-    targets: list[tuple[str, Path]] = [('User', _user_memory_file())]
+    targets: list[tuple[str, Path]] = [("User", _user_memory_file())]
     for directory in [current, *current.parents]:
-        candidate = directory / 'AGENTS.md'
+        candidate = directory / "AGENTS.md"
         if candidate.exists():
-            targets.append(('Project', candidate))
+            targets.append(("Project", candidate))
             break
     else:
-        targets.append(('Project', current / 'AGENTS.md'))
-    targets += [(SCOPES[rule.scope], Path(rule.path))
-                for rule in rule_set(cwd).all()]
+        targets.append(("Project", current / "AGENTS.md"))
+    targets += [(SCOPES[rule.scope], Path(rule.path)) for rule in rule_set(cwd).all()]
     return targets

@@ -4,8 +4,7 @@ import asyncio
 import logging
 import time
 
-from chatchat.hooks.events import (AGENT_REASON_START, AGENT_TOOL_CALL,
-                                   AGENT_WARN)
+from chatchat.hooks.events import AGENT_REASON_START, AGENT_TOOL_CALL, AGENT_WARN
 
 from ..channels import OutboundMessage
 from ..channels.im_formatter import IMStatusTracker, split_long_message
@@ -16,29 +15,28 @@ logger = logging.getLogger(__name__)
 
 
 def _brief_input(data: dict) -> str:
-    value = data.get('input')
+    value = data.get("input")
     if not isinstance(value, dict):
-        return ''
-    for key in ('command', 'path', 'file_path', 'pattern', 'query', 'url',
-                'skill'):
+        return ""
+    for key in ("command", "path", "file_path", "pattern", "query", "url", "skill"):
         v = value.get(key)
         if v:
-            return ' ' + str(v).replace('\n', ' ')[:40]
-    return ''
+            return " " + str(v).replace("\n", " ")[:40]
+    return ""
 
 
 def _im_progress_text(ev) -> str:
     kind = ev.kind
     data = ev.data or {}
     if kind == AGENT_REASON_START:
-        return '🔄 思考中…'
+        return "🔄 思考中…"
     if kind == AGENT_TOOL_CALL:
-        who = getattr(ev, 'agent', '') or ''
-        prefix = f'{who} ' if who and who != 'lead' else ''
-        return f'🔧 {prefix}{data.get("tool", "tool")}{_brief_input(data)}'
+        who = getattr(ev, "agent", "") or ""
+        prefix = f"{who} " if who and who != "lead" else ""
+        return f"🔧 {prefix}{data.get('tool', 'tool')}{_brief_input(data)}"
     if kind == AGENT_WARN:
-        return f'⚠️ {data.get("text", "")}'
-    return ''
+        return f"⚠️ {data.get('text', '')}"
+    return ""
 
 
 def _friendly_channel_error(exc: Exception) -> str:

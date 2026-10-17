@@ -1,10 +1,4 @@
-from .agent import (
-    handle_agent,
-    handle_agent_stream,
-    handle_agent_tools,
-    handle_tool_call,
-    handle_chat_completions
-)
+from .agent import handle_agent, handle_agent_stream, handle_agent_tools, handle_tool_call, handle_chat_completions
 from .sessions import handle_sessions_get, handle_sessions_reset, handle_sessions_list
 from .chat import handle_chat_send, handle_chat_history
 from .system import handle_status, handle_channel_rebind

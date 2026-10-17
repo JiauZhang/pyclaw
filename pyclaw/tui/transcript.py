@@ -15,12 +15,10 @@ class TranscriptMixin:
         return widget
 
     async def _append_user(self, text: str):
-        return await self._append_widget(
-            _UserBlock(text, color_for=self._agent_color))
+        return await self._append_widget(_UserBlock(text, color_for=self._agent_color))
 
     async def _append_error(self, text: str):
-        return await self._append_block(
-            f"[#FF6B80]{BULLET}[/] [#FF6B80]{escape(str(text))}[/]")
+        return await self._append_block(f"[#FF6B80]{BULLET}[/] [#FF6B80]{escape(str(text))}[/]")
 
     async def _append_block(self, text: str):
         block = Static(text, markup=True)
@@ -62,10 +60,8 @@ class TranscriptMixin:
     async def _append_note(self, text: str):
         await self._append_block(escape(text))
 
-    async def _apply_rewind(self, mark: int, *, code: bool,
-                            conversation: bool):
-        result = self._session.rewind(mark, code=code,
-                                      conversation=conversation)
+    async def _apply_rewind(self, mark: int, *, code: bool, conversation: bool):
+        result = self._session.rewind(mark, code=code, conversation=conversation)
         if conversation:
             await self._replay_transcript()
         moved = []
@@ -73,21 +69,18 @@ class TranscriptMixin:
             moved.append(f"{_plural(len(result['files']), 'file')} put back")
         if conversation:
             moved.append(f"{_plural(result['messages'], 'message')} dropped")
-        await self._append_block(escape(
-            f"Rewound to that turn{' · ' + ', '.join(moved) if moved else ''}"))
+        await self._append_block(escape(f"Rewound to that turn{' · ' + ', '.join(moved) if moved else ''}"))
 
-    async def _apply_resume(self, session_id: str, name: str = ''):
+    async def _apply_resume(self, session_id: str, name: str = ""):
         count = self._session.resume_session(session_id)
         # The name belongs to the conversation that was read back, not to the
         # fresh id this one now writes under.
         title = name or session_id[:8]
         if not count:
-            await self._append_note(
-                f'That conversation has nothing recorded to come back to.')
+            await self._append_note(f"That conversation has nothing recorded to come back to.")
             return
         await self._replay_transcript()
-        await self._append_note(
-            f'Continuing "{title}" · {_plural(count, "message")} read back')
+        await self._append_note(f'Continuing "{title}" · {_plural(count, "message")} read back')
 
     async def _render_history(self):
         for message in self._session.transcript():
@@ -102,11 +95,8 @@ class TranscriptMixin:
             content = message.get("content")
             if isinstance(content, list):
                 for block in content:
-                    if isinstance(block, dict) \
-                            and block.get("type") == "tool_use":
-                        await self._mount_tool(block.get("name", "tool"),
-                                               block.get("input", ""),
-                                               block.get("id", ""))
+                    if isinstance(block, dict) and block.get("type") == "tool_use":
+                        await self._mount_tool(block.get("name", "tool"), block.get("input", ""), block.get("id", ""))
             text = _content_text(content)
             if text:
                 text_block = _TextBlock()

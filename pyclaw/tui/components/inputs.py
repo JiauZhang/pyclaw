@@ -13,20 +13,26 @@ from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.components.blocks import teammate_name
 from pyclaw.tui.components.conv import _content_width
 from pyclaw.tui.formatting import _edit_summary, _plural, _user_markup
-from pyclaw.tui.theme import (AGENT_TRAIL_LIMIT, BULLET, BULLET_PREFIX,
-                              DONE_COLOR, EXPAND_HINT, INITIALIZING_TEXT,
-                              INTERRUPTED_TEXT, RESULT_HANG,
-                              RESULT_PREFIX, TREE_INDENT,
-                              WAITING_PERMISSION_TEXT)
+from pyclaw.tui.theme import (
+    AGENT_TRAIL_LIMIT,
+    BULLET,
+    BULLET_PREFIX,
+    DONE_COLOR,
+    EXPAND_HINT,
+    INITIALIZING_TEXT,
+    INTERRUPTED_TEXT,
+    RESULT_HANG,
+    RESULT_PREFIX,
+    TREE_INDENT,
+    WAITING_PERMISSION_TEXT,
+)
 from pyclaw.tui.collapse import Group, group_text
-from pyclaw.tui.toolcard import (_more_tool_uses, agent_group_header,
-                                 agent_group_row)
+from pyclaw.tui.toolcard import _more_tool_uses, agent_group_header, agent_group_row
 from pyclaw.tui.toolui import result_summary, tool_args, tool_label
 from pyclaw.tools.names import AGENT, GREP, READ, WRITE
 
 
 class _LogoBlock(Static):
-
     def __init__(self, triple: tuple, greeting: str = "", **kw):
         lines = [banner.directional(*triple)]
         if greeting:
@@ -50,14 +56,10 @@ class _PromptInput(TextArea):
     line asks to continue: a trailing backslash, or shift/alt held down."""
 
     # Page keys belong to the conversation, not to the caret.
-    BINDINGS = [Binding("pageup", "scroll_page_up"),
-                Binding("pagedown", "scroll_page_down")]
+    BINDINGS = [Binding("pageup", "scroll_page_up"), Binding("pagedown", "scroll_page_down")]
 
-    def __init__(self, *, placeholder: str = "",
-                 id: str | None = None) -> None:
-        super().__init__(placeholder=placeholder, id=id,
-                         show_line_numbers=False, soft_wrap=True,
-                         tab_behavior="focus")
+    def __init__(self, *, placeholder: str = "", id: str | None = None) -> None:
+        super().__init__(placeholder=placeholder, id=id, show_line_numbers=False, soft_wrap=True, tab_behavior="focus")
 
     @property
     def value(self) -> str:
@@ -105,48 +107,43 @@ class _PromptInput(TextArea):
 
     def check_consume_key(self, key: str, character: str | None) -> bool:
         app = self.app
-        if key == 'k' and getattr(app, '_view_selection', '') \
-                == 'selecting-agent':
+        if key == "k" and getattr(app, "_view_selection", "") == "selecting-agent":
             return False
         return super().check_consume_key(key, character)
 
     def _continues(self) -> bool:
         row, column = self.cursor_location
-        return column > 0 and self.document.get_line(row)[column - 1] == '\\'
+        return column > 0 and self.document.get_line(row)[column - 1] == "\\"
 
     def _break_line(self) -> None:
         row, column = self.cursor_location
         if self._continues():
             self.delete((row, column - 1), (row, column))
-        self.insert('\n')
+        self.insert("\n")
 
     async def _on_key(self, event: events.Key) -> None:
-        if not event.key.endswith('enter'):
+        if not event.key.endswith("enter"):
             await super()._on_key(event)
             return
         event.stop()
         event.prevent_default()
-        if event.key == 'enter' and not self._continues():
+        if event.key == "enter" and not self._continues():
             self.post_message(PromptSubmitted(self))
             return
         self._break_line()
 
 
 class _AgentPane(Static):
-
     def __init__(self, **kw):
         super().__init__("", markup=True, classes="agents", **kw)
 
 
 class _UserBlock(Static):
-
     def __init__(self, text: str, color_for=None, **kw):
-        super().__init__(_user_markup(text, color_for), markup=True,
-                         classes="user", **kw)
+        super().__init__(_user_markup(text, color_for), markup=True, classes="user", **kw)
 
 
 class _ToolBlock(Static):
-
     def __init__(self, name: str, tool_input, cwd: str = ".", **kw):
         super().__init__(markup=True, **kw)
         self._name = name
@@ -207,8 +204,7 @@ class _ToolBlock(Static):
             shown, hidden = self._progress, 0
         else:
             shown = self._progress[-AGENT_TRAIL_LIMIT:]
-            hidden = sum(uses for _rows, uses
-                         in self._progress[:-AGENT_TRAIL_LIMIT])
+            hidden = sum(uses for _rows, uses in self._progress[:-AGENT_TRAIL_LIMIT])
         rows = [row for entry, _uses in shown for row in entry]
         if hidden:
             rows.append(_more_tool_uses(hidden))
@@ -234,26 +230,23 @@ class _ToolBlock(Static):
 
     def _meta_summary(self) -> str | None:
         m = self._meta or {}
-        if m.get('num_lines') and self._name == READ:
-            path = m.get('path', '')
-            return (f"Read {_plural(m['num_lines'], 'line')}"
-                    + (f" {escape(path)}" if path else ""))
-        if m.get('num_files') is not None or m.get('num_lines') is not None:
+        if m.get("num_lines") and self._name == READ:
+            path = m.get("path", "")
+            return f"Read {_plural(m['num_lines'], 'line')}" + (f" {escape(path)}" if path else "")
+        if m.get("num_files") is not None or m.get("num_lines") is not None:
             if self._name == GREP:
-                hits = m.get('num_lines', 0)
-                files = m.get('num_files', 0)
-                return (f"Found {_plural(hits, 'line')} in "
-                        f"{_plural(files, 'file')}")
-            if m.get('num_files') is not None:
+                hits = m.get("num_lines", 0)
+                files = m.get("num_files", 0)
+                return f"Found {_plural(hits, 'line')} in {_plural(files, 'file')}"
+            if m.get("num_files") is not None:
                 return f"Found {_plural(m['num_files'], 'file')}"
-        if m.get('num_entries') is not None:
+        if m.get("num_entries") is not None:
             return f"Listed {_plural(m['num_entries'], 'entry')}"
-        if m.get('num_added', 0) or m.get('num_removed', 0):
-            return _edit_summary(m.get('num_added', 0),
-                                 m.get('num_removed', 0))
-        if self._name == WRITE and m.get('mode'):
-            verb = 'Wrote' if m['mode'] == 'wrote' else 'Updated'
-            if m.get('path'):
+        if m.get("num_added", 0) or m.get("num_removed", 0):
+            return _edit_summary(m.get("num_added", 0), m.get("num_removed", 0))
+        if self._name == WRITE and m.get("mode"):
+            verb = "Wrote" if m["mode"] == "wrote" else "Updated"
+            if m.get("path"):
                 return f"{verb} {escape(m['path'])}"
         return None
 
@@ -271,21 +264,19 @@ class _ToolBlock(Static):
         return self._name == AGENT and bool(teammate_name(self._input))
 
     def _agent_summary(self) -> str | None:
-        return (self._meta or {}).get('agent_summary')
+        return (self._meta or {}).get("agent_summary")
 
     def _head(self) -> str:
         name = escape(tool_label(self._name, self._input))
         args = escape(tool_args(self._name, self._input, self._cwd))
-        color = "#FF6B80" if self._failed else (
-            "#4EBA65" if self._done else self.app.brand)
+        color = "#FF6B80" if self._failed else ("#4EBA65" if self._done else self.app.brand)
         marker = BULLET if (self._done or self._failed) else self._frame
         return f"[{color}]{marker}[/] [bold]{name}[/]({args})"
 
     def _draw(self):
         head = self._head()
         if self._rejected is not None:
-            self.update(f"{head}\n[dim]{RESULT_PREFIX}"
-                        f"{escape(self._rejected)}[/]")
+            self.update(f"{head}\n[dim]{RESULT_PREFIX}{escape(self._rejected)}[/]")
             return
         if self._is_teammate_spawn():
             summary = self._agent_summary()
@@ -315,13 +306,11 @@ class _ToolBlock(Static):
             return
         summary = self._meta_summary()
         if summary is None:
-            summary = result_summary(self._name, self._output,
-                                      self._width())
+            summary = result_summary(self._name, self._output, self._width())
         if self._meta_summary() is not None:
             self.remove_class("diff")
         else:
-            diff = _diff_block(self._name, self._input, self._output,
-                               self._cwd, self._width())
+            diff = _diff_block(self._name, self._input, self._output, self._cwd, self._width())
             if diff is not None:
                 self.add_class("diff")
                 self.update(f"{head}\n{diff}")

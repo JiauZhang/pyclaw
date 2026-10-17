@@ -16,13 +16,14 @@ from pyclaw import editor
 
 
 class MemoryScreen(Screen):
-
-    BINDINGS = [keys.binding('prev', 'Previous'),
-                keys.binding('next', 'Next'),
-                keys.binding('open', 'Edit'),
-                keys.binding('dismiss', 'Close'),
-                Binding('q', 'dismiss', 'Close'),
-                Binding('ctrl+c', 'dismiss', 'Close')]
+    BINDINGS = [
+        keys.binding("prev", "Previous"),
+        keys.binding("next", "Next"),
+        keys.binding("open", "Edit"),
+        keys.binding("dismiss", "Close"),
+        Binding("q", "dismiss", "Close"),
+        Binding("ctrl+c", "dismiss", "Close"),
+    ]
 
     def __init__(self, owner, cwd: str, **kw):
         super().__init__(**kw)
@@ -45,14 +46,11 @@ class MemoryScreen(Screen):
     def _draw(self):
         rows = self._targets()
         self._selected = max(0, min(self._selected, len(rows) - 1))
-        lines = ui.heading('Memory files')
-        labels = [f'{scope} · {path}'
-                  + ('' if path.exists() else '  (not created yet)')
-                  for scope, path in rows]
+        lines = ui.heading("Memory files")
+        labels = [f"{scope} · {path}" + ("" if path.exists() else "  (not created yet)") for scope, path in rows]
         lines += ui.rows(labels, self._selected)
-        lines += ui.footer(('open', 'edits the selected file'),
-                           ('dismiss', 'closes'))
-        self.query_one("#mm-body", Static).update('\n'.join(lines))
+        lines += ui.footer(("open", "edits the selected file"), ("dismiss", "closes"))
+        self.query_one("#mm-body", Static).update("\n".join(lines))
 
     def _move(self, delta: int):
         self._selected += delta
@@ -72,7 +70,7 @@ class MemoryScreen(Screen):
         _scope, path = rows[min(self._selected, len(rows) - 1)]
         path.parent.mkdir(parents=True, exist_ok=True)
         if not path.exists():
-            path.write_text('', encoding='utf-8')
+            path.write_text("", encoding="utf-8")
         with contextlib.ExitStack() as stack:
             try:
                 stack.enter_context(self.app.suspend())
@@ -84,10 +82,8 @@ class MemoryScreen(Screen):
 
     def _note(self, path, opened_with: str) -> str:
         if not opened_with:
-            return (f'No editor found, so {path} was not opened. Set $VISUAL '
-                    f'or $EDITOR and try again.')
-        return (f'Opened {path} in {opened_with}. To use a different editor, '
-                f'set $VISUAL or $EDITOR.')
+            return f"No editor found, so {path} was not opened. Set $VISUAL or $EDITOR and try again."
+        return f"Opened {path} in {opened_with}. To use a different editor, set $VISUAL or $EDITOR."
 
     def action_dismiss(self):
         self.app.pop_screen()

@@ -18,8 +18,7 @@ def _colours(markup: str) -> list[tuple]:
 
 def test_the_wordmark_is_six_rows_of_pinned_shape():
     assert len(banner.WORDMARK) == 6
-    assert banner.WORDMARK[0] == (
-        "██████╗ ██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗")
+    assert banner.WORDMARK[0] == ("██████╗ ██╗   ██╗ ██████╗██╗      █████╗ ██╗    ██╗")
     assert [len(row) for row in banner.WORDMARK] == [51, 51, 51, 51, 51, 50]
 
 
@@ -80,14 +79,12 @@ def test_a_random_triple_is_reproducible_and_stays_bright():
 
 
 def test_a_gradient_style_uses_the_configured_colours_verbatim():
-    cfg = {"style": "gradient", "from": "#123456", "to": "#654321",
-           "angle": 30.0, "seed": None}
+    cfg = {"style": "gradient", "from": "#123456", "to": "#654321", "angle": 30.0, "seed": None}
     assert banner.palette(cfg) == ((0x12, 0x34, 0x56), (0x65, 0x43, 0x21), 30.0)
 
 
 def test_a_dark_gradient_style_is_not_quietly_brightened():
-    cfg = {"style": "gradient", "from": "#0A0A14", "to": "#140A0A",
-           "angle": 45.0, "seed": None}
+    cfg = {"style": "gradient", "from": "#0A0A14", "to": "#140A0A", "angle": 45.0, "seed": None}
     top, bottom, _ = banner.palette(cfg)
     middle = banner.ramp(top, bottom, 0.5)
     assert _hsv(middle)[2] <= max(_hsv(top)[2], _hsv(bottom)[2]) + 0.01
@@ -95,29 +92,25 @@ def test_a_dark_gradient_style_is_not_quietly_brightened():
 
 
 def test_a_random_style_is_pinned_by_its_seed():
-    cfg = {"style": "random", "from": "#0084E4", "to": "#F0CC00",
-           "angle": 60.0, "seed": 42}
+    cfg = {"style": "random", "from": "#0084E4", "to": "#F0CC00", "angle": 60.0, "seed": 42}
     assert banner.palette(cfg) == banner.palette(dict(cfg, seed=42))
     assert banner.palette(cfg) != banner.palette(dict(cfg, seed=43))
 
 
 def test_a_random_style_without_a_seed_changes_every_time():
-    cfg = {"style": "random", "from": "#0084E4", "to": "#F0CC00",
-           "angle": 60.0, "seed": None}
+    cfg = {"style": "random", "from": "#0084E4", "to": "#F0CC00", "angle": 60.0, "seed": None}
     assert banner.palette(cfg) != banner.palette(cfg)
 
 
 def test_the_brand_colour_is_the_middle_of_the_logo():
     triple = (banner.BLUE, banner.YELLOW, 60.0)
-    assert banner.brand(triple) == "#%02X%02X%02X" % banner.ramp(
-        banner.BLUE, banner.YELLOW, 0.5)
+    assert banner.brand(triple) == "#%02X%02X%02X" % banner.ramp(banner.BLUE, banner.YELLOW, 0.5)
 
 
 def test_dimming_puts_the_brightest_channel_at_the_requested_lightness():
     triple = (banner.BLUE, banner.YELLOW, 60.0)
     mid = banner.ramp(banner.BLUE, banner.YELLOW, 0.5)
-    assert banner.dimmed(triple, 55) == banner.rgb_to_hex(
-        tuple(round(c * 55 / max(mid)) for c in mid))
+    assert banner.dimmed(triple, 55) == banner.rgb_to_hex(tuple(round(c * 55 / max(mid)) for c in mid))
     assert max(banner.hex_to_rgb(banner.dimmed(triple, 55))) == 55
 
 
@@ -125,8 +118,7 @@ def test_dimmed_paint_keeps_the_hue_and_the_contrast_budget():
     rng = random.Random(7)
     for _ in range(200):
         for lightness in (banner.BAND_LIGHTNESS, banner.RULE_LIGHTNESS):
-            paint = banner.hex_to_rgb(
-                banner.dimmed(banner.random_triple(rng), lightness))
+            paint = banner.hex_to_rgb(banner.dimmed(banner.random_triple(rng), lightness))
             assert max(paint) == lightness
             assert len(set(paint)) > 1
 

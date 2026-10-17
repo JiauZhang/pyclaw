@@ -1,79 +1,68 @@
 import difflib
 from pathlib import Path
 
-from pyclaw.slash.session import (_handle_add_dir, _handle_agents,
-                                  _handle_branch,
-                                  _handle_hooks, _handle_permissions,
-                                  _handle_plan, _handle_rename,
-                                  _handle_resume, _handle_rewind,
-                                  _handle_skills, _handle_tasks, _status)
+from pyclaw.slash.session import (
+    _handle_add_dir,
+    _handle_agents,
+    _handle_branch,
+    _handle_hooks,
+    _handle_permissions,
+    _handle_plan,
+    _handle_rename,
+    _handle_resume,
+    _handle_rewind,
+    _handle_skills,
+    _handle_tasks,
+    _status,
+)
 from pyclaw.slash.setup import _handle_effort, _handle_statusline
 from pyclaw.slash.text import _copy, _export
-from pyclaw.slash.usage import (_context, _handle_cost, _handle_model,
-                                _stats_lines, _usage_lines)
+from pyclaw.slash.usage import _context, _handle_cost, _handle_model, _stats_lines, _usage_lines
 
 from pyclaw.team import memory as agent_memory
 
 COMMANDS = [
-    {'name': 'help', 'aliases': ('h', '?'), 'desc': 'List every command', 'hint': ''},
-    {'name': 'clear', 'desc': 'Start a new session, keeping the old transcript', 'hint': ''},
-    {'name': 'resume', 'desc': 'Pick a saved conversation, or name the one to '
-                               'continue', 'hint': '[name or id]'},
-    {'name': 'rename', 'desc': 'Name this conversation, so /resume is readable',
-     'hint': '[name]'},
-    {'name': 'branch', 'desc': 'Carry on in a copy of this conversation from '
-                               'here', 'hint': '[name]'},
-    {'name': 'rewind', 'desc': 'Put the files and conversation back to an '
-                               'earlier turn',
-     'hint': '[n] [code|conversation]'},
-    {'name': 'diff', 'desc': 'Show what has changed in the working tree',
-     'hint': ''},
-    {'name': 'add-dir', 'desc': 'Work with files in another directory as well',
-     'hint': '<path>'},
-    {'name': 'tasks', 'aliases': ('bashes',),
-     'desc': 'List what is running in the background', 'hint': ''},
-    {'name': 'skills', 'desc': 'List the skills PyClaw can load on demand',
-     'hint': ''},
-    {'name': 'hooks', 'desc': 'List the hooks that will run and where they '
-                              'come from', 'hint': ''},
-    {'name': 'init', 'desc': 'Generate an AGENTS.md by surveying the codebase', 'hint': ''},
-    {'name': 'memory', 'desc': 'Show loaded project memory (AGENTS.md) locations', 'hint': ''},
-    {'name': 'compact', 'desc': 'Force context compaction now', 'hint': ''},
-    {'name': 'status', 'desc': 'Show the current session runtime info', 'hint': ''},
-    {'name': 'context', 'desc': 'Show what the model is sent and how full the '
-                                'window is', 'hint': ''},
-    {'name': 'permissions', 'desc': 'Show/switch permission mode, manage permission rules', 'hint': '[mode|remove <rule>]'},
-    {'name': 'agents', 'desc': 'List and manage the agent definitions PyClaw can delegate to', 'hint': ''},
-    {'name': 'plan', 'desc': 'Enter plan (read-only) mode', 'hint': ''},
-    {'name': 'model', 'desc': 'Show or switch the model for this session', 'hint': '[name]'},
-    {'name': 'effort', 'desc': 'Show or set the reasoning effort',
-     'hint': '[low|medium|high|auto]'},
-    {'name': 'cost', 'desc': 'Show token usage and cost at your configured rates',
-     'hint': ''},
-    {'name': 'usage', 'desc': 'What the recorded turns cost: today or week',
-     'hint': '[today|week]'},
-    {'name': 'stats', 'desc': 'Per-day totals of the recorded work',
-     'hint': '[days]'},
-    {'name': 'statusline', 'desc': "Set up PyClaw's status line",
-     'hint': '[instructions]'},
-    {'name': 'export', 'desc': 'Write this conversation out as a markdown '
-                               'file', 'hint': '[name.md]'},
-    {'name': 'copy', 'desc': 'Put an answer, or one of its code blocks, on '
-                             'the clipboard', 'hint': '[n[:m]]'},
+    {"name": "help", "aliases": ("h", "?"), "desc": "List every command", "hint": ""},
+    {"name": "clear", "desc": "Start a new session, keeping the old transcript", "hint": ""},
+    {"name": "resume", "desc": "Pick a saved conversation, or name the one to continue", "hint": "[name or id]"},
+    {"name": "rename", "desc": "Name this conversation, so /resume is readable", "hint": "[name]"},
+    {"name": "branch", "desc": "Carry on in a copy of this conversation from here", "hint": "[name]"},
+    {"name": "rewind", "desc": "Put the files and conversation back to an earlier turn", "hint": "[n] [code|conversation]"},
+    {"name": "diff", "desc": "Show what has changed in the working tree", "hint": ""},
+    {"name": "add-dir", "desc": "Work with files in another directory as well", "hint": "<path>"},
+    {"name": "tasks", "aliases": ("bashes",), "desc": "List what is running in the background", "hint": ""},
+    {"name": "skills", "desc": "List the skills PyClaw can load on demand", "hint": ""},
+    {"name": "hooks", "desc": "List the hooks that will run and where they come from", "hint": ""},
+    {"name": "init", "desc": "Generate an AGENTS.md by surveying the codebase", "hint": ""},
+    {"name": "memory", "desc": "Show loaded project memory (AGENTS.md) locations", "hint": ""},
+    {"name": "compact", "desc": "Force context compaction now", "hint": ""},
+    {"name": "status", "desc": "Show the current session runtime info", "hint": ""},
+    {"name": "context", "desc": "Show what the model is sent and how full the window is", "hint": ""},
+    {"name": "permissions", "desc": "Show/switch permission mode, manage permission rules", "hint": "[mode|remove <rule>]"},
+    {"name": "agents", "desc": "List and manage the agent definitions PyClaw can delegate to", "hint": ""},
+    {"name": "plan", "desc": "Enter plan (read-only) mode", "hint": ""},
+    {"name": "model", "desc": "Show or switch the model for this session", "hint": "[name]"},
+    {"name": "effort", "desc": "Show or set the reasoning effort", "hint": "[low|medium|high|auto]"},
+    {"name": "cost", "desc": "Show token usage and cost at your configured rates", "hint": ""},
+    {"name": "usage", "desc": "What the recorded turns cost: today or week", "hint": "[today|week]"},
+    {"name": "stats", "desc": "Per-day totals of the recorded work", "hint": "[days]"},
+    {"name": "statusline", "desc": "Set up PyClaw's status line", "hint": "[instructions]"},
+    {"name": "export", "desc": "Write this conversation out as a markdown file", "hint": "[name.md]"},
+    {"name": "copy", "desc": "Put an answer, or one of its code blocks, on the clipboard", "hint": "[n[:m]]"},
 ]
 
 
 def _help_text() -> str:
-    lines = ['Commands:']
+    lines = ["Commands:"]
     for cmd in COMMANDS:
-        name = f"/{cmd['name']}" + ''.join(f" or /{a}"
-                                           for a in cmd.get('aliases', ()))
-        lines.append(f'{name:<14}{cmd["desc"]}')
-    return '\n'.join(lines)
+        name = f"/{cmd['name']}" + "".join(f" or /{a}" for a in cmd.get("aliases", ()))
+        lines.append(f"{name:<14}{cmd['desc']}")
+    return "\n".join(lines)
+
 
 HELP = _help_text()
 
-INIT_PROMPT = '''Analyze this codebase and write an AGENTS.md file: the instructions AI agents read before working in this repository.
+INIT_PROMPT = """Analyze this codebase and write an AGENTS.md file: the instructions AI agents read before working in this repository.
 
 What to add:
 1. The commands that matter here, such as how to build, lint, and run tests, including how to run a single test.
@@ -94,27 +83,26 @@ Start the file with:
 # AGENTS.md
 
 This file provides guidance to AI agents when working with code in this repository.
-'''
+"""
 
 
 _USAGE: dict[str, int] = {}
 
 
 def skill_rows(session) -> list[dict]:
-    return [{'name': skill.name,
-             'desc': skill.description,
-             'hint': skill.argument_hint,
-             'aliases': ()}
-            for skill in session.user_skills()]
+    return [
+        {"name": skill.name, "desc": skill.description, "hint": skill.argument_hint, "aliases": ()}
+        for skill in session.user_skills()
+    ]
 
 
 def _skill_help(session) -> str:
     rows = skill_rows(session)
     if not rows:
-        return ''
-    return ('\n\nFrom skills, and typed the same way:\n'
-            + '\n'.join(f"  /{row['name']} {row['hint']}".rstrip()
-                        + f"  - {row['desc']}" for row in rows))
+        return ""
+    return "\n\nFrom skills, and typed the same way:\n" + "\n".join(
+        f"  /{row['name']} {row['hint']}".rstrip() + f"  - {row['desc']}" for row in rows
+    )
 
 
 def _fuzzy_score(query: str, text: str) -> float:
@@ -130,33 +118,34 @@ def _fuzzy_score(query: str, text: str) -> float:
         return 0.0
     return difflib.SequenceMatcher(None, q, t).ratio()
 
+
 def suggest(text: str, skills=()) -> list[dict]:
-    if not text.startswith('/'):
+    if not text.startswith("/"):
         return []
     query = text[1:]
-    if query != query.strip() or ' ' in query.strip():
+    if query != query.strip() or " " in query.strip():
         return []
     query = query.strip().lower()
     if not query:
-        used = [c for c in COMMANDS if _USAGE.get(c['name'])]
-        used.sort(key=lambda c: _USAGE[c['name']], reverse=True)
+        used = [c for c in COMMANDS if _USAGE.get(c["name"])]
+        used.sort(key=lambda c: _USAGE[c["name"]], reverse=True)
         top = used[:5]
         rest = [c for c in COMMANDS if c not in top]
-        rest.sort(key=lambda c: c['name'])
+        rest.sort(key=lambda c: c["name"])
         return top + rest + list(skills)
     scored = []
     for c in COMMANDS + list(skills):
-        name = c['name']
-        aliases = list(c.get('aliases', ()))
+        name = c["name"]
+        aliases = list(c.get("aliases", ()))
         exact = name == query
         alias_exact = any(a == query for a in aliases)
         prefix = name.startswith(query)
-        prefix_alias = min((len(a) for a in aliases
-                            if a.startswith(query)), default=0)
-        fuzzy = max(_fuzzy_score(query, name),
-                    max((_fuzzy_score(query, a) for a in aliases),
-                        default=0.0),
-                    _fuzzy_score(query, c['desc']))
+        prefix_alias = min((len(a) for a in aliases if a.startswith(query)), default=0)
+        fuzzy = max(
+            _fuzzy_score(query, name),
+            max((_fuzzy_score(query, a) for a in aliases), default=0.0),
+            _fuzzy_score(query, c["desc"]),
+        )
         if not (exact or alias_exact or prefix or prefix_alias or fuzzy > 0):
             continue
         if exact:
@@ -164,105 +153,101 @@ def suggest(text: str, skills=()) -> list[dict]:
         elif alias_exact:
             rank = (1, 0, 0, name)
         elif prefix:
-            rank = (2, len(name), name, '')
+            rank = (2, len(name), name, "")
         elif prefix_alias:
-            rank = (3, prefix_alias, name, '')
+            rank = (3, prefix_alias, name, "")
         else:
             rank = (4, -fuzzy, -_USAGE.get(name, 0), name)
         scored.append((c, rank))
     scored.sort(key=lambda t: t[1])
     return [t[0] for t in scored]
 
-async def handle_slash(text: str, session, session_key: str = '',
-                       terminal=None) -> str | None | tuple:
+
+async def handle_slash(text: str, session, session_key: str = "", terminal=None) -> str | None | tuple:
     text = text.strip()
-    if not text.startswith('/'):
+    if not text.startswith("/"):
         return None
-    cmd, _, arg = text[1:].partition(' ')
+    cmd, _, arg = text[1:].partition(" ")
     cmd = cmd.strip().lower()
     arg = arg.strip()
 
     for entry in COMMANDS:
-        if cmd == entry['name'] or cmd in entry.get('aliases', ()):
-            _USAGE[entry['name']] = _USAGE.get(entry['name'], 0) + 1
+        if cmd == entry["name"] or cmd in entry.get("aliases", ()):
+            _USAGE[entry["name"]] = _USAGE.get(entry["name"], 0) + 1
             break
 
-    if cmd in ('help', 'h', '?'):
+    if cmd in ("help", "h", "?"):
         return HELP + _skill_help(session)
-    if cmd == 'init':
-        cwd = getattr(session, 'cwd', None) or '.'
-        existing = Path(cwd) / 'AGENTS.md'
+    if cmd == "init":
+        cwd = getattr(session, "cwd", None) or "."
+        existing = Path(cwd) / "AGENTS.md"
         if existing.exists():
-            info = (f'AGENTS.md already exists at {existing}. '
-                    f'Asking the agent to improve it.')
+            info = f"AGENTS.md already exists at {existing}. Asking the agent to improve it."
         else:
-            info = 'Surveying the codebase and drafting AGENTS.md…'
+            info = "Surveying the codebase and drafting AGENTS.md…"
         return info, INIT_PROMPT
-    if cmd == 'compact':
-        compactor = getattr(session, 'compact', None)
+    if cmd == "compact":
+        compactor = getattr(session, "compact", None)
         if compactor is None:
-            return 'Compaction is not available for this session.'
+            return "Compaction is not available for this session."
         return await compactor()
-    if cmd == 'memory':
-        cwd = getattr(session, 'cwd', None) or '.'
-        lines = [f'user: {agent_memory._user_memory_file()}'
-                 f'project: {Path(cwd) / "AGENTS.md"}']
+    if cmd == "memory":
+        cwd = getattr(session, "cwd", None) or "."
+        lines = [f"user: {agent_memory._user_memory_file()}project: {Path(cwd) / 'AGENTS.md'}"]
         memory = agent_memory.load_project_memory(cwd)
-        lines.append('loaded: yes' if memory else 'loaded: nothing found')
+        lines.append("loaded: yes" if memory else "loaded: nothing found")
         for rule in agent_memory.rule_set(cwd).all():
-            lines.append(f'rule for {", ".join(rule.globs)}: {rule.path}')
-        return '\n'.join(lines)
-    if cmd == 'clear':
-        await session.end_session('clear')
+            lines.append(f"rule for {', '.join(rule.globs)}: {rule.path}")
+        return "\n".join(lines)
+    if cmd == "clear":
+        await session.end_session("clear")
         session.reset()
-        return 'Conversation history cleared. Started a new session.'
-    if cmd == 'resume':
+        return "Conversation history cleared. Started a new session."
+    if cmd == "resume":
         return _handle_resume(session, arg)
-    if cmd == 'rename':
+    if cmd == "rename":
         return _handle_rename(session, arg)
-    if cmd == 'branch':
+    if cmd == "branch":
         return _handle_branch(session, arg)
-    if cmd == 'rewind':
+    if cmd == "rewind":
         return _handle_rewind(session, arg)
-    if cmd in ('tasks', 'bashes'):
+    if cmd in ("tasks", "bashes"):
         return _handle_tasks(session, arg)
-    if cmd == 'skills':
+    if cmd == "skills":
         return _handle_skills(session, arg)
-    if cmd == 'hooks':
+    if cmd == "hooks":
         return _handle_hooks(session, arg)
-    if cmd == 'add-dir':
+    if cmd == "add-dir":
         return _handle_add_dir(session, arg)
-    if cmd == 'status':
+    if cmd == "status":
         return _status(session, session_key)
-    if cmd == 'permissions':
+    if cmd == "permissions":
         return await _handle_permissions(session, arg)
-    if cmd == 'agents':
+    if cmd == "agents":
         return _handle_agents(session)
-    if cmd == 'plan':
+    if cmd == "plan":
         return await _handle_plan(session, arg)
-    if cmd == 'model':
+    if cmd == "model":
         return await _handle_model(session, arg)
-    if cmd == 'effort':
+    if cmd == "effort":
         return await _handle_effort(session, arg)
-    if cmd == 'cost':
+    if cmd == "cost":
         return _handle_cost(session, arg)
-    if cmd == 'usage':
+    if cmd == "usage":
         return _usage_lines(session, arg)
-    if cmd == 'export':
+    if cmd == "export":
         return _export(session, arg, session_key)
-    if cmd == 'copy':
+    if cmd == "copy":
         return _copy(session, arg, terminal=terminal)
-    if cmd == 'stats':
+    if cmd == "stats":
         return _stats_lines(arg)
-    if cmd == 'context':
+    if cmd == "context":
         return _context(session, arg)
-    if cmd == 'statusline':
+    if cmd == "statusline":
         return _handle_statusline(session, arg)
 
-    skill = next((one for one in session.user_skills() if one.name == cmd),
-                 None)
+    skill = next((one for one in session.user_skills() if one.name == cmd), None)
     if skill is not None:
-        return (f'Running /{cmd}…', skill.render(arg))
+        return (f"Running /{cmd}…", skill.render(arg))
 
-    return (f'Unknown command: /{cmd}.\n\n{HELP}'
-            f'{_skill_help(session)}')
+    return f"Unknown command: /{cmd}.\n\n{HELP}{_skill_help(session)}"

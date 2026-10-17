@@ -13,12 +13,13 @@ from pyclaw.tui.components import _PromptInput
 
 
 class HistorySearchScreen(Screen):
-
-    BINDINGS = [keys.binding('prev', 'Previous', priority=True, aliases=False),
-                keys.binding('next', 'Next', priority=True, aliases=False),
-                keys.binding('dismiss', 'Close'),
-                Binding('ctrl+c', 'dismiss', 'Close'),
-                keys.binding('accept', 'Accept')]
+    BINDINGS = [
+        keys.binding("prev", "Previous", priority=True, aliases=False),
+        keys.binding("next", "Next", priority=True, aliases=False),
+        keys.binding("dismiss", "Close"),
+        Binding("ctrl+c", "dismiss", "Close"),
+        keys.binding("accept", "Accept"),
+    ]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -36,8 +37,7 @@ class HistorySearchScreen(Screen):
 
     def _matches(self) -> list[str]:
         query = self.query_one("#hs-input", Input).value
-        return [t for t in reversed(self._owner._history)
-                if not query or query in t]
+        return [t for t in reversed(self._owner._history) if not query or query in t]
 
     def _refresh(self):
         try:
@@ -50,9 +50,8 @@ class HistorySearchScreen(Screen):
             return
         self._selected = min(self._selected, len(matches) - 1)
         start = max(0, min(self._selected - 3, len(matches) - 7))
-        window = matches[start:start + 7]
-        widget.update("\n".join(
-            ui.rows(window, self._selected - start)))
+        window = matches[start : start + 7]
+        widget.update("\n".join(ui.rows(window, self._selected - start)))
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self._selected = 0

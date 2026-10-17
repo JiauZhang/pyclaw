@@ -12,8 +12,7 @@ from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.theme import BUILTIN_THEMES
 from textual.widgets import Input, Static
-from chatchat.hooks.events import (register_hook_event_handler,
-                                    register_runtime_handler)
+from chatchat.hooks.events import register_hook_event_handler, register_runtime_handler
 from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.session import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
@@ -37,19 +36,44 @@ from pyclaw.tui.transcript import TranscriptMixin
 from pyclaw.tui.turn_flow import TurnFlowMixin
 from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
 from pyclaw.tui import keys
-from pyclaw.tui.theme import (FINISHED_LINGER_SECONDS, INTERRUPTED_TEXT,
-                              OVERLAY_GATED_ACTIONS, POINTER, SPINNER_FRAMES,
-                              SPINNER_INTERVAL)
-from pyclaw.tui.components import (_AgentGroupBlock, _AgentPane, _Conv,
-                                _GroupBlock, _LogoBlock, _PagerScroll,
-                                _PromptInput, _ToolBlock)
+from pyclaw.tui.theme import (
+    FINISHED_LINGER_SECONDS,
+    INTERRUPTED_TEXT,
+    OVERLAY_GATED_ACTIONS,
+    POINTER,
+    SPINNER_FRAMES,
+    SPINNER_INTERVAL,
+)
+from pyclaw.tui.components import (
+    _AgentGroupBlock,
+    _AgentPane,
+    _Conv,
+    _GroupBlock,
+    _LogoBlock,
+    _PagerScroll,
+    _PromptInput,
+    _ToolBlock,
+)
 
 logger = logging.getLogger(__name__)
 
-class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusMixin, PromptMixin,
-                TaskPanelMixin, EventRouterMixin, ApprovalFlowMixin,
-                TranscriptMixin, ScrollFollowMixin, DeliveryMixin,
-                NotifyMixin, App[None]):
+
+class PyClawApp(
+    ActionMixin,
+    TurnFlowMixin,
+    RosterMixin,
+    ToolTraceMixin,
+    StatusMixin,
+    PromptMixin,
+    TaskPanelMixin,
+    EventRouterMixin,
+    ApprovalFlowMixin,
+    TranscriptMixin,
+    ScrollFollowMixin,
+    DeliveryMixin,
+    NotifyMixin,
+    App[None],
+):
     TITLE = "PyClaw"
     ENABLE_COMMAND_PALETTE = False
     CSS = """
@@ -131,16 +155,15 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
     def check_action(self, action: str, parameters) -> bool:
         if action in OVERLAY_GATED_ACTIONS and self.modal_overlay_active:
             return False
-        if action in ('suggest_tab', 'suggest_dismiss'):
+        if action in ("suggest_tab", "suggest_dismiss"):
             return bool(self._suggest_items)
-        if action in ('prompt_next', 'prompt_prev'):
+        if action in ("prompt_next", "prompt_prev"):
             return len(self.screen_stack) <= 1
-        if action == 'stop_agent':
-            return (self._view_selection == 'selecting-agent'
-                    and 0 <= self._selected_index < len(self._teammates()))
-        if action in ('agent_next', 'agent_prev'):
+        if action == "stop_agent":
+            return self._view_selection == "selecting-agent" and 0 <= self._selected_index < len(self._teammates())
+        if action in ("agent_next", "agent_prev"):
             return bool(self._teammates())
-        if action == 'quit':
+        if action == "quit":
             return not isinstance(self.focused, _PagerScroll)
         return True
 
@@ -153,7 +176,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
     def focused_overlay(self) -> str | None:
         if len(self.screen_stack) > 1:
             return type(self.screen_stack[-1]).__name__
-        for name in ('select', 'autocomplete'):
+        for name in ("select", "autocomplete"):
             if name in self._overlays:
                 return name
         return None
@@ -161,27 +184,30 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
     @property
     def modal_overlay_active(self) -> bool:
         focus = self.focused_overlay()
-        return focus is not None and focus != 'autocomplete'
+        return focus is not None and focus != "autocomplete"
 
-    def __init__(self, *, builder, session_id=None, resume=False,
-                 resume_from=None, hook_events=False, worktree=None):
+    def __init__(self, *, builder, session_id=None, resume=False, resume_from=None, hook_events=False, worktree=None):
         super().__init__()
         self._triple = banner.palette(config.load()["banner"])
         self.brand = banner.brand(self._triple)
-        self.register_theme(dataclasses.replace(
-            BUILTIN_THEMES["textual-dark"], name="pyclaw",
-            variables={"brand": self.brand,
-                       "user-message": banner.dimmed(self._triple,
-                                                     banner.BAND_LIGHTNESS),
-                       "prompt-border": banner.dimmed(self._triple,
-                                                      banner.RULE_LIGHTNESS)}))
+        self.register_theme(
+            dataclasses.replace(
+                BUILTIN_THEMES["textual-dark"],
+                name="pyclaw",
+                variables={
+                    "brand": self.brand,
+                    "user-message": banner.dimmed(self._triple, banner.BAND_LIGHTNESS),
+                    "prompt-border": banner.dimmed(self._triple, banner.RULE_LIGHTNESS),
+                },
+            )
+        )
         self.theme = "pyclaw"
         self._builder = builder
         self._session_id = session_id
         self._resume = resume
         self._resume_from = resume_from
         self._worktree = worktree
-        self._startup_error = ''
+        self._startup_error = ""
         self._team = None
         self._session: Session | None = None
         self._queue: asyncio.Queue = asyncio.Queue()
@@ -201,8 +227,8 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._work_block: Static | None = None
         self._turn_started_at = 0.0
         self._hud_started = time.monotonic()
-        self._exit_note = ''
-        self._git = ''
+        self._exit_note = ""
+        self._git = ""
         self._statusline_cmd = ""
         self._statusline_text = ""
         self._statusline_seen: tuple | None = None
@@ -221,17 +247,17 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._agent_state: dict[str, dict] = {}
         self._known_teammates: dict[str, object] = {}
         self._lingering: dict[str, tuple] = {}
-        setting = config.load().get('notifications') or {}
-        self._notify_backend = str(setting.get('backend') or 'auto')
-        self._notify_after = float(setting.get('idleSeconds', 60))
+        setting = config.load().get("notifications") or {}
+        self._notify_backend = str(setting.get("backend") or "auto")
+        self._notify_after = float(setting.get("idleSeconds", 60))
         self._last_interaction = time.monotonic()
         self._last_notified = 0.0
         self._linger_task: asyncio.Task | None = None
         self._cron_task: asyncio.Task | None = None
         self._cron_lock = None
         self._task_seen: dict[str, float] = {}
-        self._expanded_view = 'none'
-        self._view_selection = 'none'
+        self._expanded_view = "none"
+        self._view_selection = "none"
         self._preview = False
         self._selected_index = -1
         self._viewing: str | None = None
@@ -256,24 +282,23 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._last_interrupt = 0.0
         self._history: list[str] = []
         self._history_index: int | None = None
-        self._draft = ''
+        self._draft = ""
 
     def compose(self) -> ComposeResult:
         yield _Conv(id="conv")
         yield VerticalScroll(id="view")
-        yield Static('', id='suggest')
+        yield Static("", id="suggest")
         yield VerticalScroll(id="tasks")
         with Horizontal(id="prompt"):
             yield Static(POINTER, id="prompt-pointer")
             yield _PromptInput(placeholder="Message PyClaw\u2026", id="input")
-        yield Static('', id='statusline')
-        yield Static('', id='hud')
-        yield Static('', id='hud2')
+        yield Static("", id="statusline")
+        yield Static("", id="hud")
+        yield Static("", id="hud2")
 
     async def on_mount(self):
         self._team = self._builder()
-        self._session = Session(self._team, session_id=self._session_id,
-                                resume_from=self._resume_from)
+        self._session = Session(self._team, session_id=self._session_id, resume_from=self._resume_from)
         # A continued conversation has already been running: start the clock
         # where it left off rather than at zero.
         self._hud_started -= self._session.carried_seconds
@@ -281,18 +306,15 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         self._session.attach_question(self._ask_questions)
         if self._worktree is not None:
             started = await self._team.enter_worktree(self._worktree)
-            if started.startswith('Error'):
+            if started.startswith("Error"):
                 self._startup_error = started
                 self.exit()
                 return
         self._start_cron()
         self._unreg = register_runtime_handler(self._on_event)
-        self._events = events.open_stream(
-            session=str(self._session.conv_session_id))
+        self._events = events.open_stream(session=str(self._session.conv_session_id))
         team_name = str(self._team.name)
-        self._unreg_events = register_runtime_handler(
-            lambda ev: str(getattr(ev, 'team', '')) == team_name
-            and self._events(ev))
+        self._unreg_events = register_runtime_handler(lambda ev: str(getattr(ev, "team", "")) == team_name and self._events(ev))
         if self._hook_events:
             self._unreg_hooks = register_hook_event_handler(self._on_hook_event)
         self._tasks_pane = Static("", markup=True)
@@ -304,8 +326,7 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         greeting, shown_onboarding = self._greeting()
         logo = _LogoBlock(self._triple, greeting=greeting)
         await self._conv().mount(logo)
-        welcome.remember(seen_onboarding=shown_onboarding,
-                         version=str(__version__))
+        welcome.remember(seen_onboarding=shown_onboarding, version=str(__version__))
         if self._resume:
             self._session.restore_transcript()
             await self._render_history()
@@ -349,10 +370,8 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
 
     def _handle_exception(self, error: Exception) -> None:
         if self._events is not None:
-            self._events.note_error(
-                f'{type(error).__name__}: {error}')
-        logger.error('the app stopped on an unhandled error',
-                   exc_info=error)
+            self._events.note_error(f"{type(error).__name__}: {error}")
+        logger.error("the app stopped on an unhandled error", exc_info=error)
         super()._handle_exception(error)
 
     def _conv(self) -> _Conv:
@@ -371,18 +390,16 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         session = self._session
         version = str(__version__)
         cwd = self._cwd()
-        feeds, shown = welcome.feeds_for(
-            cwd=cwd, version=version,
-            session_id=getattr(session, 'conv_session_id', None))
+        feeds, shown = welcome.feeds_for(cwd=cwd, version=version, session_id=getattr(session, "conv_session_id", None))
         text = welcome.block(
             version=version,
-            model=str(getattr(session, 'model', '') or ''),
-            provider=str(getattr(session, 'provider', '') or ''),
-            cwd=cwd, feeds=feeds, brand=self.brand)
+            model=str(getattr(session, "model", "") or ""),
+            provider=str(getattr(session, "provider", "") or ""),
+            cwd=cwd,
+            feeds=feeds,
+            brand=self.brand,
+        )
         return text, shown
-
-
-
 
     async def _after_mount(self):
         if self._follow:
@@ -392,19 +409,3 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         await self._refresh_follow_hint()
 
     _SPIN = "".join(SPINNER_FRAMES)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

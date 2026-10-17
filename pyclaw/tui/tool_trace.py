@@ -10,10 +10,8 @@ from pyclaw.tui.readout import _agent_tokens
 from pyclaw.tui.theme import DONE_TEXT, RECENT_ACTIVITIES, STOPPED_TEXT
 from pyclaw.tui.collapse import recent_rollup
 from pyclaw.tui.toolcard import _tool_uses, agent_group_label
-from pyclaw.tui.toolui import (collapse_kinds, hidden_card, read_key,
-                               tool_args, tool_label)
-from pyclaw.tui.components import (_AgentGroupBlock, _Conv, _GroupBlock,
-                                _ToolBlock, teammate_name)
+from pyclaw.tui.toolui import collapse_kinds, hidden_card, read_key, tool_args, tool_label
+from pyclaw.tui.components import _AgentGroupBlock, _Conv, _GroupBlock, _ToolBlock, teammate_name
 from pyclaw.tools.names import AGENT
 
 logger = logging.getLogger(__name__)
@@ -22,22 +20,24 @@ logger = logging.getLogger(__name__)
 class ToolTraceMixin:
     def _note_tool(self, name: str, data: dict):
         state = self._state(name)
-        tool = str(data.get('tool', 'tool'))
-        args = tool_args(tool, data.get('input', ''), self._cwd())
-        state['last_tool'] = f"{tool_label(tool, data.get('input'))}: {args}"
-        recent = state['recent'] + [collapse_kinds(tool, data.get('input'))]
-        state['recent'] = recent[-RECENT_ACTIVITIES:]
+        tool = str(data.get("tool", "tool"))
+        args = tool_args(tool, data.get("input", ""), self._cwd())
+        state["last_tool"] = f"{tool_label(tool, data.get('input'))}: {args}"
+        recent = state["recent"] + [collapse_kinds(tool, data.get("input"))]
+        state["recent"] = recent[-RECENT_ACTIVITIES:]
+
     def _spawn_block(self, name: str):
         uid = self._spawns.get(name)
         if not uid:
             return None
         block = self._tools.get(uid)
-        return block if hasattr(block, 'add_progress') else None
+        return block if hasattr(block, "add_progress") else None
+
     def _finish_agent(self, name: str, *, stopped: bool = False):
         state = self._state(name)
-        state['busy'] = False
-        state['think'] = False
-        state['idle_since'] = None
+        state["busy"] = False
+        state["think"] = False
+        state["idle_since"] = None
         uid = self._spawns.get(name)
         if not uid:
             return
@@ -46,67 +46,71 @@ class ToolTraceMixin:
             return
         if not stopped and uid in self._teammate_spawns:
             agent = self._agent_by_name(name)
-            if agent is not None and getattr(agent, 'is_running', False):
+            if agent is not None and getattr(agent, "is_running", False):
                 return
         meta = self._tool_meta.setdefault(uid, {})
-        state['stopped'] = stopped
-        if 'agent_summary' not in meta:
-            started = state['started_at']
+        state["stopped"] = stopped
+        if "agent_summary" not in meta:
+            started = state["started_at"]
             elapsed = max(0, int(time.monotonic() - started))
             agent = self._agent_by_name(name)
             tokens = _agent_tokens(agent) if agent is not None else 0
-            label = STOPPED_TEXT if stopped else 'Done'
-            meta['agent_summary'] = (
-                f"{label} ({_tool_uses(state['tools'])} \u00b7 "
-                f"{_format_count(tokens)} tokens \u00b7 "
-                f"{duration(elapsed)})")
-            logger.info("sub-agent %s finished: %s", name,
-                        meta['agent_summary'])
+            label = STOPPED_TEXT if stopped else "Done"
+            meta["agent_summary"] = (
+                f"{label} ({_tool_uses(state['tools'])} \u00b7 {_format_count(tokens)} tokens \u00b7 {duration(elapsed)})"
+            )
+            logger.info("sub-agent %s finished: %s", name, meta["agent_summary"])
         if uid in self._teammate_spawns:
-            block.set_result(meta['agent_summary'], meta=meta)
+            block.set_result(meta["agent_summary"], meta=meta)
         else:
             block.end_progress()
+
     def _spin_char(self) -> str:
         return self._SPIN[self._spin_i % len(self._SPIN)]
+
     async def _add_tool(self, ev):
-        await self._mount_tool(ev.data.get("tool", "tool"),
-                               ev.data.get("input", ""),
-                               ev.data.get("tool_use_id", ""))
+        await self._mount_tool(ev.data.get("tool", "tool"), ev.data.get("input", ""), ev.data.get("tool_use_id", ""))
+
     def _close_read_group(self):
         if self._group is not None:
             self._group.finish()
             self._group = None
+
     def _reset_tool_group(self):
         self._close_read_group()
         if self._agent_group is not None:
             self._agent_group.finish()
             self._agent_group = None
         self._solo_spawn = None
+
     def _spawn_stats(self, member: dict) -> dict:
-        name = member['name'] or next(
-            (agent for agent, uid in self._spawns.items() if uid == member['uid']),
-            '')
-        member['name'] = name
+        name = member["name"] or next((agent for agent, uid in self._spawns.items() if uid == member["uid"]), "")
+        member["name"] = name
         state = self._agent_state.get(name, {})
         sub = self._subagents.get(name, {})
         agent = self._agent_by_name(name) if name else None
-        tokens = sub.get('tokens')
+        tokens = sub.get("tokens")
         if tokens is None and agent is not None:
             tokens = _agent_tokens(agent)
-        status = (recent_rollup(state.get('recent', []))
-                  or state.get('last_tool')
-                  or recent_rollup(sub.get('recent', []))
-                  or sub.get('last_tool') or '')
-        running = bool(getattr(agent, 'is_running', False))
+        status = (
+            recent_rollup(state.get("recent", []))
+            or state.get("last_tool")
+            or recent_rollup(sub.get("recent", []))
+            or sub.get("last_tool")
+            or ""
+        )
+        running = bool(getattr(agent, "is_running", False))
         if running:
-            member['seen'] = True
-        return {'tools': state.get('tools') or sub.get('tools', 0),
-                'tokens': tokens,
-                'running': running,
-                'status': status,
-                'done_text': STOPPED_TEXT if state.get('stopped')
-                else DONE_TEXT,
-                'error': bool(state.get('error'))}
+            member["seen"] = True
+        return {
+            "tools": state.get("tools") or sub.get("tools", 0),
+            "tokens": tokens,
+            "running": running,
+            "status": status,
+            "done_text": STOPPED_TEXT if state.get("stopped") else DONE_TEXT,
+            "error": bool(state.get("error")),
+        }
+
     async def _mount_spawn(self, uid: str, raw_input):
         self._close_read_group()
         label, detail = agent_group_label(AGENT, raw_input)
@@ -127,6 +131,7 @@ class ToolTraceMixin:
         self._tools[uid] = self._agent_group.member(uid)
         self._discard_think()
         await self._after_mount()
+
     async def _open_group(self, first_uid: str):
         card = self._tools.get(first_uid)
         self._solo_spawn = None
@@ -134,12 +139,12 @@ class ToolTraceMixin:
         group._frame = self._spin_char()
         if isinstance(card, _ToolBlock):
             label, detail = agent_group_label(AGENT, card._input)
-            group.add(first_uid, label, detail,
-                      agent=teammate_name(card._input))
+            group.add(first_uid, label, detail, agent=teammate_name(card._input))
             self._tools[first_uid] = group.member(first_uid)
             card.display = False
         await self._conv().mount(group, before=card)
         self._agent_group = group
+
     async def _mount_tool(self, name, raw_input, tool_use_id):
         uid = tool_use_id or name
         if name == AGENT:
@@ -165,14 +170,17 @@ class ToolTraceMixin:
         await self._conv().mount(block)
         self._discard_think()
         await self._after_mount()
+
     async def _add_think(self, ev):
         await self._mount_spinner()
+
     async def _mount_spinner(self):
         widget = Static(self._spinner_text(self._spin_char()), markup=True)
         await self._conv().mount(widget)
         self._discard_think()
         self._think = {"widget": widget, "agent": ""}
         await self._after_mount()
+
     def _discard_think(self):
         if self._think is None:
             return
@@ -180,6 +188,7 @@ class ToolTraceMixin:
         if widget in self._conv().children:
             widget.remove()
         self._think = None
+
     def _tool_spin_tick(self):
         if not self._tools and not self._think and self._agents_pane is None:
             return
@@ -201,11 +210,12 @@ class ToolTraceMixin:
             block.tick(char)
         if self._agents_pane is not None:
             teammates = self._teammates()
-            rows = bool(teammates) and self._expanded_view == 'teammates'
+            rows = bool(teammates) and self._expanded_view == "teammates"
             idle_line = bool(teammates) and self._processing is None
             self._agents_pane.update(self._tree_markup(rows, idle_line))
         if self._follow:
             conv.scroll_end(animate=False)
+
     def _sync_tool_states(self):
         results = {}
         for msg in self._team.transcript():
@@ -219,5 +229,4 @@ class ToolTraceMixin:
             if uid in self._teammate_spawns:
                 continue
             if not block._done and uid in results:
-                block.set_result(str(results[uid]),
-                                 meta=self._tool_meta.get(uid))
+                block.set_result(str(results[uid]), meta=self._tool_meta.get(uid))

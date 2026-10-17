@@ -10,12 +10,15 @@ from pyclaw.tui.agent_list import AgentListMixin
 
 
 class _AgentKeys(VerticalScroll):
-
     can_focus = True
 
-    BINDINGS = [("up", "move_up", "Up"), ("down", "move_down", "Down"),
-                ("enter", "choose", "Select"), ("escape", "back", "Back"),
-                ("s", "save", "Save")]
+    BINDINGS = [
+        ("up", "move_up", "Up"),
+        ("down", "move_down", "Down"),
+        ("enter", "choose", "Select"),
+        ("escape", "back", "Back"),
+        ("s", "save", "Save"),
+    ]
 
     def __init__(self, screen, **kw):
         super().__init__(**kw)
@@ -38,7 +41,6 @@ class _AgentKeys(VerticalScroll):
 
 
 class _AgentInput(Input):
-
     BINDINGS = [("escape", "agents_back", "Back")]
 
     def __init__(self, screen, **kw):
@@ -50,15 +52,14 @@ class _AgentInput(Input):
 
 
 class AgentsScreen(AgentListMixin, AgentFormMixin, Screen):
-
     def __init__(self, session, **kw):
         super().__init__(**kw)
         self._session = session
         self._team = session._team
-        self._all_tools = list(getattr(session._team, 'provided_tools', []))
+        self._all_tools = list(getattr(session._team, "provided_tools", []))
         self._names = [t.name for t in self._all_tools]
         self._cwd = session.cwd
-        self._mode = 'list'
+        self._mode = "list"
         self._entries = []
         self._selectable = []
         self._pos = 0
@@ -70,15 +71,14 @@ class AgentsScreen(AgentListMixin, AgentFormMixin, Screen):
         self._step = 0
         self._target = None
         self._edit_field: str | None = None
-        self._draft = {'name': '', 'scope': 'project', 'prompt': '',
-                       'description': '', 'model': '', 'tools': None}
+        self._draft = {"name": "", "scope": "project", "prompt": "", "description": "", "model": "", "tools": None}
         self._changes: list = []
-        self._error = ''
+        self._error = ""
 
     def compose(self) -> ComposeResult:
-        with _AgentKeys(self, id='agents'):
-            yield Static('', id='agents-body')
-        text_input = _AgentInput(self, id='agents-input')
+        with _AgentKeys(self, id="agents"):
+            yield Static("", id="agents-body")
+        text_input = _AgentInput(self, id="agents-input")
         text_input.display = False
         yield text_input
 
@@ -88,25 +88,25 @@ class AgentsScreen(AgentListMixin, AgentFormMixin, Screen):
 
     def _refresh(self):
         lines = {
-            'list': self._render_list,
-            'menu': self._render_menu,
-            'view': self._render_view,
-            'delete': self._render_delete,
-            'edit-menu': self._render_edit_menu,
-            'edit-tools': self._render_edit_tools,
-            'edit-model': self._render_edit_model,
-            'create': self._render_create,
+            "list": self._render_list,
+            "menu": self._render_menu,
+            "view": self._render_view,
+            "delete": self._render_delete,
+            "edit-menu": self._render_edit_menu,
+            "edit-tools": self._render_edit_tools,
+            "edit-model": self._render_edit_model,
+            "create": self._render_create,
         }[self._mode]()
-        self.query_one('#agents-body', Static).update('\n'.join(lines))
+        self.query_one("#agents-body", Static).update("\n".join(lines))
         text_step = self._is_text_step()
-        inp = self.query_one('#agents-input', _AgentInput)
+        inp = self.query_one("#agents-input", _AgentInput)
         inp.display = text_step
         if text_step:
-            field = 'model' if self._mode == 'edit-model' else self._step_name
+            field = "model" if self._mode == "edit-model" else self._step_name
             inp.placeholder = AGENT_PLACEHOLDERS[field]
             if inp.value != self._draft[field]:
                 inp.value = self._draft[field]
                 inp.cursor_position = len(inp.value)
             inp.focus()
         else:
-            self.query_one('#agents', _AgentKeys).focus()
+            self.query_one("#agents", _AgentKeys).focus()

@@ -1,4 +1,5 @@
 """Durable session transcripts, logs and metadata under the PyClaw home."""
+
 from __future__ import annotations
 
 import datetime
@@ -48,7 +49,8 @@ def resolve_session_id(logical_key, *, rotate: bool = False) -> str:
         session_id = uuid.uuid4().hex
         index[key] = session_id
         path.write_text(
-            json.dumps(index, ensure_ascii=False, indent=2), encoding="utf-8",
+            json.dumps(index, ensure_ascii=False, indent=2),
+            encoding="utf-8",
         )
     return session_id
 
@@ -79,9 +81,7 @@ def load_entries(session_id) -> list:
 
 
 def load_transcript(session_id) -> list:
-    return [{key: value for key, value in entry.items()
-             if key not in _ENTRY_META}
-            for entry in load_entries(session_id)]
+    return [{key: value for key, value in entry.items() if key not in _ENTRY_META} for entry in load_entries(session_id)]
 
 
 def conversation_messages(session_id) -> list:
@@ -107,18 +107,18 @@ def conversation_preview(session_id, limit: int = 80) -> str:
     """The first thing the user said, for a list row with no title."""
     path = _session_path(session_id) / "messages.jsonl"
     if not path.exists():
-        return ''
+        return ""
     with path.open(encoding="utf-8") as handle:
         for line in handle:
             try:
                 record = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(record, dict) and record.get('role') == 'user':
-                content = str(record.get('content') or '').strip()
+            if isinstance(record, dict) and record.get("role") == "user":
+                content = str(record.get("content") or "").strip()
                 if content:
-                    return ' '.join(content.split())[:limit]
-    return ''
+                    return " ".join(content.split())[:limit]
+    return ""
 
 
 def session_meta(session_id) -> dict:
@@ -140,17 +140,20 @@ def list_sessions() -> list:
     for entry in root.iterdir():
         if not entry.is_dir():
             continue
-        path = entry / 'transcript.jsonl'
+        path = entry / "transcript.jsonl"
         if not path.exists():
             continue
-        title = str(session_meta(entry.name).get('title') or '')
-        sessions.append({'id': entry.name,
-                         'title': title,
-                         'preview': ('' if title
-                                     else conversation_preview(entry.name)),
-                         'messages': len(load_entries(entry.name)),
-                         'modified': path.stat().st_mtime})
-    sessions.sort(key=lambda item: item['modified'], reverse=True)
+        title = str(session_meta(entry.name).get("title") or "")
+        sessions.append(
+            {
+                "id": entry.name,
+                "title": title,
+                "preview": ("" if title else conversation_preview(entry.name)),
+                "messages": len(load_entries(entry.name)),
+                "modified": path.stat().st_mtime,
+            }
+        )
+    sessions.sort(key=lambda item: item["modified"], reverse=True)
     return sessions
 
 
@@ -169,11 +172,10 @@ def delete_conversation(session_id) -> bool:
 def named_sessions(title) -> list:
     """The saved conversations carrying exactly this name. A name is only a
     name if it is complete: a part of one is a search, not an address."""
-    wanted = ' '.join(str(title or '').split()).lower()
+    wanted = " ".join(str(title or "").split()).lower()
     if not wanted:
         return []
-    return [item for item in list_sessions()
-            if item['title'].lower() == wanted or item['id'].lower() == wanted]
+    return [item for item in list_sessions() if item["title"].lower() == wanted or item["id"].lower() == wanted]
 
 
 def _expired(path: Path, cutoff: float) -> bool:
@@ -193,13 +195,13 @@ def sweep(days: int = DEFAULT_CLEANUP_DAYS) -> int:
         if entry.is_dir() and _expired(entry, cutoff):
             shutil.rmtree(entry, ignore_errors=True)
             removed += 1
-        elif entry.name.startswith('pyclaw.log.') and _expired(entry, cutoff):
+        elif entry.name.startswith("pyclaw.log.") and _expired(entry, cutoff):
             entry.unlink(missing_ok=True)
     plans = plans_dir()
-    for path in plans.glob('*.md'):
+    for path in plans.glob("*.md"):
         if _expired(path, cutoff):
             path.unlink(missing_ok=True)
-    history = pyclaw_home() / 'file-history'
+    history = pyclaw_home() / "file-history"
     if history.exists():
         for entry in history.iterdir():
             if entry.is_dir() and _expired(entry, cutoff):
@@ -208,8 +210,7 @@ def sweep(days: int = DEFAULT_CLEANUP_DAYS) -> int:
 
 
 def _content_of(entry) -> dict:
-    return {key: value for key, value in entry.items()
-            if key not in _ENTRY_META}
+    return {key: value for key, value in entry.items() if key not in _ENTRY_META}
 
 
 def _chained(payload, parent):
@@ -244,14 +245,12 @@ def save_transcript(session_id, messages) -> None:
     payload = [m for m in messages if isinstance(m, dict)]
     entries = load_entries(session_id)
     written = 0
-    while (written < len(entries) and written < len(payload)
-           and _content_of(entries[written]) == payload[written]):
+    while written < len(entries) and written < len(payload) and _content_of(entries[written]) == payload[written]:
         written += 1
     if written == len(payload) == len(entries):
         return
     if written and written == len(entries):
-        _append_records(path, _chained(payload[written:],
-                                       entries[-1].get("uuid")))
+        _append_records(path, _chained(payload[written:], entries[-1].get("uuid")))
         return
     _write_records(path, _chained(payload, None))
 
@@ -301,25 +300,25 @@ def record_meta(session_id, meta: dict) -> None:
     existing.setdefault("session_id", str(session_id))
     existing.update(meta)
     path.write_text(
-        json.dumps(existing, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
+        json.dumps(existing, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
 
 
 def rename_session(session_id, title: str) -> str:
-    title = ' '.join(str(title or '').split())
+    title = " ".join(str(title or "").split())
     if not title:
-        raise ValueError('a conversation needs a name')
+        raise ValueError("a conversation needs a name")
     record_meta(session_id, {"title": title})
     return title
 
 
 def title_of(session_id) -> str:
-    return str(session_meta(session_id).get('title') or '')
+    return str(session_meta(session_id).get("title") or "")
 
 
-WORKTREE_FIELDS = ('name', 'path', 'branch', 'origin', 'root',
-                   'origin_branch', 'origin_head', 'hook_based', 'resumed')
-WORKTREE_PATHS = ('path', 'origin', 'root')
+WORKTREE_FIELDS = ("name", "path", "branch", "origin", "root", "origin_branch", "origin_head", "hook_based", "resumed")
+WORKTREE_PATHS = ("path", "origin", "root")
 
 
 def save_worktree(session_id, record: dict | None) -> None:
@@ -327,36 +326,38 @@ def save_worktree(session_id, record: dict | None) -> None:
     conversation can move the session there again."""
     stored = None
     if record:
-        stored = {key: (str(value) if isinstance(value, Path) else value)
-                  for key, value in record.items()
-                  if key in WORKTREE_FIELDS and value is not None}
-    record_meta(session_id, {'worktree': stored})
+        stored = {
+            key: (str(value) if isinstance(value, Path) else value)
+            for key, value in record.items()
+            if key in WORKTREE_FIELDS and value is not None
+        }
+    record_meta(session_id, {"worktree": stored})
 
 
 def load_worktree(session_id) -> dict | None:
-    saved = session_meta(session_id).get('worktree')
+    saved = session_meta(session_id).get("worktree")
     if not isinstance(saved, dict):
         return None
-    path = Path(str(saved.get('path') or ''))
+    path = Path(str(saved.get("path") or ""))
     if not path.is_dir():
         return None
-    return {key: (path if key == 'path'
-                  else Path(str(value)) if key in WORKTREE_PATHS else value)
-            for key, value in saved.items()}
+    return {
+        key: (path if key == "path" else Path(str(value)) if key in WORKTREE_PATHS else value) for key, value in saved.items()
+    }
 
 
 def plans_dir() -> Path:
-    return pyclaw_home() / 'plans'
+    return pyclaw_home() / "plans"
 
 
 def plan_file(session_id) -> Path:
     """One plan per conversation, named after it: two conversations can never
     write over each other's plan."""
-    return plans_dir() / f'{session_id}.md'
+    return plans_dir() / f"{session_id}.md"
 
 
 def history_dir(session_id) -> Path:
-    return pyclaw_home() / 'file-history' / str(session_id)
+    return pyclaw_home() / "file-history" / str(session_id)
 
 
 def adopt_artifacts(source_id, target_id) -> None:
@@ -369,8 +370,7 @@ def adopt_artifacts(source_id, target_id) -> None:
     if source_plan.exists() and not target_plan.exists():
         target_plan.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source_plan, target_plan)
-    source_history, target_history = (history_dir(source_id),
-                                       history_dir(target_id))
+    source_history, target_history = (history_dir(source_id), history_dir(target_id))
     if not source_history.exists():
         return
     target_history.mkdir(parents=True, exist_ok=True)
@@ -386,50 +386,46 @@ def adopt_artifacts(source_id, target_id) -> None:
 
 def first_prompt(session_id) -> str:
     for entry in load_transcript(session_id):
-        if entry.get('role') != 'user':
+        if entry.get("role") != "user":
             continue
-        content = entry.get('content')
+        content = entry.get("content")
         if isinstance(content, str) and content.strip():
-            return ' '.join(content.split())[:100]
-    return 'Branched conversation'
+            return " ".join(content.split())[:100]
+    return "Branched conversation"
 
 
 def branch_title(base: str, taken) -> str:
-    if f'{base} (Branch)' not in taken:
-        return f'{base} (Branch)'
+    if f"{base} (Branch)" not in taken:
+        return f"{base} (Branch)"
     number = 2
-    while f'{base} (Branch {number})' in taken:
+    while f"{base} (Branch {number})" in taken:
         number += 1
-    return f'{base} (Branch {number})'
+    return f"{base} (Branch {number})"
 
 
-def create_branch(session_id, title: str = '') -> dict:
+def create_branch(session_id, title: str = "") -> dict:
     """Copy this conversation into a new session that carries on from here."""
     entries = load_entries(session_id)
     if not entries:
-        raise ValueError('there is no conversation to branch')
+        raise ValueError("there is no conversation to branch")
     fork_id = uuid.uuid4().hex
     records = []
     parent = None
     for entry in entries:
         record = dict(entry)
-        record['uuid'] = uuid.uuid4().hex
-        record['parentUuid'] = parent
-        record['forkedFrom'] = {'sessionId': str(session_id),
-                                'uuid': entry.get('uuid')}
-        parent = record['uuid']
+        record["uuid"] = uuid.uuid4().hex
+        record["parentUuid"] = parent
+        record["forkedFrom"] = {"sessionId": str(session_id), "uuid": entry.get("uuid")}
+        parent = record["uuid"]
         records.append(record)
     _write_records(transcript_path(fork_id), records)
-    taken = {item['title'] for item in list_sessions() if item['title']}
-    effective = branch_title(
-        ' '.join(str(title or '').split()) or first_prompt(session_id), taken)
-    record_meta(fork_id, {'title': effective, 'forked_from': str(session_id)})
-    return {'id': fork_id, 'title': effective, 'messages': len(records),
-            'forked_from': str(session_id)}
+    taken = {item["title"] for item in list_sessions() if item["title"]}
+    effective = branch_title(" ".join(str(title or "").split()) or first_prompt(session_id), taken)
+    record_meta(fork_id, {"title": effective, "forked_from": str(session_id)})
+    return {"id": fork_id, "title": effective, "messages": len(records), "forked_from": str(session_id)}
 
 
-def append_conv(session_id, role, content, *, reasoning_content=None, topic=None,
-                name=None, path=None):
+def append_conv(session_id, role, content, *, reasoning_content=None, topic=None, name=None, path=None):
     record = {
         "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "role": role,
@@ -442,4 +438,3 @@ def append_conv(session_id, role, content, *, reasoning_content=None, topic=None
     if name:
         record["name"] = name
     jsonl.append(path or _session_dir(session_id) / "messages.jsonl", [record])
-

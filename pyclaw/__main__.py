@@ -17,8 +17,7 @@ from chatchat.cli.config import parse_config, cli_config
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
 from chatchat.team.worktrees import in_repository
 
-_QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore",
-                  "aiohttp", "urllib3", "websockets", "PIL")
+_QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore", "aiohttp", "urllib3", "websockets", "PIL")
 
 
 def _level(name: str) -> int:
@@ -32,9 +31,8 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
     root.setLevel(logging.DEBUG)
 
     if console and not any(
-            isinstance(h, logging.StreamHandler)
-            and not isinstance(h, RotatingFileHandler)
-            for h in root.handlers):
+        isinstance(h, logging.StreamHandler) and not isinstance(h, RotatingFileHandler) for h in root.handlers
+    ):
         stream = logging.StreamHandler(sys.stdout)
         stream.setLevel(_level(level))
         stream.setFormatter(logging.Formatter(_LOG_FORMAT))
@@ -44,11 +42,12 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
     log_dir.mkdir(parents=True, exist_ok=True)
     if not any(isinstance(h, RotatingFileHandler) for h in root.handlers):
         file_handler = RotatingFileHandler(
-            log_dir / "pyclaw.log", maxBytes=5 * 1024 * 1024, backupCount=3,
+            log_dir / "pyclaw.log",
+            maxBytes=5 * 1024 * 1024,
+            backupCount=3,
             encoding="utf-8",
         )
-        file_handler.setLevel(logging.DEBUG if debug_on()
-                              else _level(level))
+        file_handler.setLevel(logging.DEBUG if debug_on() else _level(level))
         file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
         root.addHandler(file_handler)
 
@@ -58,9 +57,7 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
 
 
 def _apply_overrides(config: dict, args) -> dict:
-    for key, value in (("provider", args.provider),
-                       ("model", args.model),
-                       ("enabled_channels", args.channels)):
+    for key, value in (("provider", args.provider), ("model", args.model), ("enabled_channels", args.channels)):
         if value is not None:
             config[key] = value
     return config
@@ -88,8 +85,7 @@ async def start_api(args):
         enabled_channels=["web"],
         use_team=bool(settings.get("use_team")),
         permission_mode=args.permission_mode,
-        allow_all_unlocked=bool(getattr(args, 'allow_all_unlocked',
-                                args.allow_all)),
+        allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
         local_token=token,
         # 桌面端 webview 与 127.0.0.1:port 是跨源访问，REST 必须允许跨源读响应；
         # token 校验（middleware + WS 前置检查）仍然是唯一准入凭证。
@@ -98,8 +94,7 @@ async def start_api(args):
     gateway = GatewayServer(gateway_config, app_config=config)
 
     def on_started(port: int):
-        print(f"PYCLAW_ENDPOINT {json.dumps({'port': port, 'token': token})}",
-              flush=True)
+        print(f"PYCLAW_ENDPOINT {json.dumps({'port': port, 'token': token})}", flush=True)
         # stdout 从此只属于端点协议：桌面 sidecar 解析完端点行后可能不再读
         # stdout，内核里任何 print（如 chatchat 的 hook 日志）都会 Broken
         # pipe 并炸掉正在运行的 agent turn。日志一律改走 stderr。
@@ -107,8 +102,7 @@ async def start_api(args):
         # setup_logging 的 console handler 持有旧 stdout 的引用，一并改道，
         # 否则内核日志继续写已关闭的端点管道（Logging error 刷屏）。
         for handler in logging.getLogger().handlers:
-            if isinstance(handler, logging.StreamHandler) and not isinstance(
-                    handler, logging.FileHandler):
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                 handler.stream = sys.stderr
 
     try:
@@ -137,8 +131,7 @@ async def start_server(args):
         enabled_channels=settings["enabled_channels"],
         use_team=args.use_team or bool(settings.get("use_team")),
         permission_mode=args.permission_mode,
-        allow_all_unlocked=bool(getattr(args, 'allow_all_unlocked',
-                                args.allow_all)),
+        allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
     )
 
     gateway = GatewayServer(gateway_config, app_config=config)
@@ -159,7 +152,7 @@ def _cli_session(args):
     if resume_id:
         named = session_store.named_sessions(resume_id)
         if len(named) == 1:
-            resume_id = named[0]['id']
+            resume_id = named[0]["id"]
         return resolve_session_id(key, rotate=True), resume_id
     if getattr(args, "continue_session", False):
         previous = resolve_session_id(key, rotate=False)
@@ -168,32 +161,51 @@ def _cli_session(args):
 
 
 def _cli_resume(args) -> bool:
-    return bool(getattr(args, "resume", None)
-                or getattr(args, "continue_session", False))
+    return bool(getattr(args, "resume", None) or getattr(args, "continue_session", False))
 
 
-async def prompt_once(provider, model, prompt, *, on_event=None,
-                      permission_mode='default', session_id=None,
-                      resume=False, resume_from=None, allowed_tools=None,
-                      ask=None, disallowed_tools=None, base_tools=None,
-                      use_team=False, agents=None,
-                      json_schema=None, worktree=None,
-                      allow_all_unlocked=False) -> dict:
-    team = build_team(provider, model, permission_mode=permission_mode,
-                      allow_all_unlocked=allow_all_unlocked,
-                      allowed_tools=allowed_tools, ask=ask,
-                      disallowed_tools=disallowed_tools,
-                      base_tools=base_tools, use_team=use_team,
-                      agents_json=agents, conversation_id=session_id)
+async def prompt_once(
+    provider,
+    model,
+    prompt,
+    *,
+    on_event=None,
+    permission_mode="default",
+    session_id=None,
+    resume=False,
+    resume_from=None,
+    allowed_tools=None,
+    ask=None,
+    disallowed_tools=None,
+    base_tools=None,
+    use_team=False,
+    agents=None,
+    json_schema=None,
+    worktree=None,
+    allow_all_unlocked=False,
+) -> dict:
+    team = build_team(
+        provider,
+        model,
+        permission_mode=permission_mode,
+        allow_all_unlocked=allow_all_unlocked,
+        allowed_tools=allowed_tools,
+        ask=ask,
+        disallowed_tools=disallowed_tools,
+        base_tools=base_tools,
+        use_team=use_team,
+        agents_json=agents,
+        conversation_id=session_id,
+    )
     if json_schema is not None:
         problem = team.set_output_schema(json_schema)
         if problem:
-            raise ValueError(f'--json-schema: {problem}')
+            raise ValueError(f"--json-schema: {problem}")
     session = Session(team, session_id=session_id, resume_from=resume_from)
     if worktree is not None:
         started = await team.enter_worktree(worktree)
-        if started.startswith('Error'):
-            raise ValueError(started.removeprefix('Error: '))
+        if started.startswith("Error"):
+            raise ValueError(started.removeprefix("Error: "))
 
     stream = open_stream(session=str(session.conv_session_id))
     unregister = register_runtime_handler(stream)
@@ -203,13 +215,16 @@ async def prompt_once(provider, model, prompt, *, on_event=None,
         try:
             text = await session.chat(prompt, on_event=on_event)
         except Exception as exc:
-            stream.note_error(f'{type(exc).__name__}: {exc}')
+            stream.note_error(f"{type(exc).__name__}: {exc}")
             raise
         session.record_turn()
-        out = {"text": text, "mode": session.mode,
-               "permission_mode": session.permission_mode,
-               "messages": len(team.transcript()),
-               "usage": session.usage.to_dict()}
+        out = {
+            "text": text,
+            "mode": session.mode,
+            "permission_mode": session.permission_mode,
+            "messages": len(team.transcript()),
+            "usage": session.usage.to_dict(),
+        }
         if json_schema is not None:
             out["structured_output"] = team.structured_output
         return out
@@ -233,8 +248,7 @@ def _json_schema(args):
     if raw is None:
         return None
     if getattr(args, "print", None) is None:
-        print("--json-schema needs --print: it shapes the answer of a "
-              "non-interactive run.")
+        print("--json-schema needs --print: it shapes the answer of a non-interactive run.")
         raise SystemExit(1)
     try:
         return json.loads(raw)
@@ -253,19 +267,24 @@ async def run_headless(args):
         sys.exit(1)
     session_id, resume_from = _cli_session(args)
     try:
-        out = await prompt_once(provider, model, args.print,
-                                permission_mode=args.permission_mode,
-                                allow_all_unlocked=bool(getattr(args, 'allow_all_unlocked',
-                                args.allow_all)),
-                                session_id=session_id, resume=_cli_resume(args),
-                                resume_from=resume_from,
-                                allowed_tools=args.allowed_tools,
-                                ask=args.ask,
-                                disallowed_tools=args.disallowed_tools,
-                                base_tools=args.tools,
-                                use_team=args.use_team, agents=args.agents,
-                                json_schema=_json_schema(args),
-                                worktree=args.worktree)
+        out = await prompt_once(
+            provider,
+            model,
+            args.print,
+            permission_mode=args.permission_mode,
+            allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
+            session_id=session_id,
+            resume=_cli_resume(args),
+            resume_from=resume_from,
+            allowed_tools=args.allowed_tools,
+            ask=args.ask,
+            disallowed_tools=args.disallowed_tools,
+            base_tools=args.tools,
+            use_team=args.use_team,
+            agents=args.agents,
+            json_schema=_json_schema(args),
+            worktree=args.worktree,
+        )
     except ValueError as exc:
         print(f"{exc}")
         sys.exit(1)
@@ -282,30 +301,40 @@ def run_tui(args):
         print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
         sys.exit(1)
     from pyclaw.tui import PyClawApp
+
     logging.getLogger(__name__).info(
-        "tui session starting (provider=%s model=%s team=%s log=%s)",
-        provider, model, args.use_team, log_path)
+        "tui session starting (provider=%s model=%s team=%s log=%s)", provider, model, args.use_team, log_path
+    )
     session_id, resume_from = _cli_session(args)
     if args.worktree is not None:
         if not in_repository(os.getcwd()):
-            print('Error: --worktree needs a git repository, and this is not '
-                  'one. A WorktreeCreate hook in the settings is the other way '
-                  'to isolate work.')
+            print(
+                "Error: --worktree needs a git repository, and this is not "
+                "one. A WorktreeCreate hook in the settings is the other way "
+                "to isolate work."
+            )
             sys.exit(1)
-    hook_events = bool(args.include_hook_events
-                       or config.get("includeHookEvents"))
-    app = PyClawApp(builder=lambda: build_team(
-        provider, model, permission_mode=args.permission_mode,
-        allow_all_unlocked=bool(getattr(args, 'allow_all_unlocked',
-                                args.allow_all)),
-        allowed_tools=args.allowed_tools, ask=args.ask,
-        disallowed_tools=args.disallowed_tools, base_tools=args.tools,
-        use_team=args.use_team, agents_json=args.agents,
-        conversation_id=session_id),
+    hook_events = bool(args.include_hook_events or config.get("includeHookEvents"))
+    app = PyClawApp(
+        builder=lambda: build_team(
+            provider,
+            model,
+            permission_mode=args.permission_mode,
+            allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
+            allowed_tools=args.allowed_tools,
+            ask=args.ask,
+            disallowed_tools=args.disallowed_tools,
+            base_tools=args.tools,
+            use_team=args.use_team,
+            agents_json=args.agents,
+            conversation_id=session_id,
+        ),
         session_id=session_id,
         resume=_cli_resume(args),
-        resume_from=resume_from, hook_events=hook_events,
-        worktree=args.worktree)
+        resume_from=resume_from,
+        hook_events=hook_events,
+        worktree=args.worktree,
+    )
     app.run()
     if app._startup_error:
         print(app._startup_error, file=sys.stderr)
@@ -349,77 +378,103 @@ class _RuleList(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         got = list(getattr(namespace, self.dest, None) or [])
-        for text in (values if isinstance(values, list) else [values]):
+        for text in values if isinstance(values, list) else [values]:
             got.extend(split_rules(str(text)))
         setattr(namespace, self.dest, got)
 
 
 def _add_session_args(target):
-    target.add_argument("-c", "--continue", dest="continue_session",
-                        action="store_true",
-                        help="Resume the most recent session in this directory")
-    target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID",
-                        help="Resume a specific session by id")
+    target.add_argument(
+        "-c",
+        "--continue",
+        dest="continue_session",
+        action="store_true",
+        help="Resume the most recent session in this directory",
+    )
+    target.add_argument("-r", "--resume", type=str, default=None, metavar="SESSION_ID", help="Resume a specific session by id")
     for flag, help_text, default in (
-            ("--allowed-tools",
-             "Rule allowing a tool, e.g. 'Bash(git push:*)'. Several per "
-             "value, comma separated.", []),
-            ("--disallowed-tools",
-             "Rule refusing a tool, e.g. 'Bash(curl:*)'. Wins over "
-             "--allowed-tools.", []),
-            ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'",
-             [])):
-        target.add_argument(flag, action=_RuleList, nargs="+", default=default,
-                            metavar="RULE", help=help_text)
-    target.add_argument("--tools", action=_RuleList, nargs="+", default=None,
-                        metavar="NAME",
-                        help="The only tools this run has. Every other one is "
-                             "refused, not just hidden.")
-    target.add_argument("--include-hook-events", action="store_true",
-                        default=False,
-                        help="Show each hook run as its own line")
-    target.add_argument("--use-team", action="store_true", default=False,
-                        help="Run in team (multi-agent) mode; fixed for the "
-                             "whole session")
-    target.add_argument("--agents", type=str, default=None, metavar="JSON",
-                        help="Agent definitions as one JSON object keyed by "
-                             "name, each with description, prompt, tools, "
-                             "model and permissionMode. Wins over the "
-                             ".pyclaw/agents files.")
-    target.add_argument("--worktree", type=str, default=None, nargs='?',
-                        const='', metavar='NAME',
-                        help="Do this run in its own git worktree, created "
-                             "under .pyclaw/worktrees and switched into "
-                             "before the first turn. NAME is optional; without "
-                             "it the worktree is named after this "
-                             "conversation.")
+        ("--allowed-tools", "Rule allowing a tool, e.g. 'Bash(git push:*)'. Several per value, comma separated.", []),
+        ("--disallowed-tools", "Rule refusing a tool, e.g. 'Bash(curl:*)'. Wins over --allowed-tools.", []),
+        ("--ask", "Permission rule that always asks, e.g. 'Bash(docker:*)'", []),
+    ):
+        target.add_argument(flag, action=_RuleList, nargs="+", default=default, metavar="RULE", help=help_text)
+    target.add_argument(
+        "--tools",
+        action=_RuleList,
+        nargs="+",
+        default=None,
+        metavar="NAME",
+        help="The only tools this run has. Every other one is refused, not just hidden.",
+    )
+    target.add_argument("--include-hook-events", action="store_true", default=False, help="Show each hook run as its own line")
+    target.add_argument(
+        "--use-team", action="store_true", default=False, help="Run in team (multi-agent) mode; fixed for the whole session"
+    )
+    target.add_argument(
+        "--agents",
+        type=str,
+        default=None,
+        metavar="JSON",
+        help="Agent definitions as one JSON object keyed by "
+        "name, each with description, prompt, tools, "
+        "model and permissionMode. Wins over the "
+        ".pyclaw/agents files.",
+    )
+    target.add_argument(
+        "--worktree",
+        type=str,
+        default=None,
+        nargs="?",
+        const="",
+        metavar="NAME",
+        help="Do this run in its own git worktree, created "
+        "under .pyclaw/worktrees and switched into "
+        "before the first turn. NAME is optional; without "
+        "it the worktree is named after this "
+        "conversation.",
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="PyClaw – Personal AI Assistant")
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
-    parser.add_argument("-p", "--print", type=str, metavar="PROMPT", default=None,
-                        help="Print mode: run one prompt non-interactively and print the result")
-    parser.add_argument("--output", type=str, default="text", choices=["text", "json"],
-                        help="Output format for print mode")
-    parser.add_argument("--json-schema", type=str, default=None, metavar="SCHEMA",
-                        help="JSON Schema the answer has to match (needs --print). "
-                             "The run ends by calling the StructuredOutput tool "
-                             "with a payload validated against it.")
+    parser.add_argument(
+        "-p",
+        "--print",
+        type=str,
+        metavar="PROMPT",
+        default=None,
+        help="Print mode: run one prompt non-interactively and print the result",
+    )
+    parser.add_argument("--output", type=str, default="text", choices=["text", "json"], help="Output format for print mode")
+    parser.add_argument(
+        "--json-schema",
+        type=str,
+        default=None,
+        metavar="SCHEMA",
+        help="JSON Schema the answer has to match (needs --print). "
+        "The run ends by calling the StructuredOutput tool "
+        "with a payload validated against it.",
+    )
     parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
-    parser.add_argument("-d", "--debug", action="store_true",
-                        help="Log every streamed event to the conversation log")
-    parser.add_argument("--permission-mode", type=str, default=None,
-                        choices=["default", "acceptEdits", "plan",
-                                 "allowAll"],
-                        help="Session permission mode")
-    parser.add_argument("--allow-all", action="store_true",
-                        default=False,
-                        help="Unlock allowAll for this whole process: "
-                             "every session it creates (TUI, IM, web, cron) "
-                             "skips permission prompts. Refused under "
-                             "root/sudo. allow/ask/deny rules still apply.")
+    parser.add_argument("-d", "--debug", action="store_true", help="Log every streamed event to the conversation log")
+    parser.add_argument(
+        "--permission-mode",
+        type=str,
+        default=None,
+        choices=["default", "acceptEdits", "plan", "allowAll"],
+        help="Session permission mode",
+    )
+    parser.add_argument(
+        "--allow-all",
+        action="store_true",
+        default=False,
+        help="Unlock allowAll for this whole process: "
+        "every session it creates (TUI, IM, web, cron) "
+        "skips permission prompts. Refused under "
+        "root/sudo. allow/ask/deny rules still apply.",
+    )
     _add_session_args(parser)
     subparsers = parser.add_subparsers(dest="command")
 
@@ -427,33 +482,42 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument("--port", type=int, default=None, help="HTTP port (config/gateway/http/port or 12321)")
     serve_parser.add_argument("--host", type=str, default=None, help="Bind address (config/gateway/http/host or 127.0.0.1)")
     serve_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    serve_parser.add_argument("--channels", nargs="*", default=None, choices=["qq", "wechat"], help="Channels to enable (default: wechat only)")
-    serve_parser.add_argument("--use-team", action="store_true", default=False,
-                             help="Give every conversation a team to work with")
+    serve_parser.add_argument(
+        "--channels", nargs="*", default=None, choices=["qq", "wechat"], help="Channels to enable (default: wechat only)"
+    )
+    serve_parser.add_argument(
+        "--use-team", action="store_true", default=False, help="Give every conversation a team to work with"
+    )
     serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
-    serve_parser.add_argument("--allow-all", action="store_true",
-                              default=False,
-                              help="Unlock allowAll for this gateway: "
-                                   "every IM/web/cron session skips permission "
-                                   "prompts. Refused under root/sudo.")
+    serve_parser.add_argument(
+        "--allow-all",
+        action="store_true",
+        default=False,
+        help="Unlock allowAll for this gateway: every IM/web/cron session skips permission prompts. Refused under root/sudo.",
+    )
 
     api_parser = subparsers.add_parser("api", help="Run the headless local API server (used by pyclaw-desktop)")
     api_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
     api_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     api_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
-    api_parser.add_argument("--allow-all", action="store_true",
-                            default=False,
-                            help="Unlock allowAll for this gateway: "
-                                 "every session skips permission prompts. "
-                                 "Refused under root/sudo.")
+    api_parser.add_argument(
+        "--allow-all",
+        action="store_true",
+        default=False,
+        help="Unlock allowAll for this gateway: every session skips permission prompts. Refused under root/sudo.",
+    )
 
     channel_parser = subparsers.add_parser("channel", help="Manage IM channels")
     channel_sub = channel_parser.add_subparsers(dest="channel_command")
     rebind_parser = channel_sub.add_parser("rebind", help="Rebind (re-authenticate) an IM channel")
     rebind_parser.add_argument(
-        "channel", nargs="?", default="wechat", choices=["qq", "wechat"],
-        metavar="channel", help="IM channel to rebind (default: wechat)"
+        "channel",
+        nargs="?",
+        default="wechat",
+        choices=["qq", "wechat"],
+        metavar="channel",
+        help="IM channel to rebind (default: wechat)",
     )
     rebind_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
 
@@ -465,14 +529,16 @@ def _build_parser() -> argparse.ArgumentParser:
     tui_parser = subparsers.add_parser("tui", help="Launch the interactive terminal UI")
     tui_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
     tui_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
-    tui_parser.add_argument("--permission-mode", type=str, default=None,
-                            choices=["default", "acceptEdits", "plan",
-                                     "allowAll"],
-                            help="Session permission mode")
-    tui_parser.add_argument("--allow-all", action="store_true",
-                            default=False,
-                            help="Unlock allowAll for this session. "
-                                 "Refused under root/sudo.")
+    tui_parser.add_argument(
+        "--permission-mode",
+        type=str,
+        default=None,
+        choices=["default", "acceptEdits", "plan", "allowAll"],
+        help="Session permission mode",
+    )
+    tui_parser.add_argument(
+        "--allow-all", action="store_true", default=False, help="Unlock allowAll for this session. Refused under root/sudo."
+    )
     _add_session_args(tui_parser)
 
     cli_config(subparsers)
@@ -484,8 +550,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _finalize_args(args) -> argparse.Namespace:
     if not hasattr(args, "log_level"):
         args.log_level = "INFO"
-    for field in ("provider", "model", "channels", "port", "host", "resume",
-                  "allow", "ask", "deny"):
+    for field in ("provider", "model", "channels", "port", "host", "resume", "allow", "ask", "deny"):
         if not hasattr(args, field):
             setattr(args, field, None)
     if not hasattr(args, "continue_session"):
@@ -497,17 +562,14 @@ def _finalize_args(args) -> argparse.Namespace:
     if not hasattr(args, "allow_all_unlocked"):
         args.allow_all_unlocked = False
     cli_mode = getattr(args, "permission_mode", None)
-    config_mode = (load_config().get("permissions", {})
-                   .get("defaultMode", None))
+    config_mode = load_config().get("permissions", {}).get("defaultMode", None)
     if args.allow_all:
         args.allow_all_unlocked = True
         args.permission_mode = cli_mode or "allowAll"
     else:
         explicit_mode = cli_mode or config_mode
         if explicit_mode == "allowAll":
-            print("Cannot set permission mode to allowAll because "
-                  "the session was not launched with "
-                  "--allow-all")
+            print("Cannot set permission mode to allowAll because the session was not launched with --allow-all")
             raise SystemExit(1)
         args.permission_mode = explicit_mode or "default"
     return args
@@ -517,8 +579,7 @@ def _refuse_allow_all_under_root(args) -> None:
     if not getattr(args, "allow_all", False):
         return
     if hasattr(os, "geteuid") and os.geteuid() == 0:
-        print("--allow-all cannot be used with root/sudo "
-              "privileges for security reasons")
+        print("--allow-all cannot be used with root/sudo privileges for security reasons")
         raise SystemExit(1)
 
 

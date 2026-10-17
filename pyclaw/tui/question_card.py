@@ -9,10 +9,10 @@ from textual.containers import Vertical
 from textual.widgets import Input, Static
 
 from pyclaw.tui import keys
-from pyclaw.tui.theme import (ANSWER_HINT, BULLET, OPTION_PAGE_SIZE, POINTER)
+from pyclaw.tui.theme import ANSWER_HINT, BULLET, OPTION_PAGE_SIZE, POINTER
 
 
-NO_ANSWER = 'no answer'
+NO_ANSWER = "no answer"
 
 
 @dataclasses.dataclass
@@ -26,15 +26,15 @@ class _Ask:
 def _ask(question) -> _Ask:
     question = question if isinstance(question, dict) else {}
     options = question.get("options") or []
-    return _Ask(str(question.get("question") or ""),
-                str(question.get("header") or ""),
-                [option if isinstance(option, dict) else {"label": option}
-                 for option in options],
-                bool(question.get("multiSelect")))
+    return _Ask(
+        str(question.get("question") or ""),
+        str(question.get("header") or ""),
+        [option if isinstance(option, dict) else {"label": option} for option in options],
+        bool(question.get("multiSelect")),
+    )
 
 
 class _QuestionPrompt(Vertical):
-
     can_focus = True
 
     BINDINGS = [
@@ -50,8 +50,7 @@ class _QuestionPrompt(Vertical):
         ("enter", "accept_option", "Answer"),
         ("escape", "cancel", "Skip"),
         ("tab", "type_answer", "Own answer"),
-    ] + [Binding(str(index), f"pick_option({index})", "Pick option")
-         for index in range(1, 5)]
+    ] + [Binding(str(index), f"pick_option({index})", "Pick option") for index in range(1, 5)]
 
     def __init__(self, questions: list, agent: str = "", **kw):
         super().__init__(classes="question", **kw)
@@ -66,8 +65,7 @@ class _QuestionPrompt(Vertical):
 
     def compose(self) -> ComposeResult:
         yield Static("", id="q-body", markup=True)
-        yield Input("", placeholder=ANSWER_HINT, id="q-text",
-                    select_on_focus=False)
+        yield Input("", placeholder=ANSWER_HINT, id="q-text", select_on_focus=False)
 
     def on_mount(self):
         self.app.register_overlay("select")
@@ -90,11 +88,10 @@ class _QuestionPrompt(Vertical):
             title += f" [dim]\u00b7 @{escape(self._agent)}[/]"
         lines = [f"[#B1B9F9]{BULLET}[/] {title}"]
         head = f"  {escape(ask.header)}" if ask.header else "  question"
-        lines.append(f"[dim]{head}"
-                     + (" \u00b7 pick any[/]" if ask.multi else "[/]"))
+        lines.append(f"[dim]{head}" + (" \u00b7 pick any[/]" if ask.multi else "[/]"))
         lines.append(f"  {escape(ask.text)}")
         for index, option in enumerate(ask.options):
-            marker = POINTER if index == self._focused else ' '
+            marker = POINTER if index == self._focused else " "
             if ask.multi:
                 marker = "\u25c9" if index in self._picked else marker
             label = str(option.get("label") or "")
@@ -103,8 +100,7 @@ class _QuestionPrompt(Vertical):
             if detail:
                 row += f" \u2014 {detail}"
             row = escape(row)
-            lines.append(f"[#B1B9F9]{row}[/]" if index == self._focused
-                         else f"[dim]{row}[/]")
+            lines.append(f"[#B1B9F9]{row}[/]" if index == self._focused else f"[dim]{row}[/]")
         if not ask.options:
             lines.append("  [dim]no options, type an answer[/]")
         preview = self._focused_preview(ask)
@@ -112,10 +108,8 @@ class _QuestionPrompt(Vertical):
             lines.append("")
             for line in preview.splitlines():
                 lines.append(f"[dim]  \u2502 {escape(line)}[/]")
-        picker = (keys.hint('toggle_option', 'picks') + ', '
-                  if ask.multi else '')
-        lines.append(f"[dim]  {keys.hint('dismiss', 'skips')} \u00b7 "
-                     f"{picker}{keys.hint('type_answer', 'types your own')}[/]")
+        picker = keys.hint("toggle_option", "picks") + ", " if ask.multi else ""
+        lines.append(f"[dim]  {keys.hint('dismiss', 'skips')} \u00b7 {picker}{keys.hint('type_answer', 'types your own')}[/]")
         self.query_one("#q-body", Static).update("\n".join(lines))
         self._sync_field()
 
@@ -135,8 +129,7 @@ class _QuestionPrompt(Vertical):
 
     def _move(self, delta: int, wrap: bool):
         total = max(1, len(self._ask.options))
-        self._focused = ((self._focused + delta) % total if wrap
-                         else min(max(0, self._focused + delta), total - 1))
+        self._focused = (self._focused + delta) % total if wrap else min(max(0, self._focused + delta), total - 1)
         self._draw()
 
     def action_opt_next(self):
@@ -179,8 +172,7 @@ class _QuestionPrompt(Vertical):
         self._accept()
 
     async def action_cancel(self):
-        self._answers.extend(NO_ANSWER
-                             for _ in range(self._index, len(self._asks)))
+        self._answers.extend(NO_ANSWER for _ in range(self._index, len(self._asks)))
         self._finish()
 
     def on_input_submitted(self, event: Input.Submitted):
@@ -190,23 +182,21 @@ class _QuestionPrompt(Vertical):
     def _accept(self):
         ask = self._ask
         if ask.multi:
-            labels = [str(ask.options[index].get("label") or "")
-                      for index in sorted(self._picked)]
+            labels = [str(ask.options[index].get("label") or "") for index in sorted(self._picked)]
             self._record(", ".join(label for label in labels if label))
             return
         if not ask.options:
             self._record(NO_ANSWER)
             return
         option = ask.options[self._focused]
-        self._record(self._with_preview(
-            str(option.get("label") or ""), option))
+        self._record(self._with_preview(str(option.get("label") or ""), option))
 
     @staticmethod
     def _with_preview(answer: str, option: dict) -> str:
         preview = str(option.get("preview") or "").strip()
         if not preview:
             return answer
-        return f'{answer}\nselected preview:\n{preview}'
+        return f"{answer}\nselected preview:\n{preview}"
 
     def _record(self, answer: str):
         self._answers.append(answer or NO_ANSWER)

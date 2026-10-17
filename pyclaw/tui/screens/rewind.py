@@ -13,18 +13,21 @@ from textual.widgets import Static
 
 
 class RewindScreen(Screen):
+    BINDINGS = [
+        keys.binding("prev", "Previous"),
+        keys.binding("next", "Next"),
+        keys.binding("choose", "Choose"),
+        keys.binding("dismiss", "Back"),
+        Binding("q", "dismiss", "Back"),
+        Binding("ctrl+c", "dismiss", "Back"),
+    ]
 
-    BINDINGS = [keys.binding('prev', 'Previous'),
-                keys.binding('next', 'Next'),
-                keys.binding('choose', 'Choose'),
-                keys.binding('dismiss', 'Back'),
-                Binding('q', 'dismiss', 'Back'),
-                Binding('ctrl+c', 'dismiss', 'Back')]
-
-    MODES = (('both', 'Restore code and conversation'),
-             ('conversation', 'Restore conversation'),
-             ('code', 'Restore code'),
-             ('never', 'Never mind'))
+    MODES = (
+        ("both", "Restore code and conversation"),
+        ("conversation", "Restore conversation"),
+        ("code", "Restore code"),
+        ("never", "Never mind"),
+    )
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -44,33 +47,31 @@ class RewindScreen(Screen):
 
     @staticmethod
     def _stats(stats) -> str:
-        files = len((stats or {}).get('files') or [])
+        files = len((stats or {}).get("files") or [])
         if not files:
-            return ''
-        return (f' · {_plural(files, "file")}'
-                f' · +{(stats or {}).get("insertions", 0)}'
-                f' -{(stats or {}).get("deletions", 0)}')
+            return ""
+        return f" · {_plural(files, 'file')} · +{(stats or {}).get('insertions', 0)} -{(stats or {}).get('deletions', 0)}"
 
     def _rows(self) -> tuple[list, int]:
         if not self._choosing:
-            rows = ['Go back to which turn?']
+            rows = ["Go back to which turn?"]
             for index, (mark, prompt) in enumerate(self._turns):
-                row = f'{index + 1}. {_summarize(prompt, 60)}'
+                row = f"{index + 1}. {_summarize(prompt, 60)}"
                 if index == self._turn:
                     row += self._stats(self._owner._session.rewind_stats(mark))
                 rows.append(row)
             return rows, self._turn + 1
         _mark, prompt = self._turns[self._turn]
-        rows = [f'Back to: {self._turn + 1}. {_summarize(prompt, 60)}']
+        rows = [f"Back to: {self._turn + 1}. {_summarize(prompt, 60)}"]
         rows.extend(label for _key, label in self.MODES)
         return rows, self._mode + 1
 
     def _draw(self):
         rows, selected = self._rows()
-        lines = [ui.marked(f'[bold]{escape(rows[0])}[/]', selected=False)]
+        lines = [ui.marked(f"[bold]{escape(rows[0])}[/]", selected=False)]
         lines += ui.rows(rows[1:], selected - 1)
-        lines += ui.footer(('choose', 'chooses'), ('dismiss', 'backs out'))
-        self.query_one("#rw-body", Static).update('\n'.join(lines))
+        lines += ui.footer(("choose", "chooses"), ("dismiss", "backs out"))
+        self.query_one("#rw-body", Static).update("\n".join(lines))
 
     def _move(self, delta: int):
         if self._choosing:
@@ -94,10 +95,8 @@ class RewindScreen(Screen):
         key = self.MODES[self._mode][0]
         mark = self._turns[self._turn][0]
         self.app.pop_screen()
-        if key != 'never':
-            await self._owner._apply_rewind(
-                mark, code=key != 'conversation',
-                conversation=key != 'code')
+        if key != "never":
+            await self._owner._apply_rewind(mark, code=key != "conversation", conversation=key != "code")
 
     def action_dismiss(self):
         self.app.pop_screen()

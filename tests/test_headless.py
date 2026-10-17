@@ -10,7 +10,7 @@ def _fake_team():
     class T:
         provider = "p"
         model = "m"
-        thinking = Thinking('off')
+        thinking = Thinking("off")
         name = "t"
         provided_tools = []
 
@@ -35,7 +35,7 @@ class _FakeSession:
     permission_mode = "default"
     provider = "p"
     model = "m"
-    thinking = Thinking('off')
+    thinking = Thinking("off")
     usage = _U()
 
     def __init__(self, team, session_id=None, resume_from=None):
@@ -52,7 +52,7 @@ class _FakeSession:
         return "\n\nhello\n"
 
     def record_turn(self):
-        return {'at': '', 'day': '', 'metrics': {}}
+        return {"at": "", "day": "", "metrics": {}}
 
     async def close(self):
         pass
@@ -75,14 +75,14 @@ def test_render_output_prints_the_requested_format(capsys):
     __main__.render_output("json", payload)
     assert json.loads(capsys.readouterr().out) == payload
 
-SCHEMA = {'type': 'object', 'properties': {'name': {'type': 'string'}},
-          'required': ['name']}
+
+SCHEMA = {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]}
 
 
 class _ShapeTeam:
     provider = "p"
     model = "m"
-    thinking = Thinking('off')
+    thinking = Thinking("off")
     name = "t"
     provided_tools = []
 
@@ -92,9 +92,9 @@ class _ShapeTeam:
 
     def set_output_schema(self, schema):
         self.installed.append(schema)
-        if schema.get('type') == 'not-a-type':
+        if schema.get("type") == "not-a-type":
             return "'not-a-type' is not recognized"
-        return ''
+        return ""
 
     def tool_schemas(self):
         return []
@@ -107,8 +107,7 @@ def test_print_mode_installs_the_shape_before_asking(monkeypatch):
     team = _ShapeTeam()
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
     monkeypatch.setattr(__main__, "Session", _FakeSession)
-    out = asyncio.run(__main__.prompt_once("p", "m", "hi",
-                                           json_schema=SCHEMA))
+    out = asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema=SCHEMA))
     assert team.installed == [SCHEMA]
     assert out["structured_output"] is None
 
@@ -117,60 +116,54 @@ def test_a_shape_that_is_not_a_shape_stops_the_run(monkeypatch):
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _FakeSession)
     try:
-        asyncio.run(__main__.prompt_once("p", "m", "hi",
-                                         json_schema={'type': 'not-a-type'}))
+        asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema={"type": "not-a-type"}))
     except ValueError as exc:
-        assert 'not-a-type' in str(exc)
+        assert "not-a-type" in str(exc)
     else:
-        raise AssertionError('the run went ahead with a broken schema')
+        raise AssertionError("the run went ahead with a broken schema")
 
 
 def test_the_payload_is_what_print_mode_hands_over(capsys, monkeypatch):
     class _AnsweringSession(_FakeSession):
         async def chat(self, message, on_event=None):
-            self.team.structured_output = {'name': 'round'}
+            self.team.structured_output = {"name": "round"}
             return "\n\nprose\n"
 
     team = _ShapeTeam()
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
     monkeypatch.setattr(__main__, "Session", _AnsweringSession)
-    out = asyncio.run(__main__.prompt_once("p", "m", "hi",
-                                           json_schema=SCHEMA))
-    assert out["structured_output"] == {'name': 'round'}
+    out = asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema=SCHEMA))
+    assert out["structured_output"] == {"name": "round"}
     __main__.render_output("text", out)
-    assert json.loads(capsys.readouterr().out) == {'name': 'round'}
+    assert json.loads(capsys.readouterr().out) == {"name": "round"}
     __main__.render_output("json", out)
-    assert json.loads(capsys.readouterr().out)["structured_output"] == \
-        {'name': 'round'}
+    assert json.loads(capsys.readouterr().out)["structured_output"] == {"name": "round"}
 
 
 def test_print_mode_refuses_a_shape_that_is_not_json(capsys):
-    args = __main__._build_parser().parse_args(['-p', 'hi', '--json-schema',
-                                                '{oops'])
+    args = __main__._build_parser().parse_args(["-p", "hi", "--json-schema", "{oops"])
     try:
         __main__._json_schema(args)
     except SystemExit:
-        assert 'not valid JSON' in capsys.readouterr().out
+        assert "not valid JSON" in capsys.readouterr().out
     else:
-        raise AssertionError('a broken schema was accepted')
+        raise AssertionError("a broken schema was accepted")
 
 
 def test_a_shape_needs_a_prompt_to_shape(capsys):
-    args = __main__._build_parser().parse_args(['--json-schema', '{}'])
+    args = __main__._build_parser().parse_args(["--json-schema", "{}"])
     try:
         __main__._json_schema(args)
     except SystemExit:
-        assert '--json-schema needs --print' in capsys.readouterr().out
+        assert "--json-schema needs --print" in capsys.readouterr().out
     else:
-        raise AssertionError('the shape reached an interactive run')
+        raise AssertionError("the shape reached an interactive run")
 
 
 def test_the_shape_arrives_as_the_text_the_flag_carried():
-    args = __main__._build_parser().parse_args(['-p', 'hi', '--json-schema',
-                                                '{"type":"object"}'])
-    assert __main__._json_schema(args) == {'type': 'object'}
-    assert __main__._json_schema(
-        __main__._build_parser().parse_args(['-p', 'hi'])) is None
+    args = __main__._build_parser().parse_args(["-p", "hi", "--json-schema", '{"type":"object"}'])
+    assert __main__._json_schema(args) == {"type": "object"}
+    assert __main__._json_schema(__main__._build_parser().parse_args(["-p", "hi"])) is None
 
 
 def test_a_print_run_records_what_the_turn_used(monkeypatch):
@@ -181,7 +174,7 @@ def test_a_print_run_records_what_the_turn_used(monkeypatch):
     class _RecordingSession(_FakeSession):
         def record_turn(self):
             recorded.append(self.team.name)
-            return {'at': '', 'day': ''}
+            return {"at": "", "day": ""}
 
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _RecordingSession)
@@ -195,20 +188,18 @@ def test_a_print_run_records_its_events_locally(monkeypatch, tmp_path):
 
     from pyclaw import events
 
-    home = tmp_path / 'events'
-    monkeypatch.setattr(events, '_directory', lambda: home)
+    home = tmp_path / "events"
+    monkeypatch.setattr(events, "_directory", lambda: home)
 
     class _EmittingSession(_FakeSession):
         async def chat(self, message, on_event=None):
-            emit(AGENT_TEXT, agent='lead', delta='hello')
+            emit(AGENT_TEXT, agent="lead", delta="hello")
             return "\n\nhello\n"
 
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _EmittingSession)
     asyncio.run(__main__.prompt_once("p", "m", "hi"))
 
-    rows = [json.loads(line)
-            for path in home.glob('*.jsonl')
-            for line in path.read_text(encoding='utf-8').splitlines()]
-    assert [row['kind'] for row in rows] == ['text']
-    assert rows[0]['text'] == 'hello' and rows[0]['agent'] == 'lead'
+    rows = [json.loads(line) for path in home.glob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
+    assert [row["kind"] for row in rows] == ["text"]
+    assert rows[0]["text"] == "hello" and rows[0]["agent"] == "lead"

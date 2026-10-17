@@ -10,8 +10,7 @@ def workspace(cwd) -> Path:
 def roots(cwd, extra=()) -> list[Path]:
     """Every directory the session is allowed to work in: the one it started
     in, plus any added with /add-dir."""
-    return [workspace(cwd)] + [Path(extra_one).resolve()
-                               for extra_one in (extra or ())]
+    return [workspace(cwd)] + [Path(extra_one).resolve() for extra_one in (extra or ())]
 
 
 def resolve(cwd, p, extra=()) -> Path | None:
@@ -32,9 +31,9 @@ def relative(cwd, p) -> str:
         return str(p)
 
 
-SKIP_DIRS = frozenset({'.git', '.hg', '.svn', '__pycache__', 'node_modules',
-                       '.venv', 'venv', 'dist', 'build', '.tox', '.idea',
-                       '.pyclaw'})
+SKIP_DIRS = frozenset(
+    {".git", ".hg", ".svn", "__pycache__", "node_modules", ".venv", "venv", "dist", "build", ".tox", ".idea", ".pyclaw"}
+)
 
 
 def skipped(path) -> bool:

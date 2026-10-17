@@ -23,8 +23,7 @@ def _deliver(deliver):
     return send
 
 
-async def tick(store, lock, deliver, *, now: datetime | None = None,
-               cfg=DEFAULT_JITTER, clock=_now) -> list:
+async def tick(store, lock, deliver, *, now: datetime | None = None, cfg=DEFAULT_JITTER, clock=_now) -> list:
     now = now or clock()
     send = _deliver(deliver)
     due = list(store.session())
@@ -38,15 +37,14 @@ async def tick(store, lock, deliver, *, now: datetime | None = None,
             continue
         await send(task)
         fired.append(task)
-        if task.get('recurring') and not aged:
-            store.mark_fired(task['id'], now)
+        if task.get("recurring") and not aged:
+            store.mark_fired(task["id"], now)
         else:
-            store.remove(task['id'])
+            store.remove(task["id"])
     return fired
 
 
-async def run(store, lock, deliver, *, interval: float = DEFAULT_TICK_SECONDS,
-              cfg=DEFAULT_JITTER, clock=_now):
+async def run(store, lock, deliver, *, interval: float = DEFAULT_TICK_SECONDS, cfg=DEFAULT_JITTER, clock=_now):
     while True:
         await asyncio.sleep(interval)
         await tick(store, lock, deliver, cfg=cfg, clock=clock)

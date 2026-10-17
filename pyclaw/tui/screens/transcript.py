@@ -31,11 +31,12 @@ from pyclaw.tui.diff import _diff_block
 
 
 class TranscriptScreen(Screen):
-
-    BINDINGS = [keys.binding('dismiss', 'Back'),
-                Binding('q', 'dismiss', 'Back'),
-                Binding('ctrl+o', 'dismiss', 'Back'),
-                Binding('ctrl+c', 'dismiss', 'Back')]
+    BINDINGS = [
+        keys.binding("dismiss", "Back"),
+        Binding("q", "dismiss", "Back"),
+        Binding("ctrl+o", "dismiss", "Back"),
+        Binding("ctrl+c", "dismiss", "Back"),
+    ]
 
     def __init__(self, owner, **kw):
         super().__init__(**kw)
@@ -55,18 +56,15 @@ class TranscriptScreen(Screen):
         if block._output is None:
             trail = block._trail_markup(full=True)
             return f"{head}\n{trail}" if trail else head
-        diff = _diff_block(block._name, block._input, block._output,
-                           block._cwd, block._width())
+        diff = _diff_block(block._name, block._input, block._output, block._cwd, block._width())
         if diff is not None:
             return head + "\n" + diff
         body = escape(str(block._output)) or "(no output)"
-        return (head + "\n" + RESULT_PREFIX
-                + body.replace("\n", "\n" + RESULT_HANG))
+        return head + "\n" + RESULT_PREFIX + body.replace("\n", "\n" + RESULT_HANG)
 
     @staticmethod
     def _thinking_entry(text: str) -> str:
-        return (f"[dim]{ASTERISK} Thinking\u2026[/]\n"
-                + _hang(RESULT_HANG, escape(text)))
+        return f"[dim]{ASTERISK} Thinking\u2026[/]\n" + _hang(RESULT_HANG, escape(text))
 
     def _entries(self) -> list[str]:
         app = self._owner
@@ -74,8 +72,7 @@ class TranscriptScreen(Screen):
         thoughts = thinking_map(app._team.transcript())
         models = model_map(app._team.transcript())
         for widget in app._conv().children:
-            if isinstance(widget, (_PermissionPrompt, _QuestionPrompt,
-                                   _JumpToBottom, _LogoBlock)):
+            if isinstance(widget, (_PermissionPrompt, _QuestionPrompt, _JumpToBottom, _LogoBlock)):
                 continue
             if isinstance(widget, _TextBlock):
                 body = widget._body or ""

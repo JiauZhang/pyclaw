@@ -9,7 +9,7 @@ from pathlib import Path
 from conippets import json
 
 from chatchat.team.agents import AgentDefinition
-from chatchat.knowledge.filehistory import FileHistory
+from chatchat.runtime.filehistory import FileHistory
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import session as session_mod
@@ -17,17 +17,25 @@ from pyclaw.session import Session
 from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
-from pyclaw.permissions.bash_rules import (bash_allowed_by, bash_rule,
-                                           bash_rule_matches,
-                                           is_dangerous_removal, is_dangerous_rule,
-                                           is_read_only,
-                                           parse_bash_rule, rule_content,
-                                           suggested_rule, suggested_rules)
-from pyclaw.permissions.gate import (REJECT_MESSAGE,
-                                     REJECT_MESSAGE_WITH_REASON_PREFIX,
-                                     SUBAGENT_REJECT_MESSAGE,
-                                     SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
-                                     PermissionChoice)
+from pyclaw.permissions.bash_rules import (
+    bash_allowed_by,
+    bash_rule,
+    bash_rule_matches,
+    is_dangerous_removal,
+    is_dangerous_rule,
+    is_read_only,
+    parse_bash_rule,
+    rule_content,
+    suggested_rule,
+    suggested_rules,
+)
+from pyclaw.permissions.gate import (
+    REJECT_MESSAGE,
+    REJECT_MESSAGE_WITH_REASON_PREFIX,
+    SUBAGENT_REJECT_MESSAGE,
+    SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
+    PermissionChoice,
+)
 from pyclaw.team.builder import build_team
 from pyclaw import task_registry
 from pyclaw.tools import BUILTIN_TOOLS, background
@@ -40,6 +48,7 @@ def _tools(d, files=None):
     def bound(tool):
         def call(**kwargs):
             return asyncio.run(tool(ctx, **kwargs))
+
         call.tool = tool
         return call
 
@@ -48,19 +57,19 @@ def _tools(d, files=None):
 
 def test_coding_tools_are_shared_singletons():
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
-        Path(a, 'same.txt').write_text('in a\n', encoding='utf-8')
-        Path(b, 'same.txt').write_text('in b\n', encoding='utf-8')
-        first, second = _tools(a)['Read'], _tools(b)['Read']
+        Path(a, "same.txt").write_text("in a\n", encoding="utf-8")
+        Path(b, "same.txt").write_text("in b\n", encoding="utf-8")
+        first, second = _tools(a)["Read"], _tools(b)["Read"]
         assert first.tool is second.tool
-        assert 'in a' in _text(first(file_path='same.txt'))
-        assert 'in b' in _text(second(file_path='same.txt'))
+        assert "in a" in _text(first(file_path="same.txt"))
+        assert "in b" in _text(second(file_path="same.txt"))
 
 
 def _all_properties(schema: dict) -> dict:
-    found = dict(schema.get('properties', {}))
-    for spec in schema.get('properties', {}).values():
-        if spec.get('type') == 'array':
-            found.update(_all_properties(spec.get('items', {})))
+    found = dict(schema.get("properties", {}))
+    for spec in schema.get("properties", {}).values():
+        if spec.get("type") == "array":
+            found.update(_all_properties(spec.get("items", {})))
     return found
 
 
@@ -75,21 +84,18 @@ def test_tool_text_respects_the_budget_and_documents_every_parameter():
 
 
 def test_read_warns_about_the_line_prefix_that_edit_must_not_copy():
-    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Read"].describe(
-        ToolContext(cwd=Path("/w")))
+    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Read"].describe(ToolContext(cwd=Path("/w")))
     assert "line number" in text and "tab" in text
 
 
 def test_grep_states_the_regex_dialect_and_its_line_scope():
-    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Grep"].describe(
-        ToolContext(cwd=Path("/w")))
+    text = dict((t.name, t) for t in BUILTIN_TOOLS)["Grep"].describe(ToolContext(cwd=Path("/w")))
     assert "Python re" in text and "newline" in text
 
 
 def test_read_offset_counts_the_lines_the_output_shows():
     with tempfile.TemporaryDirectory() as d:
-        Path(d, "ten.txt").write_text(
-            "\n".join(f"l{i}" for i in range(1, 11)), encoding="utf-8")
+        Path(d, "ten.txt").write_text("\n".join(f"l{i}" for i in range(1, 11)), encoding="utf-8")
         out = _text(_tools(d)["Read"](file_path="ten.txt", offset=3, limit=2))
         assert "3\tl3" in out and "4\tl4" in out
         assert "l5" not in out and "2\tl2" not in out
@@ -97,18 +103,14 @@ def test_read_offset_counts_the_lines_the_output_shows():
 
 def test_read_caps_long_files_at_the_line_count_it_promises():
     with tempfile.TemporaryDirectory() as d:
-        Path(d, "long.txt").write_text(
-            "\n".join(f"l{i}" for i in range(2100)), encoding="utf-8")
+        Path(d, "long.txt").write_text("\n".join(f"l{i}" for i in range(2100)), encoding="utf-8")
         out = _text(_tools(d)["Read"](file_path="long.txt"))
         assert "showing 1-2000" in out and "2100 lines" in out
         assert "2000\tl1999" in out and "2001\tl2000" not in out
-        assert "2000" in dict((t.name, t) for t in BUILTIN_TOOLS)[
-            "Read"].describe(ToolContext(cwd=Path("/w")))
+        assert "2000" in dict((t.name, t) for t in BUILTIN_TOOLS)["Read"].describe(ToolContext(cwd=Path("/w")))
 
 
-_MIN_PNG = base64.b64decode(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ'
-    'AAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==')
+_MIN_PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
 
 def test_read_returns_an_image_block_for_image_files():
@@ -117,12 +119,12 @@ def test_read_returns_an_image_block_for_image_files():
         Path(d, "px.jpg").write_bytes(_MIN_PNG)
         png = _tools(d)["Read"](file_path="px.png")
         assert isinstance(png, ToolResult)
-        assert png.blocks[0]['type'] == 'image'
-        assert png.blocks[0]['source']['media_type'] == 'image/png'
-        assert base64.b64decode(png.blocks[0]['source']['data']) == _MIN_PNG
-        assert 'px.png' in png.text
+        assert png.blocks[0]["type"] == "image"
+        assert png.blocks[0]["source"]["media_type"] == "image/png"
+        assert base64.b64decode(png.blocks[0]["source"]["data"]) == _MIN_PNG
+        assert "px.png" in png.text
         jpg = _tools(d)["Read"](file_path="px.jpg")
-        assert jpg.blocks[0]['source']['media_type'] == 'image/jpeg'
+        assert jpg.blocks[0]["source"]["media_type"] == "image/jpeg"
 
 
 def test_read_rejects_an_oversized_image():
@@ -130,20 +132,20 @@ def test_read_rejects_an_oversized_image():
 
     with tempfile.TemporaryDirectory() as d:
         Path(d, "big.png").write_bytes(_MIN_PNG)
-        limit = getattr(read_mod, '_IMAGE_MAX_BYTES')
+        limit = getattr(read_mod, "_IMAGE_MAX_BYTES")
         try:
             read_mod._IMAGE_MAX_BYTES = 1
             out = _text(_tools(d)["Read"](file_path="big.png"))
         finally:
             read_mod._IMAGE_MAX_BYTES = limit
-        assert out.startswith('Error:') and '10 MB' in out
+        assert out.startswith("Error:") and "10 MB" in out
 
 
 def test_read_still_refuses_non_image_binary_files():
     with tempfile.TemporaryDirectory() as d:
-        Path(d, "bin.dat").write_bytes(b'\x00\xff\xfe\x01')
+        Path(d, "bin.dat").write_bytes(b"\x00\xff\xfe\x01")
         out = _text(_tools(d)["Read"](file_path="bin.dat"))
-        assert out.startswith('Error:') and 'Invalid UTF-8' in out
+        assert out.startswith("Error:") and "Invalid UTF-8" in out
 
 
 def _text(result):
@@ -177,8 +179,7 @@ def test_grep_matches_and_limits():
 def test_grep_never_searches_vendored_or_state_dirs():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
-        for rel in ("node_modules/p/x.txt", ".git/x.txt",
-                    ".pyclaw/teams/x.txt"):
+        for rel in ("node_modules/p/x.txt", ".git/x.txt", ".pyclaw/teams/x.txt"):
             (root / rel).parent.mkdir(parents=True)
             (root / rel).write_text("hidden\n")
         (root / "src.txt").write_text("visible\n")
@@ -195,15 +196,13 @@ def test_glob_bare_pattern_matches_one_level():
         (root / "pkg" / "deep.py").write_text("")
         t = _tools(d)
         assert _text(t["Glob"](pattern="*.py")).split() == ["top.py"]
-        assert sorted(_text(t["Glob"](pattern="**/*.py")).split()) == [
-            "pkg/deep.py", "top.py"]
+        assert sorted(_text(t["Glob"](pattern="**/*.py")).split()) == ["pkg/deep.py", "top.py"]
 
 
 def test_path_escape_guard():
     with tempfile.TemporaryDirectory() as d:
         t = _tools(d)
-        for tool, kw in (("Read", {"file_path": "../secret"}),
-                         ("Write", {"file_path": "../x", "content": "y"})):
+        for tool, kw in (("Read", {"file_path": "../secret"}), ("Write", {"file_path": "../x", "content": "y"})):
             assert t[tool](**kw).startswith("Error")
 
 
@@ -212,15 +211,13 @@ def test_edit_unique_and_ambiguous():
         root = Path(d)
         (root / "a.txt").write_text("one\ntwo\none\n")
         t = _tools(d)
-        ambiguous = _text(t["Edit"](file_path="a.txt", old_string="one",
-                                      new_string="X"))
+        ambiguous = _text(t["Edit"](file_path="a.txt", old_string="one", new_string="X"))
         assert "not unique" in ambiguous
         ok = _text(t["Edit"](file_path="a.txt", old_string="two", new_string="TWO"))
         assert "Saved" in ok
         assert "-two" in ok and "+TWO" in ok
         assert "TWO" in _read(root / "a.txt")
-        missing = _text(t["Edit"](file_path="a.txt", old_string="zzz",
-                                    new_string="y"))
+        missing = _text(t["Edit"](file_path="a.txt", old_string="zzz", new_string="y"))
         assert "not found" in missing
 
 
@@ -230,8 +227,7 @@ def test_write_and_edit():
         t = _tools(d)
         wrote = _text(t["Write"](file_path="b.txt", content="hi\n"))
         assert "Created b.txt." in wrote
-        out = _text(t["Edit"](file_path="b.txt", old_string="hi",
-                              new_string="hello"))
+        out = _text(t["Edit"](file_path="b.txt", old_string="hi", new_string="hello"))
         assert "Saved" in out
         assert "-hi" in out and "+hello" in out
         assert "hello" in _read(root / "b.txt")
@@ -260,8 +256,7 @@ def test_decide_matrix():
         assert plan.decide("Edit", {"file_path": "a.txt"}) == "deny"
         assert plan.decide("Read", {"file_path": "../x"}) == "allow"
 
-        ae = PermissionController(mode="acceptEdits", cwd=d,
-                                 tools=BUILTIN_TOOLS)
+        ae = PermissionController(mode="acceptEdits", cwd=d, tools=BUILTIN_TOOLS)
         assert ae.decide("Edit", {"file_path": "a.txt"}) == "allow"
 
 
@@ -269,20 +264,16 @@ def test_decide_mode_override_per_call():
     with tempfile.TemporaryDirectory() as d:
         g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS)
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
-        assert g.decide("Edit", {"file_path": "a.txt"},
-                        mode="acceptEdits") == "allow"
-        assert g.decide("Edit", {"file_path": "a.txt"},
-                        mode="plan") == "deny"
+        assert g.decide("Edit", {"file_path": "a.txt"}, mode="acceptEdits") == "allow"
+        assert g.decide("Edit", {"file_path": "a.txt"}, mode="plan") == "deny"
         assert g.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert g.mode.value == "default"
-        assert g.decide("Bash", {"command": "echo hi"},
-                        mode="acceptEdits") == "allow"
+        assert g.decide("Bash", {"command": "echo hi"}, mode="acceptEdits") == "allow"
 
 
 def test_coding_tools_declare_their_permissions_capabilities():
     by_name = {t.name: t for t in BUILTIN_TOOLS}
-    assert {n for n, t in by_name.items() if t.read_only} == {
-        "Read", "Glob", "Grep"}
+    assert {n for n, t in by_name.items() if t.read_only} == {"Read", "Glob", "Grep"}
     assert by_name["Edit"].get_path({"file_path": "a.py"}) == "a.py"
     assert by_name["Grep"].get_path({"pattern": "a|b", "path": "src"}) == "src"
     assert by_name["Grep"].get_path({"pattern": "a|b"}) is None
@@ -297,20 +288,16 @@ def test_the_gate_asks_the_tool_what_it_addresses():
         assert g.decide("Grep", {"pattern": "../secret"}) == "allow"
         assert g.decide("Grep", {"pattern": "x", "path": "../secret"}) == "ask"
         assert g.suggested_rule("Grep", {"pattern": "a|b"}) is None
-        assert g.suggested_rule("Grep", {"pattern": "a|b",
-                                         "path": "src"}) == "Grep(./src)"
-        assert (g.suggested_rule("Bash", {"command": "npm test"}) or ""
-                ).startswith("Bash(npm")
+        assert g.suggested_rule("Grep", {"pattern": "a|b", "path": "src"}) == "Grep(./src)"
+        assert (g.suggested_rule("Bash", {"command": "npm test"}) or "").startswith("Bash(npm")
 
 
 async def _gate_call(team, tool_name, tool_input, agent_type):
-    matched = team.hooks.get_matching_hooks(
-        "PreToolUse", tool_name,
-        {"hook_event_name": "PreToolUse", "tool_name": tool_name})
+    matched = team.hooks.get_matching_hooks("PreToolUse", tool_name, {"hook_event_name": "PreToolUse", "tool_name": tool_name})
     fn = matched[0].config.fn
-    return await fn({"hook_event_name": "PreToolUse",
-                     "tool_name": tool_name, "tool_input": tool_input,
-                     "agent_type": agent_type})
+    return await fn(
+        {"hook_event_name": "PreToolUse", "tool_name": tool_name, "tool_input": tool_input, "agent_type": agent_type}
+    )
 
 
 def _decision(payload):
@@ -324,9 +311,7 @@ def test_permission_gate_resolves_subagent_mode():
     async def main():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.register_agent_definition(AgentDefinition(
-                "reader", system_prompt="read only",
-                permission_mode="plan"))
+            team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
             file = {"file_path": str(Path(d) / "a.txt")}
             planned = await _gate_call(team, "Write", file, "reader")
             subagent = await _gate_call(team, "Write", file, "subagent")
@@ -335,8 +320,7 @@ def test_permission_gate_resolves_subagent_mode():
 
     planned, subagent, lead = asyncio.run(main())
     assert _decision(planned)["permissionDecision"] == "deny"
-    assert _decision(planned)["permissionDecisionReason"].startswith(
-        "Write is not allowed in plan mode")
+    assert _decision(planned)["permissionDecisionReason"].startswith("Write is not allowed in plan mode")
     assert subagent is True
     assert "needs approval" in _decision(lead)["permissionDecisionReason"]
 
@@ -345,30 +329,22 @@ def test_permission_gate_parent_mode_takes_precedence():
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
+
             def accept_edits_team():
-                team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                                  permission_mode="acceptEdits")
-                team.register_agent_definition(AgentDefinition(
-                    "reader", system_prompt="read only",
-                    permission_mode="plan"))
+                team = build_team("agnes", "agnes-2.5-flash", cwd=d, permission_mode="acceptEdits")
+                team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
                 return team
 
             file = {"file_path": str(Path(d) / "a.txt")}
             team = accept_edits_team()
-            edit_in_accept_edits = await _gate_call(team, "Edit", file,
-                                                    "reader")
-            bash_in_accept_edits = await _gate_call(
-                team, "Bash", {"command": "echo hi"}, "reader")
+            edit_in_accept_edits = await _gate_call(team, "Edit", file, "reader")
+            bash_in_accept_edits = await _gate_call(team, "Bash", {"command": "echo hi"}, "reader")
 
-            unlocked = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                                permission_mode="allowAll")
-            unlocked.register_agent_definition(AgentDefinition(
-                "reader", system_prompt="read only", permission_mode="plan"))
+            unlocked = build_team("agnes", "agnes-2.5-flash", cwd=d, permission_mode="allowAll")
+            unlocked.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
             edit_in_allow_all = await _gate_call(unlocked, "Edit", file, "reader")
-            datetime_in_allow_all = await _gate_call(unlocked, "datetime", {},
-                                                  "reader")
-            return (edit_in_accept_edits, bash_in_accept_edits,
-                    edit_in_allow_all, datetime_in_allow_all)
+            datetime_in_allow_all = await _gate_call(unlocked, "datetime", {}, "reader")
+            return (edit_in_accept_edits, bash_in_accept_edits, edit_in_allow_all, datetime_in_allow_all)
 
     edit_ae, bash_ae, edit_bp, dt_bp = asyncio.run(main())
     assert edit_ae is True
@@ -384,9 +360,7 @@ def test_allow_all_allows_unless_a_rule_says_otherwise():
         assert g.decide("Bash", {"command": "python3 x.py"}) == "allow"
         assert g.decide("datetime", {}) == "allow"
 
-        ruled = PermissionController(mode="allowAll", cwd=d,
-                                     deny=["Bash(rm:*)"],
-                                     ask=["Bash(git push:*)"])
+        ruled = PermissionController(mode="allowAll", cwd=d, deny=["Bash(rm:*)"], ask=["Bash(git push:*)"])
         assert ruled.decide("Bash", {"command": "rm -rf x"}) == "deny"
         assert ruled.decide("Bash", {"command": "git push origin"}) == "ask"
 
@@ -396,21 +370,17 @@ def test_deny_removes_tool_and_precedence():
         g = PermissionController(mode="default", cwd=d, deny=["Edit"])
         assert g.allowed_tool("Edit") is False
         assert g.allowed_tool("Read") is True
-        g2 = PermissionController(mode="default", cwd=d,
-                                  deny=["Edit"], allow=["Edit"])
+        g2 = PermissionController(mode="default", cwd=d, deny=["Edit"], allow=["Edit"])
         assert g2.decide("Edit", {"file_path": "a.txt"}) == "deny"
 
 
 def test_non_bash_tool_rules_match_their_path_argument():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS,
-                                 deny=["Read(./secret.txt)"])
+        g = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS, deny=["Read(./secret.txt)"])
         assert g.decide("Read", {"file_path": "secret.txt"}) == "deny"
         assert g.decide("Read", {"file_path": "notes.txt"}) == "allow"
 
-        scoped = PermissionController(mode="default", cwd=d,
-                                      tools=BUILTIN_TOOLS,
-                                      allow=["Edit(./src/**)"])
+        scoped = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS, allow=["Edit(./src/**)"])
         assert scoped.decide("Edit", {"file_path": "src/a.py"}) == "allow"
         assert scoped.decide("Edit", {"file_path": "other/a.py"}) == "ask"
 
@@ -418,13 +388,13 @@ def test_non_bash_tool_rules_match_their_path_argument():
 def test_ask_flow_authorize():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp, *, tool_use_id='', agent=''):
+        async def approve(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("approved")
 
         g = PermissionController(mode="default", cwd=d, request=approve)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
 
-        async def denied(name, inp, *, tool_use_id='', agent=''):
+        async def denied(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("denied")
 
         g2 = PermissionController(mode="default", cwd=d, request=denied)
@@ -440,7 +410,7 @@ def test_the_asking_agent_reaches_the_prompt():
     with tempfile.TemporaryDirectory() as d:
         seen = {}
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             seen["agent"] = agent
             return PermissionChoice("approved")
 
@@ -453,7 +423,7 @@ def test_a_permission_request_hook_can_answer_before_the_user():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             asked.append(name)
             await asyncio.sleep(5)
             return PermissionChoice("approved")
@@ -461,17 +431,13 @@ def test_a_permission_request_hook_can_answer_before_the_user():
         seen = {}
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
-            seen.update(tool_name=tool_name, tool_use_id=tool_use_id,
-                        agent=agent)
-            return {"behavior": "allow",
-                    "updated_input": {"file_path": "b.txt"}, "message": ""}
+            seen.update(tool_name=tool_name, tool_use_id=tool_use_id, agent=agent)
+            return {"behavior": "allow", "updated_input": {"file_path": "b.txt"}, "message": ""}
 
         g = PermissionController(mode="default", cwd=d, request=ask)
         g.permission_hooks = hooks
-        res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"},
-                                      tool_use_id="u1", agent="watcher"))
-        assert seen == {"tool_name": "Edit", "tool_use_id": "u1",
-                        "agent": "watcher"}
+        res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}, tool_use_id="u1", agent="watcher"))
+        assert seen == {"tool_name": "Edit", "tool_use_id": "u1", "agent": "watcher"}
         assert _decision(res)["permissionDecision"] == "allow"
         assert _decision(res)["updatedInput"] == {"file_path": "b.txt"}
         assert asked == ["Edit"]
@@ -481,28 +447,26 @@ def test_a_permission_request_hook_denial_carries_its_message():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             asked.append(name)
             await asyncio.sleep(5)
             return PermissionChoice("approved")
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
-            return {"behavior": "deny", "updated_input": None,
-                    "message": "this path is off limits"}
+            return {"behavior": "deny", "updated_input": None, "message": "this path is off limits"}
 
         g = PermissionController(mode="default", cwd=d, request=ask)
         g.permission_hooks = hooks
         res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
         assert _decision(res)["permissionDecision"] == "deny"
-        assert (_decision(res)["permissionDecisionReason"]
-                == "this path is off limits")
+        assert _decision(res)["permissionDecisionReason"] == "this path is off limits"
         assert asked == ["Edit"]
 
 
 def test_a_permission_request_hook_without_a_decision_leaves_the_user_in_charge():
     with tempfile.TemporaryDirectory() as d:
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("denied", feedback="user said no")
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
@@ -512,14 +476,14 @@ def test_a_permission_request_hook_without_a_decision_leaves_the_user_in_charge(
         g.permission_hooks = hooks
         res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
         assert _decision(res)["permissionDecision"] == "deny"
-        assert ("user said no" in _decision(res)["permissionDecisionReason"])
+        assert "user said no" in _decision(res)["permissionDecisionReason"]
 
 
 def test_the_user_answer_wins_against_a_slow_permission_request_hook():
     with tempfile.TemporaryDirectory() as d:
         cancelled = []
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("approved")
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
@@ -528,8 +492,7 @@ def test_the_user_answer_wins_against_a_slow_permission_request_hook():
             except asyncio.CancelledError:
                 cancelled.append(True)
                 raise
-            return {"behavior": "deny", "updated_input": None,
-                    "message": "too late"}
+            return {"behavior": "deny", "updated_input": None, "message": "too late"}
 
         g = PermissionController(mode="default", cwd=d, request=ask)
         g.permission_hooks = hooks
@@ -541,26 +504,29 @@ def test_a_denial_reports_the_refusal_to_the_agent_that_asked():
     with tempfile.TemporaryDirectory() as d:
 
         def gate(feedback):
-            async def denied(name, inp, *, tool_use_id='', agent=''):
+            async def denied(name, inp, *, tool_use_id="", agent=""):
                 return PermissionChoice("denied", feedback=feedback)
+
             return PermissionController(mode="default", cwd=d, request=denied)
 
         cases = (
             ("", "", REJECT_MESSAGE),
             ("watcher", "", SUBAGENT_REJECT_MESSAGE),
             ("", "not now", REJECT_MESSAGE_WITH_REASON_PREFIX + "not now"),
-            ("watcher", "not now",
-             SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX + "not now"))
+            ("watcher", "not now", SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX + "not now"),
+        )
         for agent, feedback, expected in cases:
-            res = asyncio.run(gate(feedback).authorize(
-                "Edit", {"file_path": "a.txt"}, agent=agent))
+            res = asyncio.run(gate(feedback).authorize("Edit", {"file_path": "a.txt"}, agent=agent))
             assert _decision(res)["permissionDecisionReason"] == expected
 
 
 def test_the_denial_copy_says_nothing_ran_and_who_should_act():
-    for message in (REJECT_MESSAGE, SUBAGENT_REJECT_MESSAGE,
-                    REJECT_MESSAGE_WITH_REASON_PREFIX,
-                    SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX):
+    for message in (
+        REJECT_MESSAGE,
+        SUBAGENT_REJECT_MESSAGE,
+        REJECT_MESSAGE_WITH_REASON_PREFIX,
+        SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX,
+    ):
         assert "refused" in message
         assert "nothing ran" in message
         assert "claude" not in message.lower()
@@ -573,15 +539,16 @@ def test_the_denial_copy_says_nothing_ran_and_who_should_act():
 def test_approval_feedback_travels_as_additional_context():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp, *, tool_use_id='', agent=''):
+        async def approve(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("approved", feedback="run the tests first")
 
         g = PermissionController(mode="default", cwd=d, request=approve)
         res = asyncio.run(g.authorize("Edit", {"file_path": "a.txt"}))
         assert _decision(res) == {
-            'hookEventName': 'PreToolUse',
-            'permissionDecision': 'allow',
-            'additionalContext': 'run the tests first'}
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow",
+            "additionalContext": "run the tests first",
+        }
 
 
 def test_bash_tool_runs_in_workspace():
@@ -591,8 +558,7 @@ def test_bash_tool_runs_in_workspace():
         t = _tools(d)
         assert "Bash" in t
         assert "marker.txt" in _text(t["Bash"](command="ls"))
-        out = _text(t["Bash"](command="python3 -c \"import os;"
-                                        "print(os.path.realpath(os.getcwd()))\""))
+        out = _text(t["Bash"](command='python3 -c "import os;print(os.path.realpath(os.getcwd()))"'))
         assert str(root.resolve()) in out
 
 
@@ -674,8 +640,7 @@ def test_bash_timeout_and_output_env_overrides(monkeypatch):
 
 
 def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
-    monkeypatch.setattr(shell.tempfile, "gettempdir",
-                        lambda: str(tmp_path / "scratch"))
+    monkeypatch.setattr(shell.tempfile, "gettempdir", lambda: str(tmp_path / "scratch"))
     monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", "200")
     t = _tools(str(tmp_path))
     out = _text(t["Bash"](command="python3 -c \"print('y' * 500)\""))
@@ -686,12 +651,12 @@ def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
 
 def test_bash_budget_keeps_its_own_output_pointer_readable(monkeypatch, tmp_path):
     from chatchat.tool import DEFAULT_MAX_RESULT_CHARS
+
     t = _tools(str(tmp_path))
     assert t["Bash"].tool.max_result_chars > DEFAULT_MAX_RESULT_CHARS
 
     limit = shell.MAX_OUTPUT_UPPER_LIMIT
-    monkeypatch.setattr(shell.tempfile, "gettempdir",
-                        lambda: str(tmp_path / "scratch"))
+    monkeypatch.setattr(shell.tempfile, "gettempdir", lambda: str(tmp_path / "scratch"))
     monkeypatch.setenv("BASH_MAX_OUTPUT_LENGTH", str(limit))
     out = _text(t["Bash"](command=f"python3 -c \"print('y' * {limit + 5})\""))
     assert "full output:" in out
@@ -717,7 +682,7 @@ def test_bash_rule_parse_and_match():
 
 def test_bash_prefix_rule_rejects_compound_command():
     assert not bash_rule_matches("Bash(cd:*)", "cd /tmp && rm -rf x")
-    assert not bash_rule_matches("Bash(git:*)" , "git status; curl evil")
+    assert not bash_rule_matches("Bash(git:*)", "git status; curl evil")
 
 
 def test_bash_dangerous_removal_detection():
@@ -752,23 +717,20 @@ def test_bash_read_only_detection():
 
 def test_bash_decision_order_deny_ask_allow_readonly():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, deny=["Bash(rm:*)"],
-                                 allow=["Bash(npm ci)"], ask=["Bash(git push:*)"])
+        g = PermissionController(mode="default", cwd=d, deny=["Bash(rm:*)"], allow=["Bash(npm ci)"], ask=["Bash(git push:*)"])
         assert g.decide("Bash", {"command": "rm -rf x"}) == "deny"
         assert g.decide("Bash", {"command": "git push origin main"}) == "ask"
         assert g.decide("Bash", {"command": "npm ci"}) == "allow"
         assert g.decide("Bash", {"command": "ls -la"}) == "allow"
         assert g.decide("Bash", {"command": "make build"}) == "ask"
 
-        both = PermissionController(mode="default", cwd=d,
-                                    deny=["Bash(rm:*)"], allow=["Bash(rm:*)"])
+        both = PermissionController(mode="default", cwd=d, deny=["Bash(rm:*)"], allow=["Bash(rm:*)"])
         assert both.decide("Bash", {"command": "rm -rf x"}) == "deny"
 
 
 def test_bash_env_and_wrapper_stripping():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="default", cwd=d, allow=["Bash(npm ci)"],
-                                 deny=["Bash(curl:*)"])
+        g = PermissionController(mode="default", cwd=d, allow=["Bash(npm ci)"], deny=["Bash(curl:*)"])
         assert g.decide("Bash", {"command": "NODE_ENV=prod npm ci"}) == "allow"
         assert g.decide("Bash", {"command": "timeout 5 curl http://x"}) == "deny"
         assert g.decide("Bash", {"command": "FOO=bar curl http://x"}) == "deny"
@@ -785,14 +747,13 @@ def test_bash_dangerous_removal_asks_even_when_allowed():
 def test_bash_dangerous_removal_is_not_remembered():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id='', agent=''):
+        async def once(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once)
         assert asyncio.run(g.authorize("Bash", {"command": "rm -rf /"})) is True
         assert g._allow == []
-        assert asyncio.run(
-            g.authorize("Bash", {"command": "npm ci"})) is True
+        assert asyncio.run(g.authorize("Bash", {"command": "npm ci"})) is True
         assert g._allow == ["Bash(npm ci:*)"]
 
 
@@ -816,13 +777,10 @@ def test_bash_bare_deny_removes_tool_but_rule_does_not():
 def test_build_team_wires_bash_through_permission_hook():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              disallowed_tools=["Bash(curl:*)"])
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, disallowed_tools=["Bash(curl:*)"])
             names = [t["name"] for t in team.tool_schemas(team.tool_context)]
-            blocked = await team.execute_tool(
-                "Bash", {"command": "curl http://example.com"}, team.lead)
-            allowed = await team.execute_tool(
-                "Bash", {"command": "echo hi"}, team.lead)
+            blocked = await team.execute_tool("Bash", {"command": "curl http://example.com"}, team.lead)
+            allowed = await team.execute_tool("Bash", {"command": "echo hi"}, team.lead)
             return names, blocked, allowed
 
     names, blocked, allowed = asyncio.run(main())
@@ -837,14 +795,11 @@ def test_approval_feedback_lands_beside_the_tool_result():
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
 
-            async def approve(name, inp, *, tool_use_id='', agent=''):
-                return PermissionChoice("approved",
-                                        feedback="run the tests first")
+            async def approve(name, inp, *, tool_use_id="", agent=""):
+                return PermissionChoice("approved", feedback="run the tests first")
 
             team._pyclaw_gate.request = approve
-            return await team.execute_tool("Bash",
-                                           {"command": "touch marker.txt"},
-                                           team.lead, "t1")
+            return await team.execute_tool("Bash", {"command": "touch marker.txt"}, team.lead, "t1")
 
         outcome = asyncio.run(main())
         assert Path(d, "marker.txt").exists()
@@ -858,22 +813,25 @@ def test_a_permission_request_hook_answers_before_the_user():
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
 
-            async def ask(name, inp, *, tool_use_id='', agent=''):
+            async def ask(name, inp, *, tool_use_id="", agent=""):
                 asked.append(name)
                 await asyncio.sleep(5)
                 return PermissionChoice("denied")
 
             team._pyclaw_gate.request = ask
-            team.hooks.register('PermissionRequest', fn=lambda inp: {
-                'hookSpecificOutput': {
-                    'hookEventName': 'PermissionRequest',
-                    'decision': {'behavior': 'allow',
-                                 'updatedInput': {'command': 'touch after'}}}})
-            return await team.execute_tool("Bash", {"command": "touch before"},
-                                           team.lead, "t1")
+            team.hooks.register(
+                "PermissionRequest",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {"behavior": "allow", "updatedInput": {"command": "touch after"}},
+                    }
+                },
+            )
+            return await team.execute_tool("Bash", {"command": "touch before"}, team.lead, "t1")
 
         outcome = asyncio.run(main())
-        assert asked == ['Bash']
+        assert asked == ["Bash"]
         assert Path(d, "after").exists()
         assert not Path(d, "before").exists()
 
@@ -885,22 +843,25 @@ def test_a_permission_request_hook_denial_reaches_the_model():
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
 
-            async def ask(name, inp, *, tool_use_id='', agent=''):
+            async def ask(name, inp, *, tool_use_id="", agent=""):
                 asked.append(name)
                 await asyncio.sleep(5)
                 return PermissionChoice("approved")
 
             team._pyclaw_gate.request = ask
-            team.hooks.register('PermissionRequest', fn=lambda inp: {
-                'hookSpecificOutput': {
-                    'hookEventName': 'PermissionRequest',
-                    'decision': {'behavior': 'deny',
-                                 'message': 'deploys are frozen'}}})
-            return await team.execute_tool("Bash", {"command": "touch never"},
-                                           team.lead, "t1")
+            team.hooks.register(
+                "PermissionRequest",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {"behavior": "deny", "message": "deploys are frozen"},
+                    }
+                },
+            )
+            return await team.execute_tool("Bash", {"command": "touch never"}, team.lead, "t1")
 
         outcome = asyncio.run(main())
-        assert asked == ['Bash']
+        assert asked == ["Bash"]
         assert "deploys are frozen" in outcome.text
         assert not Path(d, "never").exists()
 
@@ -912,14 +873,12 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
         async def main():
             from pyclaw.session import Session
             from pyclaw.team.builder import build_team
+
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.on('PreToolUse', fn=lambda inp: seen.append(
-                inp.get('permission_mode', 'missing')) or True)
-            await team.execute_tool("Read", {"file_path": __file__},
-                                    team.lead, "t1")
+            team.hooks.on("PreToolUse", fn=lambda inp: seen.append(inp.get("permission_mode", "missing")) or True)
+            await team.execute_tool("Read", {"file_path": __file__}, team.lead, "t1")
             Session(team).set_permission_mode("plan")
-            await team.execute_tool("Read", {"file_path": __file__},
-                                    team.lead, "t2")
+            await team.execute_tool("Read", {"file_path": __file__}, team.lead, "t2")
 
         asyncio.run(main())
         assert seen == ["default", "plan"]
@@ -928,8 +887,7 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
 def test_build_team_removes_bash_when_denied_by_bare_name():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              disallowed_tools=["Bash"])
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, disallowed_tools=["Bash"])
             return [t["name"] for t in team.tool_schemas(team.tool_context)]
 
     assert "Bash" not in asyncio.run(main())
@@ -943,9 +901,14 @@ def test_build_team_mode_gating():
             teams = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
             s_single = session_mod.Session(single, session_id="ga")
             s_team = session_mod.Session(teams, session_id="gt")
-            return (single._pyclaw_mode, s_single.mode,
-                    teams._pyclaw_mode, s_team.mode,
-                    single.lead.instruction, teams.lead.instruction)
+            return (
+                single._pyclaw_mode,
+                s_single.mode,
+                teams._pyclaw_mode,
+                s_team.mode,
+                single.lead.instruction,
+                teams.lead.instruction,
+            )
 
     (mode_a, session_a, mode_t, session_t, inst_a, inst_t) = asyncio.run(main())
     assert mode_a == "agent" and session_a == "agent"
@@ -985,11 +948,10 @@ def test_a_team_tool_is_offered_once_even_when_the_pool_has_the_same_name():
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id='', agent=''):
+        async def once(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("dont_ask")
 
-        g = PermissionController(mode="default", cwd=d, request=once,
-                                 tools=BUILTIN_TOOLS)
+        g = PermissionController(mode="default", cwd=d, request=once, tools=BUILTIN_TOOLS)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
         assert "Edit(./a.txt)" in g._allow
         assert g.decide("Edit", {"file_path": "a.txt"}) == "allow"
@@ -1030,10 +992,8 @@ def test_tools_return_structured_meta():
 def test_suggested_rule_uses_the_addressed_path():
     g = PermissionController(mode="default", cwd="/w", tools=BUILTIN_TOOLS)
     assert g.suggested_rule("Edit", {"file_path": "a.txt"}) == "Edit(./a.txt)"
-    assert g.suggested_rule("Read", {"file_path": "./docs/x.md"}
-                            ) == "Read(./docs/x.md)"
-    assert g.suggested_rule("Glob", {"pattern": "*.py", "path": ".pyclaw"}
-                            ) == "Glob(./.pyclaw)"
+    assert g.suggested_rule("Read", {"file_path": "./docs/x.md"}) == "Read(./docs/x.md)"
+    assert g.suggested_rule("Glob", {"pattern": "*.py", "path": ".pyclaw"}) == "Glob(./.pyclaw)"
     assert g.suggested_rule("Edit", {}) is None
     assert g.suggested_rule("Edit", {"file_path": "."}) is None
 
@@ -1041,52 +1001,46 @@ def test_suggested_rule_uses_the_addressed_path():
 def test_authorize_accepts_amended_rule():
     with tempfile.TemporaryDirectory() as d:
 
-        async def amend(name, inp, *, tool_use_id='', agent=''):
-            return PermissionChoice(
-                "dont_ask", rule="Bash(git commit --amend:*)")
+        async def amend(name, inp, *, tool_use_id="", agent=""):
+            return PermissionChoice("dont_ask", rule="Bash(git commit --amend:*)")
 
         g = PermissionController(mode="default", cwd=d, request=amend)
-        ok = asyncio.run(g.authorize(
-            "Bash", {"command": "git commit --amend -m x"}))
+        ok = asyncio.run(g.authorize("Bash", {"command": "git commit --amend -m x"}))
         assert ok is True
         assert "Bash(git commit --amend:*)" in g._allow
-        assert g.decide("Bash",
-                        {"command": "git commit --amend -m x"}) == "allow"
+        assert g.decide("Bash", {"command": "git commit --amend -m x"}) == "allow"
 
 
 def test_suggested_rule_prefers_two_word_prefix():
-    assert suggested_rule('git commit -m "fix"') == 'Bash(git commit:*)'
-    assert suggested_rule('npm run test') == 'Bash(npm run:*)'
-    assert suggested_rule('timeout 10 git push') == 'Bash(git push:*)'
-    assert bash_rule_matches('Bash(git commit:*)', 'git commit -m "fix"')
+    assert suggested_rule('git commit -m "fix"') == "Bash(git commit:*)"
+    assert suggested_rule("npm run test") == "Bash(npm run:*)"
+    assert suggested_rule("timeout 10 git push") == "Bash(git push:*)"
+    assert bash_rule_matches("Bash(git commit:*)", 'git commit -m "fix"')
 
 
 def test_suggested_rule_exact_fallback():
-    assert suggested_rule('ls -la') == 'Bash(ls -la)'
-    assert suggested_rule('python3 x.py') == 'Bash(python3 x.py)'
-    assert suggested_rules('mkdir a && mkdir b') == ['Bash(mkdir a:*)',
-                                                      'Bash(mkdir b:*)']
-    assert bash_rule_matches('Bash(ls -la)', 'ls -la')
-    assert bash_allowed_by(['Bash(mkdir a:*)', 'Bash(mkdir b:*)'],
-                           'mkdir a && mkdir b')
+    assert suggested_rule("ls -la") == "Bash(ls -la)"
+    assert suggested_rule("python3 x.py") == "Bash(python3 x.py)"
+    assert suggested_rules("mkdir a && mkdir b") == ["Bash(mkdir a:*)", "Bash(mkdir b:*)"]
+    assert bash_rule_matches("Bash(ls -la)", "ls -la")
+    assert bash_allowed_by(["Bash(mkdir a:*)", "Bash(mkdir b:*)"], "mkdir a && mkdir b")
 
 
 def test_suggested_rule_refuses_risky_commands():
-    assert suggested_rule('rm -rf /') is None
-    assert suggested_rule('FOO=bar npm test') is None
-    assert suggested_rule('echo `whoami`') is None
-    assert suggested_rule('sudo rm x') == 'Bash(sudo rm x)'
+    assert suggested_rule("rm -rf /") is None
+    assert suggested_rule("FOO=bar npm test") is None
+    assert suggested_rule("echo `whoami`") is None
+    assert suggested_rule("sudo rm x") == "Bash(sudo rm x)"
 
 
 def test_dont_ask_saves_rule_to_local_settings():
     with tempfile.TemporaryDirectory() as d:
 
-        async def always(name, inp, *, tool_use_id='', agent=''):
+        async def always(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=always)
-        assert asyncio.run(
-            g.authorize("Bash", {"command": "git commit -m x"})) is True
+        assert asyncio.run(g.authorize("Bash", {"command": "git commit -m x"})) is True
         data = json.read(Path(d) / ".pyclaw" / "settings.local.json")
         assert data["permissions"]["allow"] == ["Bash(git commit:*)"]
         g2 = PermissionController(mode="default", cwd=d)
@@ -1095,8 +1049,7 @@ def test_dont_ask_saves_rule_to_local_settings():
 
 def test_rules_load_from_user_and_local_settings(tmp_path, monkeypatch):
     user_file = tmp_path / "user-settings.json"
-    json.write(user_file, {"permissions": {
-        "allow": ["Bash(npm run:*)"], "deny": ["Bash(curl:*)"]}})
+    json.write(user_file, {"permissions": {"allow": ["Bash(npm run:*)"], "deny": ["Bash(curl:*)"]}})
     monkeypatch.setattr(perm, "_user_settings_file", lambda: user_file)
 
     with tempfile.TemporaryDirectory() as d:
@@ -1115,11 +1068,10 @@ def test_rule_listing_reports_sources(tmp_path, monkeypatch):
     monkeypatch.setattr(perm, "_user_settings_file", lambda: user_file)
 
     with tempfile.TemporaryDirectory() as d:
-        g = perm.PermissionController(mode="default", cwd=d,
-                                      deny=["Bash(curl:*)"])
+        g = perm.PermissionController(mode="default", cwd=d, deny=["Bash(curl:*)"])
         rules = g.rule_listing()
-        assert ('allow', 'Bash(npm run:*)', 'user') in rules
-        assert ('deny', 'Bash(curl:*)', 'cli') in rules
+        assert ("allow", "Bash(npm run:*)", "user") in rules
+        assert ("deny", "Bash(curl:*)", "cli") in rules
 
 
 def test_rules_load_project_shared_layer(tmp_path, monkeypatch):
@@ -1133,7 +1085,7 @@ def test_rules_load_project_shared_layer(tmp_path, monkeypatch):
         json.write(shared, {"permissions": {"deny": ["Bash(npm run:*)"]}})
         g = perm.PermissionController(mode="default", cwd=d)
         assert g.decide("Bash", {"command": "npm run test"}) == "deny"
-        assert ('deny', 'Bash(npm run:*)', 'project') in g.rule_listing()
+        assert ("deny", "Bash(npm run:*)", "project") in g.rule_listing()
 
 
 def test_remove_rule_deletes_from_saved_layer(tmp_path):
@@ -1141,11 +1093,10 @@ def test_remove_rule_deletes_from_saved_layer(tmp_path):
         local = Path(d) / ".pyclaw" / "settings.local.json"
         local.parent.mkdir(parents=True)
         json.write(local, {"permissions": {"allow": ["Bash(a:*)", "Bash(b:*)"]}})
-        g = perm.PermissionController(mode="default", cwd=d,
-                                      deny=["Bash(curl:*)"])
+        g = perm.PermissionController(mode="default", cwd=d, deny=["Bash(curl:*)"])
         assert g.remove_rule("Bash(a:*)") is True
         assert json.read(local)["permissions"]["allow"] == ["Bash(b:*)"]
-        assert ('allow', 'Bash(a:*)', 'local') not in g.rule_listing()
+        assert ("allow", "Bash(a:*)", "local") not in g.rule_listing()
         assert g.decide("Bash", {"command": "a x"}) == "ask"
         assert g.remove_rule("Bash(curl:*)") is False
         assert g.remove_rule("Bash(zzz:*)") is False
@@ -1235,11 +1186,12 @@ def test_task_stop_kills_process_group():
 
 def test_a_stopped_task_stays_readable():
     t = _tools("/tmp")
-    out = t["Bash"](command="echo kept-output; sleep 30",
-                   run_in_background=True)
+    out = t["Bash"](command="echo kept-output; sleep 30", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
+
     def read():
         return _text(t["TaskOutput"](task_id=task_id, block=False))
+
     deadline = time.monotonic() + 5
     while "kept-output" not in read() and time.monotonic() < deadline:
         time.sleep(0.1)
@@ -1271,8 +1223,7 @@ def test_background_tools_registered_as_coding_tools():
 
 def test_background_completion_fires_notifier():
     events = []
-    background.set_notifier(
-        lambda tid, cmd, code, killed: events.append((tid, cmd, code, killed)))
+    background.set_notifier(lambda tid, cmd, code, killed: events.append((tid, cmd, code, killed)))
     try:
         bash = _tools("/tmp")["Bash"]
         out = bash(command="exit 0", run_in_background=True)
@@ -1316,11 +1267,9 @@ def test_edit_replaces_every_occurrence_when_asked():
         root = Path(d)
         (root / "a.txt").write_text("x\ny\nx\n")
         t = _tools(d)
-        refused = _text(t["Edit"](file_path="a.txt", old_string="x",
-                                  new_string="X"))
+        refused = _text(t["Edit"](file_path="a.txt", old_string="x", new_string="X"))
         assert "not unique" in refused
-        out = _text(t["Edit"](file_path="a.txt", old_string="x",
-                              new_string="X", replace_all=True))
+        out = _text(t["Edit"](file_path="a.txt", old_string="x", new_string="X", replace_all=True))
         assert "Saved" in out
         assert "-x" in out and "+X" in out
         assert _read(root / "a.txt") == "X\ny\nX\n"
@@ -1333,9 +1282,7 @@ def test_build_team_wires_task_notifications_to_lead():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             background.spawn(d, "exit 3")
             for _ in range(50):
-                msgs = [m for m in team.lead.messages
-                        if isinstance(m, dict)
-                        and "<task-notification>" in str(m.get("content"))]
+                msgs = [m for m in team.lead.messages if isinstance(m, dict) and "<task-notification>" in str(m.get("content"))]
                 if msgs:
                     return msgs
                 await asyncio.sleep(0.1)
@@ -1345,6 +1292,7 @@ def test_build_team_wires_task_notifications_to_lead():
     assert texts and "<status>failed</status>" in texts[0]["content"]
     assert "<task-id>b" in texts[0]["content"]
     assert "<task-type>shell</task-type>" in texts[0]["content"]
+
 
 def test_team_tools_never_ask_the_human():
     """Agent/SendMessage/TaskStop orchestrate agents this one owns.
@@ -1365,33 +1313,30 @@ def test_team_tools_never_ask_the_human():
 
 def test_an_explicit_rule_still_gates_a_team_tool():
     with tempfile.TemporaryDirectory() as d:
-        asking = PermissionController(mode="default", cwd=d,
-                                      ask=["Agent"])
+        asking = PermissionController(mode="default", cwd=d, ask=["Agent"])
         assert asking.decide("Agent", {"prompt": "x"}) == "ask"
-        denying = PermissionController(mode="default", cwd=d,
-                                       deny=["Agent"])
+        denying = PermissionController(mode="default", cwd=d, deny=["Agent"])
         assert denying.decide("Agent", {"prompt": "x"}) == "deny"
 
 
 def test_auto_tools_do_not_leak_into_other_tool_decisions():
     with tempfile.TemporaryDirectory() as d:
-        gate = PermissionController(mode="default", cwd=d,
-                                    tools=BUILTIN_TOOLS)
+        gate = PermissionController(mode="default", cwd=d, tools=BUILTIN_TOOLS)
         assert gate.decide("Edit", {"file_path": "a.txt"}) == "ask"
         assert gate.decide("Bash", {"command": "rm -rf /"}) == "ask"
         assert gate.decide("Read", {"file_path": "a.txt"}) == "allow"
 
 
 def test_a_background_shell_is_listed_with_its_state():
-    task_id = background.spawn('/tmp', 'sleep 3')
+    task_id = background.spawn("/tmp", "sleep 3")
     try:
-        rows = {row['id']: row for row in background.snapshot()}
-        assert rows[task_id]['command'] == 'sleep 3'
-        assert rows[task_id]['exit'] is None
-        assert rows[task_id]['seconds'] >= 0
-        background.task(task_id).payload['process'].wait()
-        done = {row['id']: row for row in background.snapshot()}
-        assert done[task_id]['exit'] == 0
+        rows = {row["id"]: row for row in background.snapshot()}
+        assert rows[task_id]["command"] == "sleep 3"
+        assert rows[task_id]["exit"] is None
+        assert rows[task_id]["seconds"] >= 0
+        background.task(task_id).payload["process"].wait()
+        done = {row["id"]: row for row in background.snapshot()}
+        assert done[task_id]["exit"] == 0
     finally:
         background.cleanup_background_tasks()
     assert background.snapshot() == []
@@ -1400,28 +1345,27 @@ def test_a_background_shell_is_listed_with_its_state():
 def test_the_editing_tools_back_up_a_file_before_changing_it():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d).resolve()
-        (root / 'a.py').write_text('v0\n', encoding='utf-8')
-        history = FileHistory(directory=root / 'history', cwd=root)
+        (root / "a.py").write_text("v0\n", encoding="utf-8")
+        history = FileHistory(directory=root / "history", cwd=root)
         tools = _tools(d, files=history)
         history.snapshot(0)
-        _text(tools['Write'](file_path='a.py', content='v1\n'))
-        _text(tools['Edit'](file_path='a.py', old_string='v1',
-                            new_string='v2'))
+        _text(tools["Write"](file_path="a.py", content="v1\n"))
+        _text(tools["Edit"](file_path="a.py", old_string="v1", new_string="v2"))
 
-        assert history.rewind(0) == ['a.py']
-        assert (root / 'a.py').read_text(encoding='utf-8') == 'v0\n'
+        assert history.rewind(0) == ["a.py"]
+        assert (root / "a.py").read_text(encoding="utf-8") == "v0\n"
 
 
 def test_a_file_created_by_the_tools_can_be_taken_away_again():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d).resolve()
-        history = FileHistory(directory=root / 'history', cwd=root)
+        history = FileHistory(directory=root / "history", cwd=root)
         tools = _tools(d, files=history)
         history.snapshot(0)
-        _text(tools['Write'](file_path='new.py', content='created\n'))
+        _text(tools["Write"](file_path="new.py", content="created\n"))
 
-        assert history.rewind(0) == ['new.py']
-        assert not (root / 'new.py').exists()
+        assert history.rewind(0) == ["new.py"]
+        assert not (root / "new.py").exists()
 
 
 def test_a_team_keeps_file_history_under_the_pyclaw_home():
@@ -1431,7 +1375,7 @@ def test_a_team_keeps_file_history_under_the_pyclaw_home():
 
     team, d = asyncio.run(main())
     assert team.file_history is not None
-    assert team.file_history.directory.parent.name == 'file-history'
+    assert team.file_history.directory.parent.name == "file-history"
     assert team.file_history.cwd == Path(d).resolve()
     assert team.tool_context.files is team.file_history
 
@@ -1443,8 +1387,7 @@ def test_file_history_can_be_switched_off():
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            with mock.patch.object(config, 'load',
-                                   lambda: {'checkpoints': False}):
+            with mock.patch.object(config, "load", lambda: {"checkpoints": False}):
                 return build_team("agnes", "agnes-2.5-flash", cwd=d)
 
     team = asyncio.run(main())
@@ -1453,52 +1396,49 @@ def test_file_history_can_be_switched_off():
 
 
 def test_a_background_shell_can_be_stopped_by_id():
-    task_id = background.spawn('/tmp', 'sleep 30')
+    task_id = background.spawn("/tmp", "sleep 30")
     try:
         row = background.stop(task_id)
-        assert row['id'] == task_id
-        assert row['killed'] is True
-        assert row['exit'] is not None
-        assert background.stop('b0deadbeef') is None
+        assert row["id"] == task_id
+        assert row["killed"] is True
+        assert row["exit"] is not None
+        assert background.stop("b0deadbeef") is None
     finally:
         background.cleanup_background_tasks()
 
 
 def test_a_project_skill_is_offered_and_loads_on_demand():
     with tempfile.TemporaryDirectory() as d:
-        directory = Path(d) / '.pyclaw' / 'skills' / 'notes'
+        directory = Path(d) / ".pyclaw" / "skills" / "notes"
         directory.mkdir(parents=True)
-        (directory / 'SKILL.md').write_text(
-            '---\nname: notes\ndescription: turn a log into bullets\n'
-            '---\n\nRewrite the log as bullets.\n', encoding='utf-8')
+        (directory / "SKILL.md").write_text(
+            "---\nname: notes\ndescription: turn a log into bullets\n---\n\nRewrite the log as bullets.\n", encoding="utf-8"
+        )
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
             schemas = team.tool_schemas(team.tool_context)
-            schema = next(schema for schema in schemas
-                          if schema['name'] == 'Skill')
-            outcome = await team.execute_tool('Skill',
-                                              {'skill': 'notes'}, team.lead)
-            return schema['description'], outcome.text
+            schema = next(schema for schema in schemas if schema["name"] == "Skill")
+            outcome = await team.execute_tool("Skill", {"skill": "notes"}, team.lead)
+            return schema["description"], outcome.text
 
         description, body = asyncio.run(main())
-        assert '- notes: turn a log into bullets' in description
-        assert body.startswith('Rewrite the log as bullets.')
+        assert "- notes: turn a log into bullets" in description
+        assert body.startswith("Rewrite the log as bullets.")
 
 
 def test_the_skills_that_ship_with_the_program_are_the_only_ones_offered():
     with tempfile.TemporaryDirectory() as d:
+
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d, skills=[])
             schemas = team.tool_schemas(team.tool_context)
-            return next((schema['description'] for schema in schemas
-                         if schema['name'] == 'Skill'), '')
+            return next((schema["description"] for schema in schemas if schema["name"] == "Skill"), "")
 
         listed = asyncio.run(main())
-        offered = {line[2:].split(':')[0] for line in listed.splitlines()
-                   if line.startswith('- ')}
-        assert {'review', 'security-review'} <= offered
-        assert not {'debug', 'doctor', 'commit-push-pr'} & offered
+        offered = {line[2:].split(":")[0] for line in listed.splitlines() if line.startswith("- ")}
+        assert {"review", "security-review"} <= offered
+        assert not {"debug", "doctor", "commit-push-pr"} & offered
 
 
 def test_a_denied_call_is_reported_to_hooks():
@@ -1507,47 +1447,42 @@ def test_a_denied_call_is_reported_to_hooks():
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.register('PermissionDenied', '*',
-                                fn=lambda inp: seen.append(inp) or True)
+            team.hooks.register("PermissionDenied", "*", fn=lambda inp: seen.append(inp) or True)
             team._pyclaw_gate.request = None
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         outcome = asyncio.run(main())
         assert _decision(outcome)["permissionDecision"] == "deny"
-        assert seen and seen[0]['tool_name'] == 'Edit'
+        assert seen and seen[0]["tool_name"] == "Edit"
 
 
 def test_a_remembered_rule_is_reported_as_a_config_change():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def approve(name, inp, *, tool_use_id='', agent=''):
+        async def approve(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("dont_ask")
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.register(
-                'ConfigChange', '*',
-                fn=lambda inp: seen.append(inp['source']) or True)
+            team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         asyncio.run(main())
-        assert seen == ['permissions']
+        assert seen == ["permissions"]
 
 
 def test_an_ordinary_approval_changes_no_configuration():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def approve(name, inp, *, tool_use_id='', agent=''):
+        async def approve(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("approved")
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.register(
-                'ConfigChange', '*',
-                fn=lambda inp: seen.append(inp['source']) or True)
+            team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
@@ -1561,29 +1496,25 @@ def test_changing_a_setting_reports_the_config_change():
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.register(
-                'ConfigChange', '*',
-                fn=lambda inp: seen.append(inp['source']) or True)
-            session = session_mod.Session(team, session_id='cfg')
-            await session.note_config_change('config')
+            team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
+            session = session_mod.Session(team, session_id="cfg")
+            await session.note_config_change("config")
             return session.task_rows()
 
         asyncio.run(main())
-        assert seen == ['config']
+        assert seen == ["config"]
 
 
 def test_a_denied_rule_only_change_is_reported_once():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def refuse(name, inp, *, tool_use_id='', agent=''):
+        async def refuse(name, inp, *, tool_use_id="", agent=""):
             return PermissionChoice("denied")
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            team.hooks.register(
-                'ConfigChange', '*',
-                fn=lambda inp: seen.append(inp['source']) or True)
+            team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = refuse
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
@@ -1598,50 +1529,45 @@ def test_the_team_has_a_store_the_lead_can_name(tmp_path):
 
     team = asyncio.run(main())
     assert team.team_store is not None
-    assert team.team_store.directory.name == 'teams'
+    assert team.team_store.directory.name == "teams"
     assert team.team_context is None
 
 
 def test_the_session_reports_the_team_it_joined(tmp_path):
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              use_team=True)
-            session = session_mod.Session(team, session_id='teamctx')
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            session = session_mod.Session(team, session_id="teamctx")
             before = session.team_context
-            await session._team.execute_tool(
-                'TeamCreate', {'team_name': 'parser',
-                                'description': 'rework'}, team.lead)
+            await session._team.execute_tool("TeamCreate", {"team_name": "parser", "description": "rework"}, team.lead)
             return before, session.team_context
 
     before, after = asyncio.run(main())
     assert before is None
-    assert after['name'] == 'parser'
+    assert after["name"] == "parser"
 
 
 def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
     import subprocess
 
-    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
-    subprocess.run(['git', 'config', 'user.email', 't@example.com'],
-                   cwd=tmp_path, check=True)
-    subprocess.run(['git', 'config', 'user.name', 't'], cwd=tmp_path,
-                   check=True)
-    (tmp_path / 'a.txt').write_text('x\n', encoding='utf-8')
-    subprocess.run(['git', 'add', 'a.txt'], cwd=tmp_path, check=True)
-    subprocess.run(['git', 'commit', '-qm', 'first'], cwd=tmp_path, check=True)
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    (tmp_path / "a.txt").write_text("x\n", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "first"], cwd=tmp_path, check=True)
 
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
-        session = session_mod.Session(team, session_id='wtree')
+        session = session_mod.Session(team, session_id="wtree")
         before = Path(team._pyclaw_gate.cwd)
-        await team.enter_worktree('side')
+        await team.enter_worktree("side")
         return team, session, before
 
     team, session, before = asyncio.run(main())
     assert team.tool_context.cwd != before
     assert team._pyclaw_gate.cwd == team.tool_context.cwd
-    assert session.worktree['name'] == 'side'
+    assert session.worktree["name"] == "side"
     assert team._pyclaw_gate.decide("Edit", {"file_path": "../a.txt"}) == "ask"
 
     async def leave():
@@ -1657,17 +1583,15 @@ def test_a_teammate_approval_request_names_that_teammate():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id='', agent=''):
+        async def ask(name, inp, *, tool_use_id="", agent=""):
             asked.append((name, agent))
             return PermissionChoice("approved")
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                              use_team=True)
+            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
             team._pyclaw_gate.request = ask
             worker = team.create_agent("worker", instruction="do work")
-            return await team.execute_tool("Write", {"file_path": "a.txt",
-                                                     "content": "x"}, worker)
+            return await team.execute_tool("Write", {"file_path": "a.txt", "content": "x"}, worker)
 
         asyncio.run(main())
         assert asked == [("Write", "worker")]
@@ -1680,115 +1604,105 @@ def test_a_built_team_gives_every_agent_type_a_place_for_notes(tmp_path):
 
     memory = asyncio.run(main())
     assert memory is not None
-    assert (memory.directory('reviewer', 'user').parent
-            == pyclaw_home() / 'agent-memory')
-    assert memory.directory('reviewer', 'project').parent == (
-        tmp_path / '.pyclaw' / 'agent-memory')
+    assert memory.directory("reviewer", "user").parent == pyclaw_home() / "agent-memory"
+    assert memory.directory("reviewer", "project").parent == (tmp_path / ".pyclaw" / "agent-memory")
 
 
 def test_an_agent_writing_its_own_notes_needs_no_approval(tmp_path):
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
-        held = (team.agent_memory.directory('reviewer', 'user')
-                / 'MEMORY.md')
+        held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
         return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
 
-    assert asyncio.run(main()) == 'allow'
+    assert asyncio.run(main()) == "allow"
 
 
 def test_an_explicit_rule_still_asks_about_a_notes_file(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path),
-                          ask=["Write(*)"])
-        held = (team.agent_memory.directory('reviewer', 'user')
-                / 'MEMORY.md')
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), ask=["Write(*)"])
+        held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
         return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
 
-    assert asyncio.run(main()) == 'ask'
+    assert asyncio.run(main()) == "ask"
 
 
 def test_loading_the_defs_seeds_an_agents_notes_from_the_project(tmp_path):
-    snapshot = (tmp_path / '.pyclaw' / 'agent-memory-snapshots' / 'reviewer')
+    snapshot = tmp_path / ".pyclaw" / "agent-memory-snapshots" / "reviewer"
     snapshot.mkdir(parents=True)
-    (snapshot / 'MEMORY.md').write_text('- seeded note', encoding='utf-8')
-    (snapshot / 'snapshot.json').write_text(
-        '{"updatedAt": "2026-01-01T00:00:00Z"}', encoding='utf-8')
-    agents = tmp_path / '.pyclaw' / 'agents'
+    (snapshot / "MEMORY.md").write_text("- seeded note", encoding="utf-8")
+    (snapshot / "snapshot.json").write_text('{"updatedAt": "2026-01-01T00:00:00Z"}', encoding="utf-8")
+    agents = tmp_path / ".pyclaw" / "agents"
     agents.mkdir(parents=True)
-    (agents / 'reviewer.md').write_text(
-        '---\nname: reviewer\ndescription: reads diffs for a living\n'
-        'memory: project\n---\n\n' + 'be harsh about the diff ' * 5,
-        encoding='utf-8')
+    (agents / "reviewer.md").write_text(
+        "---\nname: reviewer\ndescription: reads diffs for a living\nmemory: project\n---\n\n" + "be harsh about the diff " * 5,
+        encoding="utf-8",
+    )
 
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
-        held = (team.agent_memory.directory('reviewer', 'project')
-                / 'MEMORY.md')
-        return held.read_text(encoding='utf-8') if held.exists() else ''
+        held = team.agent_memory.directory("reviewer", "project") / "MEMORY.md"
+        return held.read_text(encoding="utf-8") if held.exists() else ""
 
-    assert 'seeded note' in asyncio.run(main())
+    assert "seeded note" in asyncio.run(main())
 
 
 def _git(directory, *args):
     import subprocess
 
-    return subprocess.run(('git', *args), cwd=str(directory),
-                          capture_output=True, text=True)
+    return subprocess.run(("git", *args), cwd=str(directory), capture_output=True, text=True)
 
 
 def test_the_diff_shows_the_working_tree_of_a_repository(tmp_path):
     async def main():
         team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
-        session = Session(team, session_id='diff1')
-        _git(tmp_path, 'init', '-q')
-        _git(tmp_path, 'config', 'user.email', 't@example.com')
-        _git(tmp_path, 'config', 'user.name', 't')
-        (tmp_path / 'a.py').write_text('one\n', encoding='utf-8')
-        _git(tmp_path, 'add', 'a.py')
-        _git(tmp_path, 'commit', '-qm', 'start')
-        (tmp_path / 'a.py').write_text('one\ntwo\n', encoding='utf-8')
+        session = Session(team, session_id="diff1")
+        _git(tmp_path, "init", "-q")
+        _git(tmp_path, "config", "user.email", "t@example.com")
+        _git(tmp_path, "config", "user.name", "t")
+        (tmp_path / "a.py").write_text("one\n", encoding="utf-8")
+        _git(tmp_path, "add", "a.py")
+        _git(tmp_path, "commit", "-qm", "start")
+        (tmp_path / "a.py").write_text("one\ntwo\n", encoding="utf-8")
         view = session.diff()
-        await team.end_session('done')
+        await team.end_session("done")
         return view
 
     view = asyncio.run(main())
-    assert view['kind'] == 'git'
-    assert '+two' in view['text']
-    assert view['files'] == ['a.py']
+    assert view["kind"] == "git"
+    assert "+two" in view["text"]
+    assert view["files"] == ["a.py"]
 
 
-def test_outside_a_repository_the_diff_lists_what_this_session_touched(
-        tmp_path):
+def test_outside_a_repository_the_diff_lists_what_this_session_touched(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path),
-                          permission_mode="acceptEdits")
-        session = Session(team, session_id='diff2')
-        (tmp_path / 'notes.md').write_text('first\nsecond\n', encoding='utf-8')
+        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), permission_mode="acceptEdits")
+        session = Session(team, session_id="diff2")
+        (tmp_path / "notes.md").write_text("first\nsecond\n", encoding="utf-8")
         team.file_history.snapshot(1)
         await team.execute_tool(
-            'Edit', {'file_path': 'notes.md', 'old_string': 'second',
-                     'new_string': 'second\nthird'}, team.lead)
+            "Edit", {"file_path": "notes.md", "old_string": "second", "new_string": "second\nthird"}, team.lead
+        )
         view = session.diff()
-        await team.end_session('done')
+        await team.end_session("done")
         return view
 
     view = asyncio.run(main())
-    assert view['kind'] == 'session'
-    assert view['files'] == ['notes.md']
-    assert '+1 -0' in view['text']
+    assert view["kind"] == "session"
+    assert view["files"] == ["notes.md"]
+    assert "+1 -0" in view["text"]
 
 
 COMPOUND_FROM_A_REAL_SESSION = [
     'find pyclaw tests -name "*.py" | head -80',
-    'black conippets/shell.py conippets/git.py && git diff --stat',
+    "black conippets/shell.py conippets/git.py && git diff --stat",
     'sed -n 80,140p conippets/git.py; echo ---; grep -n "def \\|env" conippets/shell.py',
-    'pytest -q 2>&1 | tail -2',
-    'git commit -am x && git push',
-    'git status --short && git stash list | head',
+    "pytest -q 2>&1 | tail -2",
+    "git commit -am x && git push",
+    "git status --short && git stash list | head",
     'find . -type f \\( -name "*.py" -o -name "Makefile" \\) | head -50',
     'find pyclaw tests -type f -name "*.py" -exec cat {} + | wc -l',
     'grep -rn "def _write" . | head -5; ls tests',
-    'python3 -m py_compile examples/git_ssh.py && echo OK',
+    "python3 -m py_compile examples/git_ssh.py && echo OK",
 ]
 
 
@@ -1796,7 +1710,7 @@ def test_a_command_wider_than_the_cap_is_asked_about_again():
     """Five rules is the most one approval writes, so a nine-part command is
     not fully covered by them: the wide case is left to ask again rather than
     saving a pile of rules nobody meant to allow."""
-    command = ' && '.join(f'tool{i} sub{i}' for i in range(9))
+    command = " && ".join(f"tool{i} sub{i}" for i in range(9))
     rules = suggested_rules(command)
     assert len(rules) == 5
     assert not bash_allowed_by(rules, command)
@@ -1813,7 +1727,7 @@ def test_a_saved_rule_still_covers_the_command_it_came_from():
 
 def test_a_heredoc_body_is_never_saved_as_a_rule():
     assert suggested_rules("python3 - <<'EOF'\nprint(1)\nEOF") == []
-    assert suggested_rules('black a.py <<EOF\nx\nEOF') == []
+    assert suggested_rules("black a.py <<EOF\nx\nEOF") == []
 
 
 def test_a_quoted_argument_survives_into_the_rule():
@@ -1830,37 +1744,32 @@ def test_a_rule_with_parentheses_in_it_round_trips():
 
 
 def test_every_part_of_a_compound_command_must_be_covered_to_allow_it():
-    assert bash_allowed_by(['Bash(git status:*)', 'Bash(git stash:*)'],
-                           'git status --short && git stash list')
-    assert not bash_allowed_by(['Bash(git status:*)'],
-                               'git status --short && git stash list')
-    assert not bash_allowed_by(['Bash(git status:*)', 'Bash(git stash:*)'],
-                               'git status --short && git stash list | curl x')
+    assert bash_allowed_by(["Bash(git status:*)", "Bash(git stash:*)"], "git status --short && git stash list")
+    assert not bash_allowed_by(["Bash(git status:*)"], "git status --short && git stash list")
+    assert not bash_allowed_by(["Bash(git status:*)", "Bash(git stash:*)"], "git status --short && git stash list | curl x")
 
 
 def test_a_deny_rule_catches_a_denied_part_of_a_compound_command(tmp_path):
-    gate = PermissionController(mode='default', cwd=str(tmp_path),
-                                deny=['Bash(rm:*)'])
-    assert gate.decide('Bash', {'command': 'echo hi && rm -rf build'}) == 'deny'
-    assert gate.decide('Bash', {'command': 'echo hi'}) == 'allow'
+    gate = PermissionController(mode="default", cwd=str(tmp_path), deny=["Bash(rm:*)"])
+    assert gate.decide("Bash", {"command": "echo hi && rm -rf build"}) == "deny"
+    assert gate.decide("Bash", {"command": "echo hi"}) == "allow"
 
 
 def test_only_five_rules_are_written_from_one_wide_command():
-    command = ' && '.join(f'tool{i} sub{i}' for i in range(9))
+    command = " && ".join(f"tool{i} sub{i}" for i in range(9))
     assert len(suggested_rules(command)) == 5
 
 
 def test_a_command_that_cannot_be_described_offers_no_rule():
-    for command in ['rm -rf /', 'echo $(whoami)', 'cat <(date)',
-                    'find . -name *.py']:
+    for command in ["rm -rf /", "echo $(whoami)", "cat <(date)", "find . -name *.py"]:
         assert suggested_rules(command) == [], command
 
 
 def test_an_exact_rule_keeps_the_whole_command_not_its_head():
-    rules = suggested_rules('cp a.txt > /dev/null && rm -rf build')
-    assert 'Bash(cp a.txt > /dev/null)' in rules
-    assert 'Bash(rm -rf build)' in rules
-    assert bash_allowed_by(rules, 'cp a.txt > /dev/null && rm -rf build')
+    rules = suggested_rules("cp a.txt > /dev/null && rm -rf build")
+    assert "Bash(cp a.txt > /dev/null)" in rules
+    assert "Bash(rm -rf build)" in rules
+    assert bash_allowed_by(rules, "cp a.txt > /dev/null && rm -rf build")
 
 
 def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
@@ -1868,62 +1777,62 @@ def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
     from chatchat.client import MockClient
     from chatchat.team.team import Team
 
-    saved = tmp_path / 'settings.local.json'
-    monkeypatch.setattr(perm, '_local_settings_file', lambda cwd: saved)
+    saved = tmp_path / "settings.local.json"
+    monkeypatch.setattr(perm, "_local_settings_file", lambda cwd: saved)
 
     async def answer(messages, tools=None, *, stream_cb=None):
-        return 'ok'
+        return "ok"
 
     async def main():
-        team = Team('t1', client_factory=lambda inst, model=None:
-                    MockClient(handler=answer, model=model))
-        gate = PermissionController(mode='default', cwd=str(tmp_path))
-        session = Session(team, session_id='multi-rule')
+        team = Team("t1", client_factory=lambda inst, model=None: MockClient(handler=answer, model=model))
+        gate = PermissionController(mode="default", cwd=str(tmp_path))
+        session = Session(team, session_id="multi-rule")
         session._gate = gate
-        return gate.remember_allow(
-            'Bash', {'command': 'git status --short && git stash list'})
+        return gate.remember_allow("Bash", {"command": "git status --short && git stash list"})
 
     stored = asyncio.run(main())
-    assert stored == ['Bash(git status:*)', 'Bash(git stash:*)']
-    assert json.loads(saved.read_text(encoding='utf-8')) == {
-        'permissions': {'allow': stored}}
+    assert stored == ["Bash(git status:*)", "Bash(git stash:*)"]
+    assert json.loads(saved.read_text(encoding="utf-8")) == {"permissions": {"allow": stored}}
 
 
 def test_a_permission_decision_says_which_rule_decided_it(tmp_path, caplog):
     import logging
 
-    gate = PermissionController(mode='default', cwd=str(tmp_path),
-                                allow=['Bash(git status:*)'])
-    with caplog.at_level(logging.INFO, logger='pyclaw.permissions.gate'):
-        assert asyncio.run(gate.authorize('Bash', {'command': 'git status --short'}))
-        assert asyncio.run(gate.authorize('Bash', {'command': 'npm publish'})) is not None
-    lines = [record.message for record in caplog.records
-              if record.message.startswith('permission ')]
+    gate = PermissionController(mode="default", cwd=str(tmp_path), allow=["Bash(git status:*)"])
+    with caplog.at_level(logging.INFO, logger="pyclaw.permissions.gate"):
+        assert asyncio.run(gate.authorize("Bash", {"command": "git status --short"}))
+        assert asyncio.run(gate.authorize("Bash", {"command": "npm publish"})) is not None
+    lines = [record.message for record in caplog.records if record.message.startswith("permission ")]
     assert "permission Bash allow mode=default rule=Bash(git status:*)" in lines
-    assert any('permission Bash ask' in line and 'rule=-' in line
-               for line in lines)
+    assert any("permission Bash ask" in line and "rule=-" in line for line in lines)
 
 
 def test_a_rule_over_an_interpreter_is_recognised_as_a_hole():
-    for rule in ['Bash', 'Bash()', 'Bash(*)', 'Bash(python:*)', 'Bash(node*)',
-                 'Bash(npm run:*)', 'Bash(ssh *)', 'Bash(python3 -c *)',
-                 'Bash(env:*)', 'Agent']:
+    for rule in [
+        "Bash",
+        "Bash()",
+        "Bash(*)",
+        "Bash(python:*)",
+        "Bash(node*)",
+        "Bash(npm run:*)",
+        "Bash(ssh *)",
+        "Bash(python3 -c *)",
+        "Bash(env:*)",
+        "Agent",
+    ]:
         assert is_dangerous_rule(rule), rule
-    for rule in ['Bash(git status:*)', 'Bash(pytest -q)', 'Bash(npx cowsay:*)',
-                 'Read', 'Write(./a.py)', 'TaskCreate']:
+    for rule in ["Bash(git status:*)", "Bash(pytest -q)", "Bash(npx cowsay:*)", "Read", "Write(./a.py)", "TaskCreate"]:
         assert not is_dangerous_rule(rule), rule
 
 
 def test_a_prefix_rule_is_still_written_even_over_an_interpreter():
     """The reference offers these and only refuses to honour them later, so a
     suggestion is not where the hole gets called out - the listing is."""
-    assert suggested_rules('npm run test') == ['Bash(npm run:*)']
-    assert suggested_rules('python -c "print(1)"') == \
-        ['Bash(python -c "print\\(1\\)")']
+    assert suggested_rules("npm run test") == ["Bash(npm run:*)"]
+    assert suggested_rules('python -c "print(1)"') == ['Bash(python -c "print\\(1\\)")']
 
 
-def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(
-        tmp_path):
+def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(tmp_path):
     import asyncio
 
     from pyclaw import slash
@@ -1932,127 +1841,115 @@ def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(
     from chatchat.team.team import Team
 
     async def answer(messages, tools=None, *, stream_cb=None):
-        return 'ok'
+        return "ok"
 
     async def main():
-        team = Team('t1', client_factory=lambda inst, model=None:
-                    MockClient(handler=answer, model=model))
-        session = Session(team, session_id='dangerous-listing')
-        session._gate = PermissionController(
-            mode='default', cwd=str(tmp_path),
-            allow=['Bash(git status:*)', 'Bash(python:*)'])
-        return await slash.handle_slash('/permissions', session)
+        team = Team("t1", client_factory=lambda inst, model=None: MockClient(handler=answer, model=model))
+        session = Session(team, session_id="dangerous-listing")
+        session._gate = PermissionController(mode="default", cwd=str(tmp_path), allow=["Bash(git status:*)", "Bash(python:*)"])
+        return await slash.handle_slash("/permissions", session)
 
     out = asyncio.run(main())
-    marked = [line for line in out.splitlines() if 'run anything' in line]
-    assert marked == ['  [allow] Bash(python:*)  (cli)   '
-                      '\u2190 lets the model run anything']
-    assert 'without being looked at' in out
+    marked = [line for line in out.splitlines() if "run anything" in line]
+    assert marked == ["  [allow] Bash(python:*)  (cli)   \u2190 lets the model run anything"]
+    assert "without being looked at" in out
 
 
 def test_a_rule_written_for_home_or_an_absolute_path_reaches_an_absolute_target():
     from pyclaw.permissions.rules import _matches_pattern
 
-    home = os.path.expanduser('~')
-    assert _matches_pattern('~/**', f'{home}/.zshrc', '/somewhere/project')
-    assert _matches_pattern('~/.pyclaw/config.json',
-                            f'{home}/.pyclaw/config.json', '/work')
-    assert not _matches_pattern('~/**', '/etc/passwd', '/work')
-    assert _matches_pattern('/tmp/other', '/tmp/other/a.py', '/work')
-    assert not _matches_pattern('/tmp/other', '/tmp/elsewhere/a.py', '/work')
-    assert _matches_pattern('./src/**', 'src/a/b.py', '/work')
-    assert _matches_pattern('src', '/work/src/a.py', '/work')
-    assert not _matches_pattern('./src/**', '../outside/a.py', '/work')
+    home = os.path.expanduser("~")
+    assert _matches_pattern("~/**", f"{home}/.zshrc", "/somewhere/project")
+    assert _matches_pattern("~/.pyclaw/config.json", f"{home}/.pyclaw/config.json", "/work")
+    assert not _matches_pattern("~/**", "/etc/passwd", "/work")
+    assert _matches_pattern("/tmp/other", "/tmp/other/a.py", "/work")
+    assert not _matches_pattern("/tmp/other", "/tmp/elsewhere/a.py", "/work")
+    assert _matches_pattern("./src/**", "src/a/b.py", "/work")
+    assert _matches_pattern("src", "/work/src/a.py", "/work")
+    assert not _matches_pattern("./src/**", "../outside/a.py", "/work")
 
 
 def test_a_granted_rule_lets_through_and_is_listed_as_a_session_rule(tmp_path):
     from pyclaw.permissions import PermissionController
 
-    home = os.path.expanduser('~')
-    gate = PermissionController(mode='default', cwd=tmp_path,
-                                tools=BUILTIN_TOOLS)
-    assert gate.decide('Read', {'file_path': f'{home}/.zshrc'}) == 'ask'
-    granted = gate.grant_rules(('Read(~/**)',))
-    assert granted == ['Read(~/**)']
-    assert gate.decide('Read', {'file_path': f'{home}/.zshrc'}) == 'allow'
-    assert ('allow', 'Read(~/**)', 'session') in gate.rule_listing()
+    home = os.path.expanduser("~")
+    gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
+    assert gate.decide("Read", {"file_path": f"{home}/.zshrc"}) == "ask"
+    granted = gate.grant_rules(("Read(~/**)",))
+    assert granted == ["Read(~/**)"]
+    assert gate.decide("Read", {"file_path": f"{home}/.zshrc"}) == "allow"
+    assert ("allow", "Read(~/**)", "session") in gate.rule_listing()
 
 
 def test_a_granted_rule_still_cannot_hand_over_the_machine(tmp_path):
     from pyclaw.permissions import PermissionController
 
-    gate = PermissionController(mode='default', cwd=tmp_path,
-                                tools=BUILTIN_TOOLS)
-    assert gate.grant_rules(('Bash(python:*)', 'Agent')) == []
-    assert gate.decide('Bash', {'command': 'python -c import os'}) == 'ask'
-    assert not [entry for entry in gate.rule_listing()
-                if entry[2] == 'session']
+    gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
+    assert gate.grant_rules(("Bash(python:*)", "Agent")) == []
+    assert gate.decide("Bash", {"command": "python -c import os"}) == "ask"
+    assert not [entry for entry in gate.rule_listing() if entry[2] == "session"]
 
 
 def test_a_granted_edit_reaches_one_file_and_no_other(tmp_path):
     from pyclaw.permissions import PermissionController
 
-    config = os.path.expanduser('~/.pyclaw/config.json')
-    gate = PermissionController(mode='default', cwd=tmp_path,
-                                tools=BUILTIN_TOOLS)
-    gate.grant_rules((f'Edit({config})',))
-    assert gate.decide('Edit', {'file_path': config}) == 'allow'
-    assert gate.decide('Edit',
-                       {'file_path': os.path.expanduser('~/.bashrc')}) == 'ask'
+    config = os.path.expanduser("~/.pyclaw/config.json")
+    gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
+    gate.grant_rules((f"Edit({config})",))
+    assert gate.decide("Edit", {"file_path": config}) == "allow"
+    assert gate.decide("Edit", {"file_path": os.path.expanduser("~/.bashrc")}) == "ask"
 
 
 def test_only_a_call_that_throws_work_away_is_marked_destructive():
     from pyclaw.permissions import is_destructive
 
-    assert is_destructive('ExitWorktree', {'action': 'remove'}) is True
-    assert is_destructive('ExitWorktree', {'action': 'keep'}) is False
-    assert is_destructive('ExitWorktree', {}) is False
-    assert is_destructive('ExitWorktree', 'remove') is False
-    assert is_destructive('EnterWorktree', {'name': 'x'}) is False
-    assert is_destructive('Edit', {'file_path': 'a.py'}) is False
+    assert is_destructive("ExitWorktree", {"action": "remove"}) is True
+    assert is_destructive("ExitWorktree", {"action": "keep"}) is False
+    assert is_destructive("ExitWorktree", {}) is False
+    assert is_destructive("ExitWorktree", "remove") is False
+    assert is_destructive("EnterWorktree", {"name": "x"}) is False
+    assert is_destructive("Edit", {"file_path": "a.py"}) is False
 
 
 def test_an_added_directory_reaches_every_root_check(tmp_path):
     from pyclaw.permissions import PermissionController
 
-    elsewhere = tmp_path / 'other'
+    elsewhere = tmp_path / "other"
     elsewhere.mkdir()
-    gate = PermissionController(mode='default', cwd=tmp_path / 'project',
-                                tools=BUILTIN_TOOLS)
-    (tmp_path / 'project').mkdir()
-    target = elsewhere / 'notes.md'
-    assert gate.decide('Read', {'file_path': str(target)}) == 'ask'
+    gate = PermissionController(mode="default", cwd=tmp_path / "project", tools=BUILTIN_TOOLS)
+    (tmp_path / "project").mkdir()
+    target = elsewhere / "notes.md"
+    assert gate.decide("Read", {"file_path": str(target)}) == "ask"
     assert gate.add_dir(elsewhere) == elsewhere.resolve()
-    assert gate.decide('Read', {'file_path': str(target)}) == 'allow'
-    assert gate.decide('Edit', {'file_path': str(target)}) == 'ask'
-    accepting = PermissionController(mode='acceptEdits',
-                                     cwd=tmp_path / 'project',
-                                     tools=BUILTIN_TOOLS,
-                                     extra_dirs=(elsewhere,))
-    assert accepting.decide('Edit', {'file_path': str(target)}) == 'allow'
+    assert gate.decide("Read", {"file_path": str(target)}) == "allow"
+    assert gate.decide("Edit", {"file_path": str(target)}) == "ask"
+    accepting = PermissionController(mode="acceptEdits", cwd=tmp_path / "project", tools=BUILTIN_TOOLS, extra_dirs=(elsewhere,))
+    assert accepting.decide("Edit", {"file_path": str(target)}) == "allow"
 
 
 def test_a_directory_can_only_be_added_once_and_must_be_a_directory(tmp_path):
     from pyclaw.permissions import PermissionController
 
-    project = tmp_path / 'project'
+    project = tmp_path / "project"
     project.mkdir()
-    nested = project / 'docs'
+    nested = project / "docs"
     nested.mkdir()
-    a_file = tmp_path / 'a.txt'
-    a_file.write_text('x', encoding='utf-8')
-    gate = PermissionController(mode='default', cwd=project, tools=BUILTIN_TOOLS)
+    a_file = tmp_path / "a.txt"
+    a_file.write_text("x", encoding="utf-8")
+    gate = PermissionController(mode="default", cwd=project, tools=BUILTIN_TOOLS)
 
-    for bad, why in (('', 'a directory is needed'),
-                     (str(tmp_path / 'nope'), 'was not found'),
-                     (str(a_file), 'is not a directory'),
-                     (str(nested), 'already reachable')):
+    for bad, why in (
+        ("", "a directory is needed"),
+        (str(tmp_path / "nope"), "was not found"),
+        (str(a_file), "is not a directory"),
+        (str(nested), "already reachable"),
+    ):
         try:
             gate.add_dir(bad)
         except ValueError as exc:
             assert why in str(exc), bad
         else:
-            raise AssertionError(f'{bad!r} was accepted')
+            raise AssertionError(f"{bad!r} was accepted")
     assert gate.extra_dirs == []
 
 
@@ -2060,16 +1957,13 @@ def test_a_tool_reads_and_writes_through_an_added_directory(tmp_path):
     from chatchat.tool import ToolContext
     from pyclaw.tools import BUILTIN_TOOLS
 
-    project = tmp_path / 'project'
+    project = tmp_path / "project"
     project.mkdir()
-    elsewhere = tmp_path / 'elsewhere'
+    elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    (elsewhere / 'notes.md').write_text('from the other directory\n',
-                                        encoding='utf-8')
-    read = next(t for t in BUILTIN_TOOLS if t.name == 'Read')
-    allowed = asyncio.run(read(ToolContext(cwd=project, extra_dirs=(elsewhere,)),
-                               file_path=str(elsewhere / 'notes.md')))
-    assert 'from the other directory' in str(allowed)
-    refused = asyncio.run(read(ToolContext(cwd=project),
-                               file_path=str(elsewhere / 'notes.md')))
-    assert 'from the other directory' not in str(refused)
+    (elsewhere / "notes.md").write_text("from the other directory\n", encoding="utf-8")
+    read = next(t for t in BUILTIN_TOOLS if t.name == "Read")
+    allowed = asyncio.run(read(ToolContext(cwd=project, extra_dirs=(elsewhere,)), file_path=str(elsewhere / "notes.md")))
+    assert "from the other directory" in str(allowed)
+    refused = asyncio.run(read(ToolContext(cwd=project), file_path=str(elsewhere / "notes.md")))
+    assert "from the other directory" not in str(refused)

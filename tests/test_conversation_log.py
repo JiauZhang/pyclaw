@@ -11,9 +11,14 @@ from conippets import jsonl
 
 from pyclaw.session import store as session_store
 from pyclaw.session import Session as RealSession
-from pyclaw.session.store import (_session_dir, append_conv, conversation_log,
-                                  follow_conversation, record_meta,
-                                  resolve_session_id)
+from pyclaw.session.store import (
+    _session_dir,
+    append_conv,
+    conversation_log,
+    follow_conversation,
+    record_meta,
+    resolve_session_id,
+)
 from pyclaw.gateway.im import run_im_interaction
 
 
@@ -63,39 +68,37 @@ def test_record_meta_creates_and_updates(tmp_path):
     assert (tmp_path / "s1" / "meta.json").read_text(encoding="utf-8").endswith("\n")
 
 
-def test_the_conversation_log_holds_what_this_conversation_did(tmp_path,
-                                                               monkeypatch):
-    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
-    path = session_store.follow_conversation('s1')
-    logging.getLogger('pyclaw.test').info('agent started')
-    logging.getLogger('pyclaw.test').error('boom')
-    text = path.read_text(encoding='utf-8')
-    assert 'agent started' in text
-    assert 'boom' in text
+def test_the_conversation_log_holds_what_this_conversation_did(tmp_path, monkeypatch):
+    monkeypatch.setattr(logging.getLogger(), "level", logging.DEBUG)
+    path = session_store.follow_conversation("s1")
+    logging.getLogger("pyclaw.test").info("agent started")
+    logging.getLogger("pyclaw.test").error("boom")
+    text = path.read_text(encoding="utf-8")
+    assert "agent started" in text
+    assert "boom" in text
 
 
-def test_following_a_conversation_moves_the_log_and_closes_the_old_one(
-        tmp_path, monkeypatch):
-    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
-    first = session_store.follow_conversation('s1')
-    logging.getLogger('pyclaw.test').info('while on the first')
-    second = session_store.follow_conversation('s2')
+def test_following_a_conversation_moves_the_log_and_closes_the_old_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(logging.getLogger(), "level", logging.DEBUG)
+    first = session_store.follow_conversation("s1")
+    logging.getLogger("pyclaw.test").info("while on the first")
+    second = session_store.follow_conversation("s2")
     assert first != second
-    logging.getLogger('pyclaw.test').info('only in the second')
-    assert 'only in the second' in second.read_text(encoding='utf-8')
-    assert 'only in the second' not in first.read_text(encoding='utf-8')
-    assert 'while on the first' in first.read_text(encoding='utf-8')
+    logging.getLogger("pyclaw.test").info("only in the second")
+    assert "only in the second" in second.read_text(encoding="utf-8")
+    assert "only in the second" not in first.read_text(encoding="utf-8")
+    assert "while on the first" in first.read_text(encoding="utf-8")
 
 
 def test_a_quiet_conversation_leaves_no_log_behind(tmp_path, monkeypatch):
-    monkeypatch.setattr(logging.getLogger(), 'level', logging.DEBUG)
-    path = session_store.follow_conversation('quiet')
+    monkeypatch.setattr(logging.getLogger(), "level", logging.DEBUG)
+    path = session_store.follow_conversation("quiet")
     assert not path.exists()
 
 
 def test_a_conversation_log_is_a_file_of_its_own(tmp_path):
-    path = session_store.conversation_log('s9')
-    assert path == tmp_path / 's9' / 'run.log'
+    path = session_store.conversation_log("s9")
+    assert path == tmp_path / "s9" / "run.log"
 
 
 def test_im_interaction_logs_user_and_assistant(tmp_path):
@@ -126,10 +129,19 @@ def test_im_interaction_logs_user_and_assistant(tmp_path):
 
     adapter = Adapter()
     session = Session()
-    asyncio.run(run_im_interaction(
-        session, adapter, "u1", "hi there", "m1",
-        im_extra="", progress_fn=lambda ev: "", status_interval=0.01, max_msg_len=1500,
-    ))
+    asyncio.run(
+        run_im_interaction(
+            session,
+            adapter,
+            "u1",
+            "hi there",
+            "m1",
+            im_extra="",
+            progress_fn=lambda ev: "",
+            status_interval=0.01,
+            max_msg_len=1500,
+        )
+    )
 
     data = _read(tmp_path / "abc123" / "messages.jsonl")
     roles = [d["role"] for d in data]
@@ -165,15 +177,15 @@ def _age(path, days):
 
 
 def test_sweep_drops_only_the_stale_conversation(tmp_path):
-    fresh, stale = tmp_path / 'fresh', tmp_path / 'stale'
+    fresh, stale = tmp_path / "fresh", tmp_path / "stale"
     for folder in (fresh, stale):
         folder.mkdir()
-        (folder / 'transcript.jsonl').write_text('', encoding='utf-8')
+        (folder / "transcript.jsonl").write_text("", encoding="utf-8")
     plans = session_store.plans_dir()
     plans.mkdir(parents=True, exist_ok=True)
-    old_plan, new_plan = plans / 'old-plan.md', plans / 'new-plan.md'
-    old_plan.write_text('x', encoding='utf-8')
-    new_plan.write_text('x', encoding='utf-8')
+    old_plan, new_plan = plans / "old-plan.md", plans / "new-plan.md"
+    old_plan.write_text("x", encoding="utf-8")
+    new_plan.write_text("x", encoding="utf-8")
     _age(stale, 40)
     _age(old_plan, 40)
 
@@ -209,9 +221,11 @@ def test_an_im_turn_is_recorded_on_the_conversation_the_session_is_on(tmp_path):
             return "answer"
 
     session = Session()
-    asyncio.run(run_im_interaction(session, Adapter(), "u1", "hi", "m1",
-                                  im_extra="", progress_fn=lambda ev: "",
-                                  status_interval=0.01, max_msg_len=1500))
+    asyncio.run(
+        run_im_interaction(
+            session, Adapter(), "u1", "hi", "m1", im_extra="", progress_fn=lambda ev: "", status_interval=0.01, max_msg_len=1500
+        )
+    )
     assert session.conv_session_id == "resumed-here"
     data = _read(tmp_path / "resumed-here" / "messages.jsonl")
     assert [row["role"] for row in data] == ["user", "assistant"]

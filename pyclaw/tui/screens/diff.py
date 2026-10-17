@@ -11,10 +11,7 @@ from textual.widgets import Static
 
 
 class DiffScreen(Screen):
-
-    BINDINGS = [keys.binding('dismiss', 'Close'),
-                Binding('q', 'dismiss', 'Close'),
-                Binding('ctrl+c', 'dismiss', 'Close')]
+    BINDINGS = [keys.binding("dismiss", "Close"), Binding("q", "dismiss", "Close"), Binding("ctrl+c", "dismiss", "Close")]
 
     CSS = """
     #diff-panel { width: 1fr; height: 1fr; }
@@ -31,24 +28,25 @@ class DiffScreen(Screen):
 
     def on_mount(self):
         self.query_one("#diff-panel", VerticalScroll).focus()
-        files = self._view['files']
-        lines = ['[bold]Changes[/bold]',
-                 f'[dim]{len(files)} file(s) in '
-                 + ('the working tree' if self._view['kind'] == 'git'
-                    else 'this session') + '[/]', '']
-        for line in str(self._view['text']).splitlines():
-            if line.startswith('+++') or line.startswith('---'):
-                lines.append(f'[bold]{escape(line)}[/bold]')
-            elif line.startswith('+'):
-                lines.append(f'[#4EBA65]{escape(line)}[/]')
-            elif line.startswith('-'):
-                lines.append(f'[#FF6B80]{escape(line)}[/]')
-            elif line.startswith('@@'):
-                lines.append(f'[dim]{escape(line)}[/]')
+        files = self._view["files"]
+        lines = [
+            "[bold]Changes[/bold]",
+            f"[dim]{len(files)} file(s) in " + ("the working tree" if self._view["kind"] == "git" else "this session") + "[/]",
+            "",
+        ]
+        for line in str(self._view["text"]).splitlines():
+            if line.startswith("+++") or line.startswith("---"):
+                lines.append(f"[bold]{escape(line)}[/bold]")
+            elif line.startswith("+"):
+                lines.append(f"[#4EBA65]{escape(line)}[/]")
+            elif line.startswith("-"):
+                lines.append(f"[#FF6B80]{escape(line)}[/]")
+            elif line.startswith("@@"):
+                lines.append(f"[dim]{escape(line)}[/]")
             else:
-                lines.append(escape(line) or '')
-        lines += ui.footer(('dismiss', 'closes'))
-        self.query_one("#diff-body", Static).update('\n'.join(lines))
+                lines.append(escape(line) or "")
+        lines += ui.footer(("dismiss", "closes"))
+        self.query_one("#diff-body", Static).update("\n".join(lines))
 
     def action_dismiss(self):
         self.app.pop_screen()

@@ -3,17 +3,17 @@ import pathlib
 from conippets.plugin import collect
 from importlib.metadata import entry_points
 
-TOOLS_GROUP = 'pyclaw.tools'
-SKILLS_GROUP = 'pyclaw.skills'
-AGENTS_GROUP = 'pyclaw.agents'
+TOOLS_GROUP = "pyclaw.tools"
+SKILLS_GROUP = "pyclaw.skills"
+AGENTS_GROUP = "pyclaw.agents"
 
 
 def discover_tools():
-    return collect(TOOLS_GROUP, 'tools', key=lambda t: t.name)
+    return collect(TOOLS_GROUP, "tools", key=lambda t: t.name)
 
 
 def discover_skills():
-    return collect(SKILLS_GROUP, 'skills')
+    return collect(SKILLS_GROUP, "skills")
 
 
 def discover_agent_dirs():
@@ -26,7 +26,7 @@ def discover_agent_dirs():
             module = ep.load()
         except Exception:
             continue
-        directory = getattr(module, 'AGENTS_DIR', None)
+        directory = getattr(module, "AGENTS_DIR", None)
         if directory is not None:
             dirs.append((pathlib.Path(directory), ep.name))
     return dirs
