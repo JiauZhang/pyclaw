@@ -10,6 +10,7 @@ from conippets import json
 
 from chatchat.team.agents import AgentDefinition
 from chatchat.runtime.filehistory import FileHistory
+from chatchat.runtime.skills import listing_budget
 from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import session as session_mod
@@ -1420,10 +1421,12 @@ def test_a_project_skill_is_offered_and_loads_on_demand():
             schemas = team.tool_schemas(team.tool_context)
             schema = next(schema for schema in schemas if schema["name"] == "Skill")
             outcome = await team.execute_tool("Skill", {"skill": "notes"}, team.lead)
-            return schema["description"], outcome.text
+            listed = team.skills.listing(listing_budget(team.context_window))
+            return schema["description"], outcome.text, listed
 
-        description, body = asyncio.run(main())
-        assert "- notes: turn a log into bullets" in description
+        description, body, listed = asyncio.run(main())
+        assert "system-reminder" in description and "- notes:" not in description
+        assert "- notes: turn a log into bullets" in listed
         assert body.startswith("Rewrite the log as bullets.")
 
 
@@ -1432,8 +1435,7 @@ def test_the_skills_that_ship_with_the_program_are_the_only_ones_offered():
 
         async def main():
             team = build_team("agnes", "agnes-2.5-flash", cwd=d, skills=[])
-            schemas = team.tool_schemas(team.tool_context)
-            return next((schema["description"] for schema in schemas if schema["name"] == "Skill"), "")
+            return team.skills.listing(listing_budget(team.context_window))
 
         listed = asyncio.run(main())
         offered = {line[2:].split(":")[0] for line in listed.splitlines() if line.startswith("- ")}

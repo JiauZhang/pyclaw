@@ -42,12 +42,11 @@ def test_the_debug_skill_is_registered_on_every_team(tmp_path, monkeypatch):
 
 
 def test_the_model_is_never_shown_the_debug_skill(tmp_path, monkeypatch):
-    from chatchat.runtime.skills import Skill
+    from chatchat.runtime.skills import Skill, listing_budget
 
     _session, team, _reply = _opened(tmp_path, monkeypatch)
     team.skills.register(Skill(name="commit", description="write a message", body_text="summarise the change"))
-    schemas = team.tool_schemas(team.tool_context)
-    listed = next(schema["description"] for schema in schemas if schema["name"] == "Skill")
+    listed = team.skills.listing(listing_budget(team.context_window))
     offered = {line[2:].split(":")[0] for line in listed.splitlines() if line.startswith("- ")}
     assert "commit" in offered
     assert "debug" not in offered
