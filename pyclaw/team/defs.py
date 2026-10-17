@@ -2,19 +2,19 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import logging
 import os
 import re
 from pathlib import Path
 
-import yaml
-
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.markdown import parse_frontmatter
+from chatchat.team.agents import AgentDefinition, agent_model_problem
 
 from pyclaw.config import __config_file__
 from pyclaw.home import pyclaw_home
 from pyclaw.tools.names import AGENT, BASH, EDIT, EXIT_PLAN_MODE, GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP, WRITE
 
-_FRONTMATTER = re.compile(r"^---\s*\n([\s\S]*?)\n---\s*\n?")
+logger = logging.getLogger(__name__)
 
 BUILT_IN = "built-in"
 PACKAGE = "package"
@@ -99,46 +99,8 @@ class AgentEntry:
     shadowed_by: str | None = None
 
 
-def _parse_scalar(raw: str) -> str:
-    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in "\"'":
-        return _unescape(raw[1:-1])
-    return raw
-
-
 def _escape(value: str) -> str:
     return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-
-
-def _unescape(value: str) -> str:
-    out: list[str] = []
-    index = 0
-    while index < len(value):
-        char = value[index]
-        if char == "\\" and index + 1 < len(value):
-            out.append({"n": "\n", "\\": "\\", '"': '"'}.get(value[index + 1], value[index + 1]))
-            index += 2
-            continue
-        out.append(char)
-        index += 1
-    return "".join(out)
-
-
-def _parse_frontmatter(text: str) -> tuple[dict, str]:
-    m = _FRONTMATTER.match(text)
-    if m is None:
-        return {}, text
-    block, body = m.group(1), text[m.end() :].strip()
-    try:
-        meta = yaml.safe_load(block)
-    except yaml.YAMLError:
-        meta = None
-    if not isinstance(meta, dict):
-        meta = {}
-        for line in block.splitlines():
-            key, _, value = line.partition(":")
-            if key.strip():
-                meta[key.strip()] = _parse_scalar(value.strip())
-    return meta, body
 
 
 def _parse_tools_field(raw) -> list[str] | None:
@@ -160,11 +122,15 @@ def _memory_scope(raw) -> str | None:
     return value if value in MEMORY_SCOPES else None
 
 
-def _definition_from_md(text: str, all_tools: list):
-    meta, body = _parse_frontmatter(text)
+def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | None, str]:
+    meta, body = parse_frontmatter(text)
+    if meta is None:
+        return None, "frontmatter is not valid YAML"
+    if not isinstance(meta, dict):
+        return None, "frontmatter is not a mapping"
     name = meta.get("name")
     if not name:
-        return None
+        return None, ""
     description = str(meta.get("description") or "")
     raw_tools = _parse_tools_field(meta.get("tools", ""))
     by_name = {t.name: t for t in all_tools}
@@ -172,22 +138,28 @@ def _definition_from_md(text: str, all_tools: list):
         tools = list(all_tools)
     else:
         tools = [by_name[n] for n in raw_tools if n in by_name]
-    return AgentDefinition(
-        name,
-        system_prompt=body,
-        tools=tools,
-        model=str(meta.get("model") or "") or None,
-        permission_mode=str(meta.get("permissionMode") or "") or None,
-        description=description,
-        memory=_memory_scope(meta.get("memory")),
+    raw_model = str(meta.get("model") or "").strip()
+    problem = agent_model_problem(raw_model)
+    model = None if problem or raw_model in ("", "inherit") else raw_model
+    return (
+        AgentDefinition(
+            name,
+            system_prompt=body,
+            tools=tools,
+            model=model,
+            permission_mode=str(meta.get("permissionMode") or "") or None,
+            description=description,
+            memory=_memory_scope(meta.get("memory")),
+        ),
+        problem,
     )
 
 
-def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None:
+def _definition_from_path(path: Path, all_tools: list) -> tuple[AgentDefinition | None, str]:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
-        return None
+    except OSError as exc:
+        return None, str(exc)
     return _definition_from_md(text, all_tools)
 
 
@@ -204,12 +176,15 @@ def load_agent_markdown(dirs, all_tools: list) -> list[AgentEntry]:
     """The single scan+parse entry every agent source goes through.
     dirs is a list of (directory, source) pairs; each *.md under the
     directory (recursively) becomes an AgentEntry (frontmatter
-    name/description/tools + prompt body)."""
+    name/description/tools + prompt body). Broken files are skipped with a
+    logged warning naming the file, never silently."""
     entries = []
     for directory, source in dirs:
         try:
             for path in _walk_md(directory):
-                defn = _definition_from_path(path, all_tools)
+                defn, problem = _definition_from_md(path.read_text(encoding="utf-8"), all_tools)
+                if problem:
+                    logger.warning("agent file %s: %s", path, problem)
                 if defn is not None:
                     entries.append(AgentEntry(defn.agent_type, source, path, defn))
         except OSError:
@@ -243,12 +218,15 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
             raise ValueError(f"--agents: {name} must be an object")
         wanted = spec.get("tools")
         tools = list(all_tools) if not wanted else [by_name[n] for n in wanted if n in by_name]
+        model_problem = agent_model_problem(spec.get("model"))
+        if model_problem:
+            raise ValueError(f"--agents: {name}: {model_problem}")
         defs.append(
             AgentDefinition(
                 str(name),
                 system_prompt=str(spec.get("prompt") or ""),
                 tools=tools,
-                model=spec.get("model") or None,
+                model=str(spec.get("model") or "") or None,
                 permission_mode=spec.get("permissionMode") or None,
                 description=str(spec.get("description") or ""),
                 memory=_memory_scope(spec.get("memory")),

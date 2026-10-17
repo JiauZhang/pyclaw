@@ -404,17 +404,58 @@ def test_a_memory_scope_that_is_not_one_of_the_three_is_dropped():
 
 
 def test_the_frontmatter_of_an_agent_file_carries_its_scope():
-    defn = mod._definition_from_md(
+    defn, problem = mod._definition_from_md(
         "---\nname: reviewer\ndescription: reads diffs\nmemory: user\n---\n\n" + "be harsh " * 10, ALL_TOOLS
     )
     assert defn.memory == "user"
+    assert problem == ""
 
 
 def test_a_written_agent_keeps_its_scope_on_the_way_out():
     defn = AgentDefinition("reviewer", system_prompt="p" * 30, tools=list(ALL_TOOLS), description="d" * 20, memory="local")
     text = mod.render_agent_md(defn, ALL_TOOLS)
     assert "memory: local" in text
-    assert mod._definition_from_md(text, ALL_TOOLS).memory == "local"
+    assert mod._definition_from_md(text, ALL_TOOLS)[0].memory == "local"
+
+
+def test_a_broken_yaml_frontmatter_skips_the_file_with_a_problem():
+    defn, problem = mod._definition_from_md('---\nname: "unclosed quote\n---\n\nbody', ALL_TOOLS)
+    assert defn is None
+    assert "not valid YAML" in problem
+
+
+def test_an_unquoted_glob_in_frontmatter_survives_the_quoting_repair():
+    defn, problem = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs: fast and thorough\n---\n\n" + "be harsh " * 10, ALL_TOOLS
+    )
+    assert problem == ""
+    assert defn.description == "reads diffs: fast and thorough"
+
+
+def test_a_claude_code_alias_model_warns_and_inherits():
+    defn, problem = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs\nmodel: sonnet\n---\n\n" + "be harsh " * 10, ALL_TOOLS
+    )
+    assert defn.model is None
+    assert "claude-code alias" in problem
+
+
+def test_a_provider_model_value_is_kept_for_spawn_resolution():
+    defn, problem = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs\nmodel: deepseek/deepseek-chat\n---\n\n" + "be harsh " * 10,
+        ALL_TOOLS,
+    )
+    assert defn.model == "deepseek/deepseek-chat"
+    assert problem == ""
+
+
+def test_inherit_and_a_missing_model_both_mean_the_parent_model():
+    inherited, _ = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs\nmodel: inherit\n---\n\n" + "be harsh " * 10, ALL_TOOLS
+    )
+    missing, _ = mod._definition_from_md("---\nname: reviewer\ndescription: reads diffs\n---\n\n" + "be harsh " * 10, ALL_TOOLS)
+    assert inherited.model is None
+    assert missing.model is None
 
 
 def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
