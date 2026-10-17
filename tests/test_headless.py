@@ -167,7 +167,6 @@ def test_the_shape_arrives_as_the_text_the_flag_carried():
 
 
 def test_a_print_run_records_what_the_turn_used(monkeypatch):
-    from pyclaw import usage_history
 
     recorded = []
 

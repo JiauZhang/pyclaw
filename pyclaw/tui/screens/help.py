@@ -25,9 +25,9 @@ class HelpScreen(Screen):
         seen = set()
         for entry in keys.app_bindings():
             if isinstance(entry, Binding):
-                key, action, description = (entry.key, entry.action, entry.description)
+                key, description = entry.key, entry.description
             else:
-                key, action, description = (entry[0], entry[1], entry[2] if len(entry) > 2 else "")
+                key, description = entry[0], entry[2] if len(entry) > 2 else ""
             if key in seen or not description:
                 continue
             seen.add(key)

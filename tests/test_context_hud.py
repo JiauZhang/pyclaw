@@ -217,7 +217,6 @@ def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
 
 def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
     from pyclaw import task_registry
-    from pyclaw.tools import background
 
     class _Running:
         def poll(self):
@@ -275,7 +274,6 @@ def test_a_stopped_teammate_keeps_a_row_that_says_so():
 
 
 def test_stopping_a_shell_row_kills_that_shell(monkeypatch):
-    from pyclaw import task_registry
     from pyclaw.tools import background
 
     stopped = []

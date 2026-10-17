@@ -151,7 +151,7 @@ def test_reopening_a_task_clears_its_completion_memory(tmp_path):
 
 def test_a_recently_closed_task_outranks_an_old_one(tmp_path):
     tasks = _tasks(tmp_path)
-    old = _add(tasks, "Old work", status="completed")
+    _add(tasks, "Old work", status="completed")
     _add(tasks, "Live work", status="pending")
     fresh = _add(tasks, "Fresh work", status="completed")
 

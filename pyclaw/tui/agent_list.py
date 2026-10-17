@@ -7,7 +7,7 @@ from pyclaw.tui.formatting import escape
 
 from pyclaw.team import defs as agent_defs
 from pyclaw.tui.agent_form import AGENT_LOCATIONS, AGENT_NAV
-from pyclaw.tui.theme import POINTER
+from pyclaw.tui.theme import POINTER, WARN
 
 
 class AgentListMixin:
@@ -64,7 +64,7 @@ class AgentListMixin:
         model = agent_defs.model_display(entry.defn, self._session.model)
         text = f"{marker}{entry.agent_type} \u00b7 {model}"
         if entry.shadowed_by:
-            text += f" {_WARN} hidden behind {entry.shadowed_by}"
+            text += f" {WARN} hidden behind {entry.shadowed_by}"
         text = escape(text)
         if chosen:
             return f"[{self.app.brand}]{text}[/]"

@@ -328,9 +328,6 @@ def test_permissions_remove_rule():
         async def note_config_change(self, source):
             self.noted = source
 
-        def permission_mode(self):
-            return "default"
-
         permission_mode = "default"
 
         def permission_rules(self):
@@ -641,7 +638,7 @@ def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
 
 def _history(monkeypatch, tmp_path, rows):
     import json
-    from datetime import date, timedelta
+    from datetime import date
 
     from pyclaw import usage_history
 

@@ -9,3 +9,17 @@ from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui.screens.tasks import TasksScreen
 from pyclaw.tui.screens.transcript import TranscriptScreen
 from pyclaw.tui.screens.worktree import WorktreeExitScreen
+
+__all__ = [
+    "DiffScreen",
+    "HelpScreen",
+    "HistorySearchScreen",
+    "MemoryScreen",
+    "PermissionsScreen",
+    "RewindScreen",
+    "SessionsScreen",
+    "TaskDetailScreen",
+    "TasksScreen",
+    "TranscriptScreen",
+    "WorktreeExitScreen",
+]

@@ -37,15 +37,10 @@ from chatchat.tasks.cron_schedule import SchedulerLock
 from pyclaw.team.builder import IM_EXTRA, build_team, configured_context_window
 from pyclaw.tui.readout import git_label, git_status
 from pyclaw.tui.formatting import _display_cwd
-from chatchat.hooks.events import (
-    AGENT_REASON_START,
-    AGENT_TOOL_CALL,
-    AGENT_WARN,
-)
 from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from ..slash import handle_slash, skill_rows, suggest
-from ..channels.im_formatter import IMStatusTracker, split_long_message
+from ..channels.im_formatter import split_long_message
 from .im import _friendly_channel_error, _im_progress_text, run_im_interaction
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
@@ -653,7 +648,7 @@ class GatewayServer:
                     return
 
                 try:
-                    response = await run_im_interaction(
+                    await run_im_interaction(
                         session,
                         _adapter,
                         msg.sender_id,

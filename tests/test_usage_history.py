@@ -1,7 +1,7 @@
 """Yesterday's work has to be readable tomorrow, in the numbers the API gave."""
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from chatchat.team.team import Team
 
@@ -200,7 +200,7 @@ def test_a_resumed_conversation_keeps_the_numbers_it_had(tmp_path, monkeypatch):
         )
 
     async def main():
-        first = build("conv-one")
+        build("conv-one")
         session_store.save_transcript(
             "conv-one",
             [
@@ -248,12 +248,10 @@ def test_a_resumed_conversation_picks_up_the_clock_where_it_stopped(tmp_path, mo
     import asyncio
 
     from chatchat.client import MockClient
-    from pyclaw import usage_history
     from pyclaw.session import Session, store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
     _home(monkeypatch, tmp_path)
-    today = date.today().isoformat()
 
     async def answer(messages, tools=None, *, stream_cb=None):
         return "ok"

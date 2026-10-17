@@ -8,6 +8,7 @@ from pyclaw.tui import keys
 
 BULLET = "\u23fa" if sys.platform == "darwin" else "\u25cf"
 POINTER = "\u276f"
+WARN = "\u26a0"
 RESULT_GLYPH = "\u23bf"
 ASTERISK = "\u273b"
 BULLET_PREFIX = f"{BULLET} "

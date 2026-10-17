@@ -96,12 +96,18 @@ The module must expose `tools` (a list of `chatchat.tool.Tool`) and/or `skills`
 ```python
 from chatchat.tool import tool
 
-@tool(name='secret_lookup', description='...', parameters={'type': 'object', 'properties': {'key': {'type': 'string'}}, 'required': ['key']})
+
+@tool(
+    name="secret_lookup",
+    description="...",
+    parameters={"type": "object", "properties": {"key": {"type": "string"}}, "required": ["key"]},
+)
 def secret_lookup(key):
     return get_secret(key)
 
+
 tools = [secret_lookup]
-skills = ['/abs/path/to/my/skill/roots']
+skills = ["/abs/path/to/my/skill/roots"]
 ```
 
 After `pip install` (a local `pip install -e .` works), pyclaw discovers them

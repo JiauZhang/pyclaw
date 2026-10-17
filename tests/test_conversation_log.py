@@ -13,11 +13,6 @@ from pyclaw.session import store as session_store
 from pyclaw.session import Session as RealSession
 from pyclaw.session.store import (
     _session_dir,
-    append_conv,
-    conversation_log,
-    follow_conversation,
-    record_meta,
-    resolve_session_id,
 )
 from pyclaw.gateway.im import run_im_interaction
 

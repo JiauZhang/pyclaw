@@ -299,8 +299,6 @@ def test_a_second_message_while_a_turn_runs_is_refused(monkeypatch, tmp_path):
 def test_tool_activity_reaches_the_page_as_structured_progress(tmp_path):
     from chatchat.hooks.events import AGENT_TOOL_CALL, RuntimeEvent
 
-    from pyclaw.channels.web import WebChannelAdapter
-
     class EventSession(_WSSession):
         def stream(self, message, on_event=None):
             async def gen():

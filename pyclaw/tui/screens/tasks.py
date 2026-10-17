@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pyclaw.tui.formatting import escape
 from textual.app import ComposeResult
 from textual.containers import VerticalScroll
 from textual.binding import Binding
@@ -8,7 +7,6 @@ from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui.screens.task_detail import TaskDetailScreen
 from pyclaw.tui import keys
-from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 
 

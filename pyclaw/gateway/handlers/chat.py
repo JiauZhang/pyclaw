@@ -1,5 +1,5 @@
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from .agent import handle_agent
 
@@ -21,7 +21,6 @@ async def handle_chat_send(params: Dict[str, Any], context: Dict[str, Any]) -> D
 
 async def handle_chat_history(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str, Any]:
     session_key = params.get("sessionKey") or params.get("session_id") or "default"
-    limit = params.get("limit", 50)
 
     runtime = context.get("runtime")
     session = runtime.get_session(session_key)

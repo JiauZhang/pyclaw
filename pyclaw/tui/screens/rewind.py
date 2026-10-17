@@ -8,7 +8,6 @@ from pyclaw.tui import keys
 from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui.formatting import _plural, _summarize
-from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 
 

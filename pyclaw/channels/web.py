@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 from typing import Dict, Any, Optional, AsyncIterator, Callable
 from datetime import datetime
@@ -8,7 +7,7 @@ from chatchat.hooks.events import AGENT_WARN
 from starlette.websockets import WebSocketDisconnect
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
-from ..session.store import append_conv, follow_conversation, record_meta
+from ..session.store import append_conv, record_meta
 
 logger = logging.getLogger(__name__)
 

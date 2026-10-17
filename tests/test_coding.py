@@ -830,7 +830,7 @@ def test_a_permission_request_hook_answers_before_the_user():
             )
             return await team.execute_tool("Bash", {"command": "touch before"}, team.lead, "t1")
 
-        outcome = asyncio.run(main())
+        asyncio.run(main())
         assert asked == ["Bash"]
         assert Path(d, "after").exists()
         assert not Path(d, "before").exists()

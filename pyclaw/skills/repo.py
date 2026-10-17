@@ -12,7 +12,7 @@ from chatchat.runtime.skills import Skill
 from pyclaw import config
 from pyclaw.home import pyclaw_home
 from pyclaw.session import store as session_store
-from pyclaw.tools.names import AGENT, BASH, GLOB, GREP, READ
+from pyclaw.tools.names import AGENT, GLOB, GREP, READ
 from pyclaw.version import __version__
 
 DIFF_LIMIT = 24_000

@@ -2,7 +2,6 @@ import asyncio
 import datetime
 import logging
 import subprocess
-import os
 import time
 import uuid
 from pathlib import Path
@@ -12,7 +11,6 @@ from chatchat.team.team import Team
 from chatchat.runtime.metrics import Metrics
 from chatchat.runtime.thinking import Thinking
 from chatchat.hooks.events import (
-    AGENT_PROGRESS,
     AGENT_TEXT,
     register_runtime_handler,
 )
@@ -34,14 +32,7 @@ from .store import (
     save_transcript,
     save_worktree,
 )
-from pyclaw.team.builder import _dispatch_event, checkpoints_enabled, configured_context_window
-from pyclaw.permissions import parse_mode
-
-_sessions_by_root: dict[str, "Session"] = {}
-
-
-def session_for(team_name) -> Optional["Session"]:
-    return _sessions_by_root.get(team_name)
+from pyclaw.team.builder import _dispatch_event, checkpoints_enabled
 
 
 class Session(HistoryMixin, ReadoutMixin):
@@ -65,7 +56,6 @@ class Session(HistoryMixin, ReadoutMixin):
         self.conv_session_id = session_id or uuid.uuid4().hex
         if entity.worktree is not None:
             save_worktree(self.conv_session_id, entity.worktree)
-        _sessions_by_root[entity.name] = self
 
     def _watch_worktree(self, team) -> None:
         """Every move of the session directory is the worktree changing under
@@ -198,7 +188,7 @@ class Session(HistoryMixin, ReadoutMixin):
 
     @property
     def cwd(self) -> str:
-        return str(self._gate.cwd) if self._gate is not None else os.getcwd()
+        return str(self._gate.cwd) if self._gate is not None else "."
 
     def set_permission_mode(self, mode: str) -> str:
         if self._gate is None:
@@ -416,11 +406,6 @@ class Session(HistoryMixin, ReadoutMixin):
 
     async def close(self):
         self._unbind()
-        _sessions_by_root.pop(self.name, None)
-
-    @property
-    def cwd(self):
-        return str(self._gate.cwd) if self._gate is not None else "."
 
     async def compact(self) -> str:
         before = len(self._team.lead.messages)

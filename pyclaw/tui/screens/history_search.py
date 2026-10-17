@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-from pyclaw.tui.formatting import escape
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import VerticalScroll

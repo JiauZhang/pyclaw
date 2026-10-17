@@ -1,6 +1,5 @@
 """What happened in a run should be readable afterwards, on this machine only."""
 
-import asyncio
 import json
 from datetime import datetime
 
@@ -59,7 +58,7 @@ def test_an_unfamiliar_event_is_dropped_rather_than_raising(monkeypatch, tmp_pat
 
 
 def test_the_facts_of_a_turn_are_kept_from_the_events(monkeypatch, tmp_path):
-    home = _home(monkeypatch, tmp_path)
+    _home(monkeypatch, tmp_path)
     sink = mod.open_stream(at=datetime(2026, 5, 4, 9, 0), session="s1")
     for event in (
         RuntimeEvent(AGENT_TEXT, agent="lead", data={"delta": "hi "}),

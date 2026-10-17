@@ -3,9 +3,8 @@ from __future__ import annotations
 from pyclaw.tui.formatting import escape
 from textual import events
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.message import Message
-from textual.widgets import Input, Markdown, Static, TextArea
+from textual.widgets import Static, TextArea
 
 from pyclaw import banner
 
@@ -16,18 +15,13 @@ from pyclaw.tui.formatting import _edit_summary, _plural, _user_markup
 from pyclaw.tui.theme import (
     AGENT_TRAIL_LIMIT,
     BULLET,
-    BULLET_PREFIX,
-    DONE_COLOR,
-    EXPAND_HINT,
     INITIALIZING_TEXT,
     INTERRUPTED_TEXT,
     RESULT_HANG,
     RESULT_PREFIX,
-    TREE_INDENT,
     WAITING_PERMISSION_TEXT,
 )
-from pyclaw.tui.collapse import Group, group_text
-from pyclaw.tui.toolcard import _more_tool_uses, agent_group_header, agent_group_row
+from pyclaw.tui.toolcard import _more_tool_uses
 from pyclaw.tui.toolui import result_summary, tool_args, tool_label
 from pyclaw.tools.names import AGENT, GREP, READ, WRITE
 

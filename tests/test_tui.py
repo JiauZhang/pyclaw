@@ -36,9 +36,7 @@ def emit(kind, *, team="t", **fields):
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
 from pyclaw.session import store as session_store
-from pyclaw.session.store import save_transcript
 from pyclaw.tools import background
-from pyclaw.tui import app as tui
 from pyclaw.tui import status_rows, turn_flow
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
@@ -49,7 +47,7 @@ from pyclaw.tui.diff import _diff_block
 from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import hide_row, leader_row, status_text, teammate_row
 from pyclaw.tui.screens import HistorySearchScreen
-from pyclaw.tui.components import _AgentGroupBlock, _PromptInput, _TextBlock, _ToolBlock
+from pyclaw.tui.components import _PromptInput, _TextBlock, _ToolBlock
 from chatchat.tasks.tasks import TaskList
 from chatchat.runtime.skills import SkillRegistry
 from chatchat.runtime.thinking import Thinking
@@ -836,6 +834,7 @@ def test_the_running_hint_sits_alone_in_the_footer():
         app._team = team
         app._session.set_permission_mode("plan")
         app._processing = "hello"
+        app._session._gate.cwd = "/repo"
 
     assert "esc to interrupt" in _plain(_status_left(lambda: team, prepare))
     assert "plan mode on" in _status_row2(lambda: team, prepare)
@@ -5636,7 +5635,6 @@ def test_a_finished_turn_is_written_into_the_usage_history(tmp_path, monkeypatch
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
-            app = pilot.app
             await pilot.pause()
             await _submit_and_wait(pilot, "hello there")
             return home.glob("*.jsonl")
@@ -5724,7 +5722,6 @@ def test_the_terminal_title_marks_the_working_turn(monkeypatch):
 
 
 def test_a_finished_turn_notifies_only_once_you_have_looked_away(monkeypatch):
-    import time
 
     sent = []
 

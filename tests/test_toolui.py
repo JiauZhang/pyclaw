@@ -2,10 +2,6 @@
 tool; the registry fills defaults for anything unregistered and a crashing UI
 degrades to the default instead of taking the transcript down."""
 
-import pytest
-
-import pyclaw.tools
-import pyclaw.tools.display
 from pyclaw.tui import toolui
 from pyclaw.tui.toolui import build_tool_ui, collapse_kinds, hidden_card, read_key, result_summary, tool_args, tool_label
 

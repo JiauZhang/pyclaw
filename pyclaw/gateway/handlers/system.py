@@ -1,6 +1,5 @@
 import logging
 from typing import Dict, Any
-from datetime import datetime
 
 from pyclaw.version import __version__
 

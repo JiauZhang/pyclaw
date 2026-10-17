@@ -12,6 +12,8 @@ from chatchat.hooks.events import clear_runtime_sinks
 clear_runtime_sinks()
 
 __all__ = [
+    "__version__",
+    "home",
     "GatewayServer",
     "GatewayConfig",
     "load",

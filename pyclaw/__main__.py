@@ -1,6 +1,5 @@
 import argparse, asyncio, json, logging, os, secrets, sys
 from logging.handlers import RotatingFileHandler
-from pathlib import Path
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
 from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
@@ -71,7 +70,6 @@ async def start_api(args):
     sidecar can pick them up:
         PYCLAW_ENDPOINT {"port": 53211, "token": "..."}"""
     setup_logging(args.log_level)
-    logger = logging.getLogger(__name__)
 
     config = load_config()
     settings = _apply_overrides(dict(config), args)

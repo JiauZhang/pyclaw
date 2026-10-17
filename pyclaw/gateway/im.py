@@ -3,13 +3,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from typing import Callable
 
 from chatchat.hooks.events import AGENT_REASON_START, AGENT_TOOL_CALL, AGENT_WARN
 
 from ..channels import OutboundMessage
 from ..channels.im_formatter import IMStatusTracker, split_long_message
-from ..session.store import append_conv, record_meta, resolve_session_id
-from ..slash import handle_slash
+from ..session.store import append_conv
 
 logger = logging.getLogger(__name__)
 

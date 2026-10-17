@@ -3,15 +3,12 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
-import random
 import time
 
-from pyclaw.tui.formatting import escape
 from textual.app import App, ComposeResult
-from textual.binding import Binding
 from textual.containers import Horizontal, VerticalScroll
 from textual.theme import BUILTIN_THEMES
-from textual.widgets import Input, Static
+from textual.widgets import Static
 from chatchat.hooks.events import register_hook_event_handler, register_runtime_handler
 from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.session import Session
@@ -21,8 +18,7 @@ from pyclaw import events
 from pyclaw.tui.permission_card import _Approval
 from pyclaw.tui.actions import ActionMixin
 from pyclaw.tui.approval_flow import ApprovalFlowMixin
-from pyclaw.tui.formatting import _log_data
-from pyclaw.tui.readout import HUD_TICK_SECONDS, _agent_tokens
+from pyclaw.tui.readout import HUD_TICK_SECONDS
 from pyclaw.tui.agent_view import RosterMixin
 from pyclaw.tui.delivery import DeliveryMixin
 from pyclaw.tui.event_flow import EventRouterMixin
@@ -34,11 +30,8 @@ from pyclaw.tui.task_panel import TaskPanelMixin
 from pyclaw.tui.prompting import PromptMixin
 from pyclaw.tui.transcript import TranscriptMixin
 from pyclaw.tui.turn_flow import TurnFlowMixin
-from pyclaw.tui.screens import HelpScreen, HistorySearchScreen, TranscriptScreen
 from pyclaw.tui import keys
 from pyclaw.tui.theme import (
-    FINISHED_LINGER_SECONDS,
-    INTERRUPTED_TEXT,
     OVERLAY_GATED_ACTIONS,
     POINTER,
     SPINNER_FRAMES,
@@ -49,9 +42,11 @@ from pyclaw.tui.components import (
     _AgentPane,
     _Conv,
     _GroupBlock,
+    _JumpToBottom,
     _LogoBlock,
     _PagerScroll,
     _PromptInput,
+    _TextBlock,
     _ToolBlock,
 )
 

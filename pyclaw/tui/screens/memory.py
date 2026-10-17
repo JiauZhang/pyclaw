@@ -2,14 +2,12 @@ from __future__ import annotations
 
 import contextlib
 
-from pyclaw.tui.formatting import escape
 from textual.app import ComposeResult, SuspendNotSupported
 from textual.containers import VerticalScroll
 from textual.binding import Binding
 from pyclaw.tui import ui
 from textual.screen import Screen
 from pyclaw.tui import keys
-from pyclaw.tui.theme import POINTER
 from textual.widgets import Static
 from pyclaw.team.memory import memory_targets
 from pyclaw import editor

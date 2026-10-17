@@ -1,7 +1,6 @@
 import asyncio
 import itertools
 import logging
-from datetime import datetime
 from typing import AsyncIterator, Dict, Any, Optional
 
 from imchat.keystore import delete_keys, load_keys, save_keys

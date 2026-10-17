@@ -222,7 +222,7 @@ def test_deleting_an_agent_removes_the_file_and_the_type(monkeypatch, tmp_path):
 
 
 def test_the_create_wizard_writes_a_file_and_uses_it_live(monkeypatch, tmp_path):
-    user = _home(monkeypatch, tmp_path)
+    _home(monkeypatch, tmp_path)
     project = _project(tmp_path)
     team = _AgentsTeam(tmp_path, _tools())
 
@@ -317,7 +317,7 @@ def test_escaping_the_panel_without_changes_only_dismisses(monkeypatch, tmp_path
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            screen = await _open_panel(app, pilot)
+            await _open_panel(app, pilot)
             await pilot.press("escape")
             for _ in range(4):
                 await pilot.pause()

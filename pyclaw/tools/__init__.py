@@ -1,4 +1,4 @@
-from . import display
+from . import display as display
 from .background import TaskOutput, TaskStop
 from .bash import Bash
 from .edit import Edit, Write

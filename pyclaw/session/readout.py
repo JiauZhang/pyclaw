@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pyclaw.team import defs as agent_defs
 from pyclaw.team.builder import configured_context_window
 from pyclaw.tools import background
 
