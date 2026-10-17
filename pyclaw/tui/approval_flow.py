@@ -105,6 +105,6 @@ class ApprovalFlowMixin:
         if self._session is None:
             return
         nxt = next_mode(self._session.permission_mode,
-                        bypass_available=self._session.bypass_available)
+                        allow_all_available=self._session.allow_all_available)
         self._session.set_permission_mode(nxt.value)
         self._render_status()

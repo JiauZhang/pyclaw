@@ -40,6 +40,7 @@ from pyclaw.tui import app as tui
 from pyclaw.tui import status_rows, turn_flow
 from pyclaw.spinner_verbs import PAST_TENSE_VERBS, SPINNER_VERBS
 from pyclaw.tui import PyClawApp
+from pyclaw.tui.readout import context_note
 from pyclaw.tui.permission_card import _PermissionPrompt
 from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.diff import _diff_block
@@ -349,7 +350,7 @@ def test_ui_launches_and_renders_panels():
             await pilot.pause()
             assert app.query_one("#conv") is not None
             assert app.query_one("#input", _PromptInput) is not None
-            assert "? lists the keys" in str(app.query_one("#status").content)
+            assert "? for shortcuts" in str(app.query_one("#hud2").content)
             tasks = app.query_one("#tasks")
             assert tasks.display is False
             await pilot.press("ctrl+t")
@@ -578,7 +579,7 @@ def test_spinner_row_names_the_teammate_being_viewed():
 
     team = _SwarmTeam()
     text = _rendered_spinner(lambda: team, prepare)
-    assert _plain(text) == "\u273b Reviewing\u2026 (esc stops the turn @worker)"
+    assert _plain(text) == "\u273b Reviewing\u2026 (esc to interrupt @worker)"
     assert f"[{seen['color']}]@worker[/]" in text
 
 
@@ -771,7 +772,7 @@ def _status_right(builder, window: int = 0, size=(120, 40)) -> str:
             async with PyClawApp(builder=builder).run_test(size=size) as pilot:
                 await pilot.pause()
                 await pilot.pause()
-                return str(pilot.app.query_one("#status-right").content)
+                return context_note(pilot.app._session)
 
     return asyncio.run(scenario())
 
@@ -782,13 +783,15 @@ def _status_left(builder, prepare=None) -> str:
             if prepare is not None:
                 prepare(pilot.app)
             pilot.app._render_status()
-            return str(pilot.app.query_one("#status").content)
+            return str(pilot.app.query_one("#hud2").content)
 
     return asyncio.run(scenario())
 
 
-def test_default_mode_shows_only_the_shortcut_hint():
-    assert _plain(_status_left(_builder)) == "? lists the keys"
+def test_idle_mode_shows_no_contextual_hint():
+    left = _plain(_status_left(_builder))
+    assert "esc to interrupt" not in left
+    assert "to return to team lead" not in left
 
 
 def test_the_mode_pill_is_on_the_second_row_with_the_directory():
@@ -800,8 +803,8 @@ def test_the_mode_pill_is_on_the_second_row_with_the_directory():
 
     row = _status_row2(lambda: team, prepare)
     assert row.endswith('\u23f8 plan mode on (shift+tab to cycle)')
+    assert '? for shortcuts' not in row
     assert len(row.split(' \u00b7 ')) == 2
-    assert "\u23f8" not in _plain(_status_left(lambda: team, prepare))
 
 
 def test_the_running_hint_sits_alone_in_the_footer():
@@ -812,7 +815,7 @@ def test_the_running_hint_sits_alone_in_the_footer():
         app._session.set_permission_mode("plan")
         app._processing = "hello"
 
-    assert _plain(_status_left(lambda: team, prepare)) == "esc stops the turn"
+    assert "esc to interrupt" in _plain(_status_left(lambda: team, prepare))
     assert "plan mode on" in _status_row2(lambda: team, prepare)
 
 
@@ -825,7 +828,9 @@ def test_the_cycle_hint_steps_back_once_a_second_item_shares_the_row():
         app._subagents["a@t"] = {"type": "Agent", "done": False, "tools": 0,
                                  "tokens": 0, "last_tool": "", "label": ""}
 
-    assert _status_row2(lambda: team, prepare).endswith("\u23f8 plan mode on")
+    row = _status_row2(lambda: team, prepare)
+    assert row.endswith("\u23f8 plan mode on")
+    assert '? for shortcuts' not in row
 
 
 def test_a_teammate_view_counts_as_a_second_item_and_shows_its_hint():
@@ -837,8 +842,8 @@ def test_a_teammate_view_counts_as_a_second_item_and_shows_its_hint():
         app._viewing = "worker"
         app._expanded_view = "teammates"
 
-    assert _plain(_status_left(lambda: team, prepare)) == \
-        "esc goes back to the lead"
+    assert "esc to return to team lead" in \
+        _plain(_status_left(lambda: team, prepare))
 
 
 def test_a_running_teammate_keeps_the_interrupt_and_toggle_hints():
@@ -850,23 +855,23 @@ def test_a_running_teammate_keeps_the_interrupt_and_toggle_hints():
         app._viewing = "worker"
         app._expanded_view = "teammates"
 
-    assert _plain(_status_left(lambda: team, prepare)) == \
-        "esc stops the turn \u00b7 ctrl+t hides them"
+    assert "esc to interrupt \u00b7 ctrl+t hide" in \
+        _plain(_status_left(lambda: team, prepare))
 
 
 def test_the_shortcut_hint_steps_back_while_typing():
     async def scenario():
         async with PyClawApp(builder=_builder).run_test(size=(120, 40)) as pilot:
             await pilot.pause()
-            idle = _plain(str(pilot.app.query_one("#status").content))
+            idle = _plain(str(pilot.app.query_one("#hud2").content))
             await pilot.press("h", "i")
             await pilot.pause()
-            typing = _plain(str(pilot.app.query_one("#status").content))
+            typing = _plain(str(pilot.app.query_one("#hud2").content))
             return idle, typing
 
     idle, typing = asyncio.run(scenario())
-    assert idle == "? lists the keys"
-    assert typing == ""
+    assert "esc to interrupt" not in idle
+    assert "esc to interrupt" not in typing
 
 
 def _row1(builder=_builder, prepare=None, size=(120, 40),
@@ -914,13 +919,13 @@ def _statusline_rows(builder=_builder, command: str = ''):
                 await pilot.pause(0.05)
             widget = app.query_one("#statusline")
             return (widget.display, str(widget.content),
-                    _plain(str(app.query_one("#status").content)))
+                    app._hints(viewing=False, viewing_busy=False))
 
     return asyncio.run(scenario())
 
 
 def test_an_unconfigured_status_line_takes_no_row():
-    assert _statusline_rows() == (False, "", "? lists the keys")
+    assert _statusline_rows() == (False, "", "? for shortcuts")
 
 
 def test_a_configured_status_line_paints_every_output_line(monkeypatch):
@@ -1140,15 +1145,15 @@ def test_status_shows_esc_to_interrupt_while_running():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
-            idle = str(app.query_one("#status").content)
+            idle = str(app.query_one("#hud2").content)
             app._processing = "hello"
             app._render_status()
-            busy = str(app.query_one("#status").content)
+            busy = str(app.query_one("#hud2").content)
             return idle, busy
 
     idle, busy = asyncio.run(scenario())
-    assert "? lists the keys" in idle
-    assert "esc stops the turn" in busy
+    assert "? for shortcuts" in idle
+    assert "esc to interrupt" in busy
 
 
 def test_model_switch_updates_status_bar(monkeypatch):
@@ -1163,7 +1168,7 @@ def test_model_switch_updates_status_bar(monkeypatch):
             for _ in range(4):
                 await pilot.pause()
             return (app._session.model,
-                    str(app.query_one("#status").content))
+                    str(app.query_one("#hud2").content))
 
     model, status = asyncio.run(scenario())
     assert model == "newm"
@@ -1176,7 +1181,7 @@ def test_status_has_no_model_or_thinking_segments():
             app = pilot.app
             await pilot.pause()
             await pilot.pause()
-            return str(app.query_one("#status").content)
+            return str(app.query_one("#hud2").content)
 
     status = asyncio.run(scenario())
     assert "thinking" not in status
@@ -2037,8 +2042,8 @@ def test_input_stays_busy_until_lead_actually_idle():
             for _ in range(3):
                 await pilot.pause()
             assert app._processing == "hi"
-            assert "esc stops the turn" in str(
-                app.query_one("#status").content)
+            assert "esc to interrupt" in str(
+                app.query_one("#hud2").content)
             for _ in range(30):
                 await pilot.pause()
                 await asyncio.sleep(0.05)
@@ -3286,13 +3291,13 @@ def test_conversation_fills_and_input_sits_at_the_bottom():
             await pilot.pause()
             return (app.size.height,
                     app.query_one("#conv").size.height,
-                    app.query_one("#footer").size.height,
+                    0,  # footer removed
                     app.query_one(_PromptInput).region.y)
 
     height, conv, footer, input_y = asyncio.run(scenario())
-    assert footer == 1
-    assert conv == height - 6
-    assert input_y == height - 5
+    assert footer == 0
+    assert conv == height - 5
+    assert input_y == height - 4
 
 
 def test_prompt_has_the_pointer():
@@ -3723,10 +3728,10 @@ def test_enter_opens_the_teammate_view_and_esc_returns():
             assert view.display is True
             body = _plain(str(app._view_pane.content))
             assert "Viewing @worker" in body
-            assert "esc goes back to the lead" in body
+            assert "esc to return to team lead" in body
             assert "do the thing" in body
-            assert "esc goes back to the lead" in _plain(
-                str(app.query_one("#status").content))
+            assert "esc to return to team lead" in _plain(
+                str(app.query_one("#hud2").content))
             await pilot.press("escape")
             await pilot.pause()
             assert app._viewing is None
@@ -4878,8 +4883,8 @@ def test_a_row_drops_its_tail_instead_of_being_cut_through_a_number():
 
 def test_the_second_row_holds_the_directory_then_git():
     row = _row2(git="# branch.head main\n1 N... pyclaw/tui.py\n")
-    assert row.endswith(' \u00b7 main \u00b11')
-    assert len(row.split(' \u00b7 ')) == 2
+    assert row.endswith(' \u00b7 main \u00b11 \u00b7 ? for shortcuts')
+    assert len(row.split(' \u00b7 ')) == 3
 
 
 def test_the_second_row_leaves_the_branch_out_outside_a_repository():

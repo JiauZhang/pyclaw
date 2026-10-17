@@ -65,9 +65,9 @@ class GatewayConfig:
     enabled_channels: List[str] = field(default_factory=lambda: ["wechat"])
     use_team: bool = False
     # Permission posture for every session this gateway creates; the
-    # --dangerously-skip-permissions flag unlocks bypass at the process level.
+    # --allow-all flag unlocks allowAll at the process level.
     permission_mode: str = "default"
-    bypass_unlocked: bool = False
+    allow_all_unlocked: bool = False
     # Headless API mode (`pyclaw api`): when set, every /chat/api and /chat/ws
     # request must present this token, and the server binds the configured port
     # even when it is 0 (OS-assigned) so the real port can be reported.
@@ -143,7 +143,7 @@ class GatewayServer:
             conversation_id=conversation_id,
             use_team=self.config.use_team,
             permission_mode=self.config.permission_mode,
-            bypass_unlocked=self.config.bypass_unlocked,
+            allow_all_unlocked=self.config.allow_all_unlocked,
         ), session_id=conversation_id)
 
     async def _get_session(self, session_key: str, provider=None, model=None) -> Session:

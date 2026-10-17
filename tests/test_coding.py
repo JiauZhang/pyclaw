@@ -238,13 +238,13 @@ def test_write_and_edit():
 
 
 def test_mode_parse_and_cycle():
-    for m in ("default", "acceptEdits", "plan", "bypassPermissions"):
+    for m in ("default", "acceptEdits", "plan", "allowAll"):
         assert parse_mode(m).value == m
     assert next_mode("default").value == "acceptEdits"
     assert next_mode("acceptEdits").value == "plan"
     assert next_mode("plan").value == "default"
-    assert next_mode("plan", bypass_available=True).value == "bypassPermissions"
-    assert next_mode("bypassPermissions").value == "default"
+    assert next_mode("plan", allow_all_available=True).value == "allowAll"
+    assert next_mode("allowAll").value == "default"
 
 
 def test_decide_matrix():
@@ -360,15 +360,15 @@ def test_permission_gate_parent_mode_takes_precedence():
             bash_in_accept_edits = await _gate_call(
                 team, "Bash", {"command": "echo hi"}, "reader")
 
-            bypass = build_team("agnes", "agnes-2.5-flash", cwd=d,
-                                permission_mode="bypassPermissions")
-            bypass.register_agent_definition(AgentDefinition(
+            unlocked = build_team("agnes", "agnes-2.5-flash", cwd=d,
+                                permission_mode="allowAll")
+            unlocked.register_agent_definition(AgentDefinition(
                 "reader", system_prompt="read only", permission_mode="plan"))
-            edit_in_bypass = await _gate_call(bypass, "Edit", file, "reader")
-            datetime_in_bypass = await _gate_call(bypass, "datetime", {},
+            edit_in_allow_all = await _gate_call(unlocked, "Edit", file, "reader")
+            datetime_in_allow_all = await _gate_call(unlocked, "datetime", {},
                                                   "reader")
             return (edit_in_accept_edits, bash_in_accept_edits,
-                    edit_in_bypass, datetime_in_bypass)
+                    edit_in_allow_all, datetime_in_allow_all)
 
     edit_ae, bash_ae, edit_bp, dt_bp = asyncio.run(main())
     assert edit_ae is True
@@ -377,14 +377,14 @@ def test_permission_gate_parent_mode_takes_precedence():
     assert dt_bp is True
 
 
-def test_bypass_permissions_allows_unless_a_rule_says_otherwise():
+def test_allow_all_allows_unless_a_rule_says_otherwise():
     with tempfile.TemporaryDirectory() as d:
-        g = PermissionController(mode="bypassPermissions", cwd=d)
+        g = PermissionController(mode="allowAll", cwd=d)
         assert g.decide("Edit", {"file_path": "../outside"}) == "allow"
         assert g.decide("Bash", {"command": "python3 x.py"}) == "allow"
         assert g.decide("datetime", {}) == "allow"
 
-        ruled = PermissionController(mode="bypassPermissions", cwd=d,
+        ruled = PermissionController(mode="allowAll", cwd=d,
                                      deny=["Bash(rm:*)"],
                                      ask=["Bash(git push:*)"])
         assert ruled.decide("Bash", {"command": "rm -rf x"}) == "deny"

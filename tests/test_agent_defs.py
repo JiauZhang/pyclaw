@@ -439,50 +439,66 @@ def test_the_explorer_says_what_it_is_for():
     assert 'implementation plan' in defs['Plan'].description
 
 
-PAPER_SPEC = {'name': 'paper-analyst',
-              'description': 'AI paper briefing specialist for daily papers',
-              'system_prompt': 'You are the paper briefing specialist. '
-                               'Run the deterministic data commands and judge.',
-              'tools': ['Bash']}
+PAPER_MD = '''---
+name: paper-analyst
+description: "AI paper briefing specialist for daily papers"
+tools: Bash
+---
+
+You are the paper briefing specialist. Run the deterministic data
+commands and judge.
+'''
 
 
-def test_a_package_spec_becomes_a_definition_with_resolved_tools():
-    defs = mod.from_entry_points([PAPER_SPEC], ALL_TOOLS)
-    assert len(defs) == 1
-    defn = defs[0]
+def _package_agents_dir(tmp_path,
+                        contents=(('paper-analyst.md', PAPER_MD),)):
+    agents = tmp_path / 'package-agents'
+    agents.mkdir()
+    for name, body in contents:
+        (agents / name).write_text(body, encoding='utf-8')
+    return agents
+
+
+def test_a_package_md_becomes_a_definition_with_resolved_tools(tmp_path):
+    agents = _package_agents_dir(tmp_path)
+    entries = mod.load_agent_markdown([(agents, 'chatool')], ALL_TOOLS)
+    assert len(entries) == 1
+    defn = entries[0].defn
     assert defn.agent_type == 'paper-analyst'
     assert [t.name for t in defn.tools] == ['Bash']
     assert 'paper briefing specialist' in defn.system_prompt
 
 
-def test_a_package_spec_without_a_name_is_skipped():
-    defs = mod.from_entry_points([{'description': 'no name here at all'},
-                                  PAPER_SPEC], ALL_TOOLS)
-    assert [d.agent_type for d in defs] == ['paper-analyst']
+def test_a_package_md_without_a_name_is_skipped(tmp_path):
+    agents = _package_agents_dir(tmp_path, contents=(
+        ('readme.md', 'no frontmatter name here'),
+        ('paper-analyst.md', PAPER_MD)))
+    entries = mod.load_agent_markdown([(agents, 'chatool')], ALL_TOOLS)
+    assert [e.defn.agent_type for e in entries] == ['paper-analyst']
 
 
 def test_discovery_places_package_agents_after_builtins(tmp_path):
-    package = mod.from_entry_points([PAPER_SPEC], ALL_TOOLS)
-    entries = mod.discover(str(tmp_path), ALL_TOOLS, package=package)
+    agents = _package_agents_dir(tmp_path)
+    entries = mod.discover(str(tmp_path), ALL_TOOLS,
+                           package_dirs=[(agents, 'chatool')])
     types = [e.defn.agent_type for e in entries]
     assert types.index('paper-analyst') > types.index(_builtin_types()[-1])
 
 
 def test_a_user_file_shadows_a_package_agent(tmp_path, user_agents):
-    package = mod.from_entry_points([{'name': 'reviewer',
-                                      'description': 'Package reviewer agent',
-                                      'system_prompt': 'Package reviewer '
-                                                      'body goes here.',
-                                      'tools': ['Read']}], ALL_TOOLS)
+    agents = _package_agents_dir(tmp_path, contents=(
+        ('reviewer.md', REVIEWER),))
     _write_agent(user_agents, 'reviewer.md', REVIEWER)
-    entries = mod.discover(str(tmp_path), ALL_TOOLS, package=package)
+    entries = mod.discover(str(tmp_path), ALL_TOOLS,
+                           package_dirs=[(agents, 'chatool')])
     reviewers = [e for e in entries if e.defn.agent_type == 'reviewer']
     winner = next(e for e in reviewers if e.shadowed_by is None)
     assert winner.scope == mod.USER
     assert [e.shadowed_by for e in reviewers if e is not winner] == [mod.USER]
 
 
-def test_load_agent_defs_passes_package_through(tmp_path):
-    package = mod.from_entry_points([PAPER_SPEC], ALL_TOOLS)
-    defs = mod.load_agent_defs(str(tmp_path), ALL_TOOLS, package=package)
+def test_load_agent_defs_passes_package_dirs_through(tmp_path):
+    agents = _package_agents_dir(tmp_path)
+    defs = mod.load_agent_defs(str(tmp_path), ALL_TOOLS,
+                               package_dirs=[(agents, 'chatool')])
     assert 'paper-analyst' in [d.agent_type for d in defs]

@@ -86,7 +86,7 @@ class PermissionController:
 
     def __init__(self, *, mode: str = 'default', cwd, allow=(),
                  ask=(), deny=(), request=None, tools=None, extra_dirs=(),
-                 bypass_unlocked=False):
+                 allow_all_unlocked=False):
         self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
         self.extra_dirs = [Path(path).resolve() for path in (extra_dirs or ())]
@@ -116,9 +116,9 @@ class PermissionController:
         self._allow = merged['allow']
         self._ask = merged['ask']
         self._deny = merged['deny']
-        self.bypass_unlocked = (bool(bypass_unlocked)
-                                or self.mode is PermissionMode.bypass_permissions)
-        self.bypass_available = self.bypass_unlocked
+        self.allow_all_unlocked = (bool(allow_all_unlocked)
+                                or self.mode is PermissionMode.allow_all)
+        self.allow_all_available = self.allow_all_unlocked
         self.request = request
         self.permission_hooks = None
         self.config_changed = None
@@ -298,10 +298,10 @@ class PermissionController:
 
     def check_switch(self, mode) -> PermissionMode:
         parsed = parse_mode(mode)
-        if parsed is PermissionMode.bypass_permissions and not self.bypass_unlocked:
-            raise ValueError('Cannot set permission mode to bypassPermissions '
+        if parsed is PermissionMode.allow_all and not self.allow_all_unlocked:
+            raise ValueError('Cannot set permission mode to allowAll '
                              'because the session was not launched with '
-                             '--dangerously-skip-permissions')
+                             '--allow-all')
         return parsed
 
     def decide(self, tool_name: str, tool_input, mode=None) -> str:
@@ -311,7 +311,7 @@ class PermissionController:
             return 'deny'
         if _rule_matches(self._ask, tool_name, tool_input, self.cwd, target):
             return 'ask'
-        if mode is PermissionMode.bypass_permissions:
+        if mode is PermissionMode.allow_all:
             return 'allow'
         if tool_name in AUTO_TOOLS:
             return 'allow'

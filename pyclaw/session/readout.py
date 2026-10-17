@@ -146,8 +146,8 @@ class ReadoutMixin:
     def permission_mode(self) -> str:
         return self._gate.mode.value if self._gate is not None else 'default'
     @property
-    def bypass_available(self) -> bool:
-        return bool(self._gate is not None and self._gate.bypass_available)
+    def allow_all_available(self) -> bool:
+        return bool(self._gate is not None and self._gate.allow_all_available)
     @property
     def compact_threshold(self) -> int:
         return int(self._team.compact_threshold)

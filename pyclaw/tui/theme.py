@@ -25,7 +25,7 @@ VIEW_HINT = keys.hint('open', 'opens it')
 COLLAPSE_HINT = keys.hint('open', 'closes it')
 IDLE_TEXT = "Idle"
 AGENT_TEAMMATES_HINT = "subagents are active"
-TEAMMATE_VIEW_HINT = keys.hint('dismiss', 'goes back to the lead')
+TEAMMATE_VIEW_HINT = keys.hint('dismiss', 'to return to team lead')
 STOPPING_TEXT = "Stopping\u2026"
 STOPPED_TEXT = "Stopped"
 
@@ -80,11 +80,11 @@ AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107",
 
 
 MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5",
-                "bypassPermissions": "\u23f5\u23f5", "plan": "\u23f8"}
+                "allowAll": "\u23f5\u23f5", "plan": "\u23f8"}
 MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode",
-               "bypassPermissions": "skip permission prompts"}
+               "allowAll": "skip permission prompts"}
 MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C",
-               "bypassPermissions": "#FF6B80"}
+               "allowAll": "#FF6B80"}
 
 
 SPINNER_CHARS = ["\u00b7", "\u2722", "\u2733", "\u2736", "\u273b", "\u273d"]

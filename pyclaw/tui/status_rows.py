@@ -34,7 +34,7 @@ class StatusMixin:
             if self._agent_running(self._agent_by_name(viewed)):
                 verb = self._state(viewed)['verb']
                 return (f"[{self.brand}]{char}[/] {escape(verb)}\u2026 "
-                        f"[dim]({keys.display('escape')} stops the turn [/]"
+                        f"[dim]({keys.display('escape')} to interrupt [/]"
                         f"[{self._agent_color(viewed)}]@{escape(viewed)}[/]"
                         f"[dim])[/]")
             return self._idle_row(self._state(viewed))
@@ -117,24 +117,6 @@ class StatusMixin:
             return
         self._schedule_statusline()
         self.title = s.title or 'PyClaw'
-        viewing = self._viewing is not None
-        viewing_busy = viewing and self._agent_running(
-            self._agent_by_name(self._viewing))
-        parts = []
-        show_hint = not self._statusline_cmd and not self._prompt_has_text()
-        if show_hint:
-            if viewing and not viewing_busy:
-                parts.append(TEAMMATE_VIEW_HINT)
-            else:
-                if self._processing is not None or viewing_busy:
-                    parts.append(
-                        f"{keys.display('escape')} stops the turn")
-                hint = self._tasks_hint()
-                if hint:
-                    parts.append(hint)
-        if show_hint and not parts:
-            parts.append("? lists the keys")
-        self.query_one("#status", Static).update(" \u00b7 ".join(parts))
         self._paint_prompt()
         self._render_readouts()
     def _render_readouts(self):
@@ -145,16 +127,35 @@ class StatusMixin:
         cells = meter_cells(width)
         background = (self._viewing is not None or self._teammates_running()
                       or self._subagents_running())
-        self.query_one("#status-right", Static).update(context_note(s))
+        viewing = self._viewing is not None
+        viewing_busy = viewing and self._agent_running(
+            self._agent_by_name(self._viewing))
         self.query_one("#hud", Static).update(_fit((
             s.model, thinking_label(s),
             context_meter(self._triple, s.used_context, s.context_window,
                           cells),
             usage_meter(self._triple, s.usage, cells), usage_hud(s.usage),
             message_count(s), elapsed_row(self._hud_started)), width - 2))
+        pill = mode_pill(s, background=background)
         self.query_one("#hud2", Static).update(_fit((
-            _display_cwd(s.cwd), self._git,
-            mode_pill(s, background=background)), width - 2))
+            _display_cwd(s.cwd), self._git, pill,
+            self._hints(viewing, viewing_busy, has_mode=bool(pill)),
+            context_note(s)), width - 2))
+
+    def _hints(self, viewing, viewing_busy, has_mode=False):
+        if self._statusline_cmd or self._prompt_has_text():
+            return ''
+        if viewing and not viewing_busy:
+            return TEAMMATE_VIEW_HINT
+        parts = []
+        if self._processing is not None or viewing_busy:
+            parts.append(f"{keys.display('escape')} to interrupt")
+        hint = self._tasks_hint()
+        if hint:
+            parts.append(hint)
+        if not parts and not has_mode:
+            parts.append("? for shortcuts")
+        return ' \u00b7 '.join(parts)
     async def _refresh_git(self):
         cwd = self._cwd()
         status = await asyncio.to_thread(git_status, cwd)

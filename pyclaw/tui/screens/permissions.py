@@ -61,9 +61,9 @@ class PermissionsScreen(Screen):
     def _refresh_body(self):
         rules = self._rules()
         mode = getattr(self._session, 'permission_mode', 'default')
-        bypass = bool(getattr(self._session, 'bypass_available', False))
+        unlocked = bool(getattr(self._session, 'allow_all_available', False))
         lines = [f'[bold]Permission mode[/bold] [{self.app.brand}]{mode}[/]',
-                 f'[dim]bypass available: {bypass} · '
+                 f'[dim]allow-all available: {unlocked} · '
                  f'{keys.hint("cycle_permission", "cycles")} · '
                  f'/permissions <mode> switches[/]', '']
         if not rules:

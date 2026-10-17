@@ -185,11 +185,11 @@ class TaskPanelMixin:
         if not self._teammates():
             return ''
         if self._expanded_view == 'none':
-            action = 'shows the task list'
+            action = 'show tasks'
         elif self._expanded_view == 'tasks':
-            action = 'shows the teammate tree'
+            action = 'show teammates'
         else:
-            action = 'hides them'
+            action = 'hide'
         return f"[dim]{keys.display('toggle_tasks')} {action}[/]"
 
     def _render_tasks(self):

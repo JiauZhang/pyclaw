@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import re
 from pathlib import Path
 
@@ -177,56 +178,49 @@ def _definition_from_path(path: Path, all_tools: list) -> AgentDefinition | None
     return _definition_from_md(text, all_tools)
 
 
-def discover(cwd: str, all_tools: list, cli=(), package=()) -> list[AgentEntry]:
+def _walk_md(directory: Path):
+    """Every *.md under the directory, recursively; symlinks are not
+    followed (mirrors claude-code's plugin walker)."""
+    for root, _dirs, files in os.walk(directory, followlinks=False):
+        for name in sorted(files):
+            if name.endswith('.md'):
+                yield Path(root) / name
+
+
+def load_agent_markdown(dirs, all_tools: list) -> list[AgentEntry]:
+    """The single scan+parse entry every agent source goes through.
+    dirs is a list of (directory, source) pairs; each *.md under the
+    directory (recursively) becomes an AgentEntry (frontmatter
+    name/description/tools + prompt body)."""
+    entries = []
+    for directory, source in dirs:
+        try:
+            for path in _walk_md(directory):
+                defn = _definition_from_path(path, all_tools)
+                if defn is not None:
+                    entries.append(AgentEntry(defn.agent_type, source,
+                                              path, defn))
+        except OSError:
+            continue
+    return entries
+
+
+def discover(cwd: str, all_tools: list, cli=(),
+             package_dirs=()) -> list[AgentEntry]:
     entries = [AgentEntry(d.agent_type, BUILT_IN, None, d)
                for d in builtin_agent_defs(all_tools)]
-    entries += [AgentEntry(d.agent_type, PACKAGE, None, d)
-                for d in package]
-    for scope in (USER, PROJECT):
-        try:
-            files = sorted(agents_dir(scope, cwd).glob('*.md'))
-        except OSError:
-            files = []
-        for path in files:
-            defn = _definition_from_path(path, all_tools)
-            if defn is not None:
-                entries.append(AgentEntry(defn.agent_type, scope, path, defn))
+    entries += load_agent_markdown(
+        [(Path(directory), PACKAGE) for directory, _name in package_dirs],
+        all_tools)
+    entries += load_agent_markdown(
+        [(agents_dir(scope, cwd), scope) for scope in (USER, PROJECT)],
+        all_tools)
     entries += [AgentEntry(d.agent_type, CLI, None, d) for d in cli]
     winner = {e.agent_type: e.scope for e in entries}
     for entry in entries:
         if winner[entry.agent_type] != entry.scope:
             entry.shadowed_by = winner[entry.agent_type]
     return entries
-
-
-def _definition_from_spec(spec, all_tools: list) -> AgentDefinition | None:
-    if not isinstance(spec, dict):
-        return None
-    name = str(spec.get('name') or '').strip()
-    system_prompt = str(spec.get('system_prompt') or '').strip()
-    if not name or len(system_prompt) < _PROMPT_MIN:
-        return None
-    by_name = {t.name: t for t in all_tools}
-    wanted = spec.get('tools')
-    if isinstance(wanted, str):
-        wanted = _parse_tools_field(wanted)
-    tools = (list(all_tools) if not wanted
-             else [by_name[n] for n in wanted if n in by_name])
-    return AgentDefinition(
-        name, system_prompt=system_prompt, tools=tools,
-        model=spec.get('model') or None,
-        permission_mode=spec.get('permissionMode') or None,
-        description=str(spec.get('description') or ''),
-        memory=_memory_scope(spec.get('memory')))
-
-
-def from_entry_points(specs, all_tools: list) -> list[AgentDefinition]:
-    defs = []
-    for spec in specs or ():
-        defn = _definition_from_spec(spec, all_tools)
-        if defn is not None:
-            defs.append(defn)
-    return defs
 
 
 def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
@@ -254,9 +248,9 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
 
 
 def load_agent_defs(cwd: str, all_tools: list,
-                    cli=(), package=()) -> list[AgentDefinition]:
+                    cli=(), package_dirs=()) -> list[AgentDefinition]:
     return [e.defn for e in discover(cwd, all_tools=all_tools, cli=cli,
-                                     package=package)
+                                     package_dirs=package_dirs)
             if e.shadowed_by is None]
 
 
@@ -434,7 +428,7 @@ How the statusLine command works:
      "session_id": "string",       // one session, one id
      "transcript_path": "string",  // where the conversation is stored
      "cwd": "string",              // directory PyClaw runs in
-     "permission_mode": "string",  // default | acceptEdits | plan | bypassPermissions
+     "permission_mode": "string",  // default | acceptEdits | plan | allowAll
      "model": {{
        "id": "string",             // model id
        "display_name": "string"    // model name as shown to the user

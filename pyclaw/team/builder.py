@@ -20,7 +20,7 @@ from pyclaw.team import defs as agent_defs
 from pyclaw.team import memory as agent_memory
 from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
-from pyclaw.plugins import discover_agents, discover_tools
+from pyclaw.plugins import discover_agent_dirs, discover_tools
 from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import BUILTIN_TOOLS
@@ -131,7 +131,7 @@ def build_team(
     agents_json: Optional[str] = None,
     use_team: bool = False,
     conversation_id: Optional[str] = None,
-    bypass_unlocked: bool = False,
+    allow_all_unlocked: bool = False,
 ) -> Team:
     conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
@@ -146,7 +146,7 @@ def build_team(
     gate = PermissionController(mode=permission_mode, cwd=cwd,
                                 allow=allowed_tools or (),
                                 ask=ask or (), deny=refused,
-                                bypass_unlocked=bypass_unlocked,
+                                allow_all_unlocked=allow_all_unlocked,
                                 tools=candidates,
                                 extra_dirs=config.load().get(
                                     'additionalDirectories') or ())
@@ -234,7 +234,7 @@ def build_team(
                 if agents_json else [])
     definitions = agent_defs.load_agent_defs(
         cwd, all_tools=resolved, cli=cli_defs,
-        package=agent_defs.from_entry_points(discover_agents(), resolved))
+        package_dirs=discover_agent_dirs())
     for defn in definitions:
         team.register_agent_definition(defn)
     team.cli_agent_defs = cli_defs
@@ -257,7 +257,7 @@ def build_team(
     async def _permission_gate(hook_input):
         agent_type = hook_input.get('agent_type') or ''
         mode = None
-        if agent_type and gate.mode not in (PermissionMode.bypass_permissions,
+        if agent_type and gate.mode not in (PermissionMode.allow_all,
                                             PermissionMode.accept_edits):
             defn = team.agent_defs.find(agent_type)
             mode = (defn.permission_mode if defn is not None else None) \

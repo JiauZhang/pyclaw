@@ -125,10 +125,6 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
                   display: none; }
     #hud { height: 1; width: 1fr; color: $subtle; padding: 0 1; }
     #hud2 { height: 1; width: 1fr; color: $subtle; padding: 0 1; }
-    #status { height: 1; width: auto; background: $background;
-              color: $inactive; padding: 0 1; }
-    #status-right { height: 1; width: 1fr; text-align: right;
-                    background: $background; color: $subtle; padding: 0 1; }
     """
     BINDINGS = keys.app_bindings()
 
@@ -273,9 +269,6 @@ class PyClawApp(ActionMixin, TurnFlowMixin, RosterMixin, ToolTraceMixin, StatusM
         yield Static('', id='statusline')
         yield Static('', id='hud')
         yield Static('', id='hud2')
-        with Horizontal(id="footer"):
-            yield Static(id="status")
-            yield Static(id="status-right")
 
     async def on_mount(self):
         self._team = self._builder()

@@ -34,7 +34,7 @@ class _AgentsTeam(_FakeTeam):
                                default=True)
         self._pyclaw_gate = SimpleNamespace(
             cwd=cwd, mode=SimpleNamespace(value='default'),
-            bypass_available=False)
+            allow_all_available=False)
         self.provided_tools = list(tools)
         self.cli_agent_defs = []
 
