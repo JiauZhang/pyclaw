@@ -39,7 +39,11 @@ from pyclaw.tools.names import (
     EXIT_WORKTREE,
     SEND_MESSAGE,
     SKILL,
+    TASK_CREATE,
+    TASK_GET,
+    TASK_LIST,
     TASK_STOP,
+    TASK_UPDATE,
     TEAM_CREATE,
     TEAM_DELETE,
 )
@@ -61,6 +65,10 @@ AUTO_TOOLS = frozenset(
         CRON_CREATE,
         CRON_LIST,
         CRON_DELETE,
+        TASK_CREATE,
+        TASK_LIST,
+        TASK_GET,
+        TASK_UPDATE,
     }
 )
 

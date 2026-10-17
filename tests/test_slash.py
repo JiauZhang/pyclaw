@@ -774,11 +774,9 @@ def _turn_session():
     return session
 
 
-def test_export_writes_the_conversation_as_markdown(tmp_path):
-    import os
-
+def test_export_writes_the_conversation_as_markdown(tmp_path, monkeypatch):
     session = _turn_session()
-    os.chdir(tmp_path)
+    monkeypatch.chdir(tmp_path)
     out = asyncio.run(_call("/export", session))
 
     written = sorted(tmp_path.glob("*.md"))
@@ -790,11 +788,9 @@ def test_export_writes_the_conversation_as_markdown(tmp_path):
     assert body.index("fix the parser") < body.index("First reply")
 
 
-def test_export_takes_a_name_when_given_one(tmp_path):
-    import os
-
+def test_export_takes_a_name_when_given_one(tmp_path, monkeypatch):
     session = _turn_session()
-    os.chdir(tmp_path)
+    monkeypatch.chdir(tmp_path)
     asyncio.run(_call("/export notes.md", session))
 
     assert (tmp_path / "notes.md").exists()

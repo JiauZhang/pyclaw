@@ -6,6 +6,8 @@ import os
 import re
 from pathlib import Path
 
+import yaml
+
 from chatchat.team.agents import AgentDefinition
 
 from pyclaw.config import __config_file__
@@ -125,15 +127,23 @@ def _parse_frontmatter(text: str) -> tuple[dict, str]:
     m = _FRONTMATTER.match(text)
     if m is None:
         return {}, text
-    meta: dict = {}
-    for line in m.group(1).splitlines():
-        key, _, value = line.partition(":")
-        if key.strip():
-            meta[key.strip()] = _parse_scalar(value.strip())
-    return meta, text[m.end() :].strip()
+    block, body = m.group(1), text[m.end() :].strip()
+    try:
+        meta = yaml.safe_load(block)
+    except yaml.YAMLError:
+        meta = None
+    if not isinstance(meta, dict):
+        meta = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(":")
+            if key.strip():
+                meta[key.strip()] = _parse_scalar(value.strip())
+    return meta, body
 
 
-def _parse_tools_field(raw: str) -> list[str] | None:
+def _parse_tools_field(raw) -> list[str] | None:
+    if isinstance(raw, (list, tuple)):
+        return [str(item).strip() for item in raw if str(item).strip()]
     raw = (raw or "").strip()
     if not raw:
         return None
@@ -155,7 +165,7 @@ def _definition_from_md(text: str, all_tools: list):
     name = meta.get("name")
     if not name:
         return None
-    description = meta.get("description", "")
+    description = str(meta.get("description") or "")
     raw_tools = _parse_tools_field(meta.get("tools", ""))
     by_name = {t.name: t for t in all_tools}
     if raw_tools is None or raw_tools == ["*"]:
@@ -166,8 +176,8 @@ def _definition_from_md(text: str, all_tools: list):
         name,
         system_prompt=body,
         tools=tools,
-        model=meta.get("model") or None,
-        permission_mode=meta.get("permissionMode") or None,
+        model=str(meta.get("model") or "") or None,
+        permission_mode=str(meta.get("permissionMode") or "") or None,
         description=description,
         memory=_memory_scope(meta.get("memory")),
     )
