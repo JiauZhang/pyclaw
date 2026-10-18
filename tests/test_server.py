@@ -1,4 +1,18 @@
 from pyclaw.gateway.im import _friendly_channel_error
+import pytest
+from pyclaw.gateway import server as gateway_server
+from pyclaw.gateway.server import GatewayConfig, GatewayServer
+from pyclaw.gateway.server import _clean_conversation_id
+import asyncio
+import argparse
+from pyclaw.__main__ import _apply_overrides
+from pyclaw.session import store as session_store
+from pathlib import Path
+from chatchat.hooks.events import AGENT_TOOL_CALL, AGENT_REASON_START, RuntimeEvent
+from pyclaw.gateway.im import _im_progress_text
+from fastapi.testclient import TestClient
+from pyclaw.gateway.handlers.chat import handle_chat_history
+from pyclaw.channels.web import WebChannelAdapter
 
 
 def test_a_channel_failure_is_reworded_for_the_user():
@@ -19,10 +33,6 @@ def test_an_unknown_failure_is_reported_briefly():
 
 
 def test_the_gateway_builds_a_team_when_told_to(monkeypatch):
-    import pytest
-
-    from pyclaw.gateway import server as gateway_server
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     captured = {}
 
@@ -41,7 +51,6 @@ def test_the_gateway_builds_a_team_when_told_to(monkeypatch):
 
 
 def test_conversation_ids_from_the_outside_are_sanitised():
-    from pyclaw.gateway.server import _clean_conversation_id
 
     good = "a" * 32
     assert _clean_conversation_id(good) == good
@@ -54,9 +63,6 @@ def test_conversation_ids_from_the_outside_are_sanitised():
 
 
 def test_a_returning_conversation_is_reused_and_restored(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     server = GatewayServer(GatewayConfig())
     created = []
@@ -85,9 +91,6 @@ def test_a_returning_conversation_is_reused_and_restored(monkeypatch):
 
 
 def test_serve_overrides_apply_to_the_run_without_touching_the_saved_config():
-    import argparse
-
-    from pyclaw.__main__ import _apply_overrides
 
     saved = {"model": "agnes/m1", "enabled_channels": ["wechat"]}
     args = argparse.Namespace(model="p/m", channels=["web"])
@@ -100,9 +103,6 @@ def test_serve_overrides_apply_to_the_run_without_touching_the_saved_config():
 
 
 def test_commands_payload_survives_real_skill_objects():
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     class Skill:
         name = "mypriv"
@@ -124,9 +124,6 @@ def test_commands_payload_survives_real_skill_objects():
 
 
 def test_a_status_snapshot_carries_the_tui_hud_numbers(tmp_path, monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     monkeypatch.chdir(tmp_path)
 
@@ -178,9 +175,6 @@ def test_a_status_snapshot_carries_the_tui_hud_numbers(tmp_path, monkeypatch):
 
 
 def test_an_idle_conversation_still_gets_a_default_snapshot():
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     server = GatewayServer(GatewayConfig(model="m1"))
 
@@ -192,10 +186,6 @@ def test_an_idle_conversation_still_gets_a_default_snapshot():
 
 
 def test_deleting_a_conversation_removes_artifacts_plan_and_snapshots(tmp_path, monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
-    from pyclaw.session import store as session_store
 
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
@@ -220,7 +210,6 @@ def test_deleting_a_conversation_removes_artifacts_plan_and_snapshots(tmp_path, 
 
 
 def _display_home(path):
-    from pathlib import Path
 
     home = str(Path.home())
     if path == home:
@@ -231,10 +220,6 @@ def _display_home(path):
 
 
 def test_a_conversation_can_be_renamed_from_the_list(tmp_path, monkeypatch):
-    import pytest
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -247,10 +232,6 @@ def test_a_conversation_can_be_renamed_from_the_list(tmp_path, monkeypatch):
 
 
 def test_a_conversation_can_be_branched_from_the_list(tmp_path, monkeypatch):
-    import pytest
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
-    from pyclaw.session import store as session_store
 
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
@@ -268,9 +249,6 @@ def test_a_conversation_can_be_branched_from_the_list(tmp_path, monkeypatch):
 
 
 def test_im_progress_carries_the_tool_summary():
-    from chatchat.hooks.events import AGENT_TOOL_CALL, AGENT_REASON_START, RuntimeEvent
-
-    from pyclaw.gateway.im import _im_progress_text
 
     lead = RuntimeEvent(AGENT_TOOL_CALL, agent="lead", team="t", data={"tool": "Bash", "input": {"command": "ls -la"}})
     teammate = RuntimeEvent(
@@ -284,7 +262,6 @@ def test_im_progress_carries_the_tool_summary():
 
 
 def test_conversation_messages_reads_the_display_log(tmp_path, monkeypatch):
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -299,7 +276,6 @@ def test_conversation_messages_reads_the_display_log(tmp_path, monkeypatch):
 
 
 def test_an_untitled_conversation_previews_its_first_prompt(tmp_path, monkeypatch):
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -313,9 +289,6 @@ def test_an_untitled_conversation_previews_its_first_prompt(tmp_path, monkeypatc
 
 
 def test_the_webchat_mode_endpoint_sets_the_permission_mode(monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     class _FakeSession:
         def __init__(self):
@@ -350,9 +323,6 @@ def test_the_webchat_mode_endpoint_sets_the_permission_mode(monkeypatch):
 
 
 def test_the_headless_api_requires_a_valid_token(monkeypatch):
-    from fastapi.testclient import TestClient
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     server = GatewayServer(GatewayConfig(enabled_channels=["web"], local_token="sekrit"))
     monkeypatch.setattr(server, "_get_session", fake_session_factory())
@@ -369,9 +339,6 @@ def test_the_headless_api_requires_a_valid_token(monkeypatch):
 
 
 def test_the_chat_api_stays_open_without_a_token_configured():
-    from fastapi.testclient import TestClient
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     server = GatewayServer(GatewayConfig(enabled_channels=["web"]))
     client = TestClient(server.app)
@@ -389,10 +356,6 @@ def fake_session_factory():
 
 
 def test_a_cron_fire_runs_a_turn_and_pushes_the_answer_to_known_contacts(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway import server as gateway_server
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     recorded = {"conv": [], "meta": []}
 
@@ -448,10 +411,6 @@ def test_a_cron_fire_runs_a_turn_and_pushes_the_answer_to_known_contacts(monkeyp
 
 
 def test_a_cron_fire_without_contacts_still_runs_the_turn(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway import server as gateway_server
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     class _FakeAdapter:
         channel_id = "wechat"
@@ -486,9 +445,6 @@ def test_a_cron_fire_without_contacts_still_runs_the_turn(monkeypatch):
 
 
 def test_a_cron_for_a_gone_agent_is_removed_not_delivered(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     removed = []
 
@@ -524,9 +480,6 @@ def test_a_cron_for_a_gone_agent_is_removed_not_delivered(monkeypatch):
 
 
 def test_a_cron_for_a_live_teammate_is_submitted_not_chatted(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     class _Agent:
         def __init__(self):
@@ -568,10 +521,6 @@ def test_a_cron_for_a_live_teammate_is_submitted_not_chatted(monkeypatch):
 
 
 def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
-    import asyncio
-
-    from pyclaw.gateway import server as gateway_server
-    from pyclaw.gateway.server import GatewayConfig, GatewayServer
 
     started = []
 
@@ -607,9 +556,6 @@ def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
 
 
 def test_chat_history_returns_the_real_transcript():
-    import asyncio
-
-    from pyclaw.gateway.handlers.chat import handle_chat_history
 
     class _FakeSession:
         message_count = 2
@@ -631,9 +577,6 @@ def test_chat_history_returns_the_real_transcript():
 
 
 def test_request_approval_resolves_when_the_client_answers():
-    import asyncio
-
-    from pyclaw.channels.web import WebChannelAdapter
 
     class _WS:
         def __init__(self):
@@ -656,9 +599,6 @@ def test_request_approval_resolves_when_the_client_answers():
 
 
 def test_request_approval_returns_none_with_no_clients():
-    import asyncio
-
-    from pyclaw.channels.web import WebChannelAdapter
 
     async def main():
         adapter = WebChannelAdapter({})

@@ -10,6 +10,7 @@ import pytest
 
 from pyclaw import __main__ as main
 from pyclaw.permissions import PermissionController
+from pyclaw.gateway import server as gateway_server
 
 
 def _finalize(argv, config=None, monkeypatch=None):
@@ -87,7 +88,6 @@ def test_switching_into_allow_all_needs_the_unlock(tmp_path):
 
 
 def test_the_gateway_threads_the_mode_into_every_new_session(monkeypatch):
-    from pyclaw.gateway import server as gateway_server
 
     seen = {}
     monkeypatch.setattr(gateway_server, "build_team", lambda **kwargs: seen.setdefault("team", kwargs))

@@ -4,6 +4,8 @@ from chatchat.runtime.thinking import Thinking
 
 
 from pyclaw import __main__
+from chatchat.hooks.events import AGENT_TEXT, emit
+from pyclaw import events
 
 
 def _fake_team():
@@ -180,9 +182,6 @@ def test_a_print_run_records_what_the_turn_used(monkeypatch):
 
 
 def test_a_print_run_records_its_events_locally(monkeypatch, tmp_path):
-    from chatchat.hooks.events import AGENT_TEXT, emit
-
-    from pyclaw import events
 
     home = tmp_path / "events"
     monkeypatch.setattr(events, "_directory", lambda: home)

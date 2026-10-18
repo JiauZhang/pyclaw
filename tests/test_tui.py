@@ -28,6 +28,34 @@ from chatchat.tool import ToolContext
 _real_emit = emit
 
 
+import sys
+from pyclaw.tui.formatting import _format_count as fmt
+from pyclaw.tui.suggest import _apply_at, _at_token
+from pyclaw.tui.suggest import _file_suggest
+from conippets import jsonl
+from chatchat.hooks import events
+from pyclaw.tui.components import _Conv
+from pyclaw.tui.formatting import _user_markup
+from pyclaw.tui.screens import TranscriptScreen
+from pyclaw.session import Session
+from pyclaw.tui.screens import TaskDetailScreen
+from pyclaw.tui.screens import DiffScreen
+from pyclaw import editor
+from pyclaw.tui.screens import MemoryScreen
+from pyclaw.tui.question_card import _QuestionPrompt
+from pyclaw import usage_history
+from pyclaw import events as pyclaw_events
+from textual.app import App
+from pyclaw.tui.screens import HelpScreen
+from pyclaw.tui.theme import DESTRUCTIVE_NOTE
+from pyclaw.permissions import is_destructive
+from chatchat.runtime.metrics import Metrics
+from pyclaw.permissions import PermissionController
+from pyclaw.tools import BUILTIN_TOOLS
+from chatchat.hooks.manager import HookManager
+from chatchat.tools.team_tools import ask_user
+
+
 def emit(kind, *, team="t", **fields):
     """A double emits the way a real agent does: from inside its own team, so
     listeners can tell which conversation an event belongs to."""
@@ -81,7 +109,6 @@ class _FakeTeam:
     skills = SkillRegistry()
 
     def total_metrics(self):
-        from chatchat.runtime.metrics import Metrics
 
         return Metrics(tool_calls=1, api_ms=120, requests=1)
 
@@ -273,13 +300,10 @@ def _builder():
 class _GateTeam(_FakeTeam):
     def __init__(self):
         super().__init__()
-        from pyclaw.permissions import PermissionController
 
         self._tmp = tempfile.TemporaryDirectory()
-        from pyclaw.tools import BUILTIN_TOOLS
 
         self._pyclaw_gate = PermissionController(mode="default", cwd=self._tmp.name, tools=BUILTIN_TOOLS)
-        from chatchat.hooks.manager import HookManager
 
         self.hooks = HookManager(self)
 
@@ -303,7 +327,6 @@ def test_shift_tab_cycles_permission_mode():
 
 def test_alt_t_toggles_thinking(monkeypatch):
     written = {}
-    from pyclaw import config
 
     monkeypatch.setattr(config, "save", written.update)
 
@@ -995,7 +1018,6 @@ def test_the_status_line_reruns_on_a_reply_not_on_an_append(monkeypatch):
 
 
 def test_the_status_line_reruns_when_the_session_state_changes(monkeypatch):
-    import sys
 
     command = ('"{py}" -c \'import json,sys; print(json.load(sys.stdin)["permission_mode"])\'').format(py=sys.executable)
     monkeypatch.setattr(statusline, "user_command", lambda: command)
@@ -1196,7 +1218,6 @@ def test_status_has_no_model_or_thinking_segments():
 
 def test_fmt_compacts():
     """A compact count keeps at most one decimal and drops trailing zeros."""
-    from pyclaw.tui.formatting import _format_count as fmt
 
     assert fmt(900) == "900"
     assert fmt(1000) == "1k"
@@ -1434,7 +1455,6 @@ def test_enter_sends_every_line_you_wrote():
 def test_what_a_terminal_turn_leaves_in_the_conversation_log(tmp_path, monkeypatch):
     """Pinned before the artifact writers are unified: the terminal records the
     assistant turn with its thinking, and nothing else."""
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -1637,7 +1657,6 @@ def test_tool_block_renders_edit_diff():
 
 
 def test_at_token_detects_and_applies():
-    from pyclaw.tui.suggest import _apply_at, _at_token
 
     assert _at_token("hi @src") == "src"
     assert _at_token("@") == ""
@@ -1650,7 +1669,6 @@ def test_at_token_detects_and_applies():
 
 
 def test_file_suggest_lists_workspace_entries(tmp_path):
-    from pyclaw.tui.suggest import _file_suggest
 
     (tmp_path / "a.txt").write_text("x")
     (tmp_path / "src").mkdir()
@@ -2523,7 +2541,6 @@ class _LogTeam(_FakeTeam):
 
 
 def test_turn_appends_conversation_log(tmp_path, monkeypatch):
-    from conippets import jsonl
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -2680,8 +2697,6 @@ def test_focusing_the_remember_option_keeps_the_rule_row_shut():
 
 
 def test_runtime_sink_released_on_unmount():
-    from chatchat.hooks import events
-
     baseline = list(events._runtime_sinks)
 
     async def scenario():
@@ -2733,7 +2748,6 @@ def test_follow_pauses_and_jump_to_bottom_resumes():
 
 
 def test_spin_tick_is_safe_after_conv_removed():
-    from pyclaw.tui.components import _Conv
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -4389,7 +4403,6 @@ def test_teammate_spawn_card_has_no_result_line():
 
 
 def test_teammate_message_renders_as_a_byline():
-    from pyclaw.tui.formatting import _user_markup
 
     raw = '<teammate_message teammate_id="worker">found the bug</teammate_message>'
     assert _user_markup(raw) == "[bold]@worker[/]\u276f found the bug"
@@ -4778,7 +4791,6 @@ def test_the_done_line_replaces_the_trail_when_the_sub_agent_finishes():
 
 
 def test_the_transcript_shows_every_trail_row_not_just_the_last_three():
-    from pyclaw.tui.screens import TranscriptScreen
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -5091,7 +5103,6 @@ class _RewindTeam(_FakeTeam):
 
 
 async def _open_rewind(pilot):
-    from pyclaw.session import Session
 
     with mock.patch.object(Session, "save_transcript", lambda self: None):
         await _submit_and_wait(pilot, "/rewind")
@@ -5209,7 +5220,6 @@ def _task_body(app) -> str:
 
 
 def test_a_shell_task_opens_into_a_detail_view_that_can_stop_it():
-    from pyclaw.tui.screens import TaskDetailScreen
 
     stopped = []
 
@@ -5243,7 +5253,6 @@ def test_a_shell_task_opens_into_a_detail_view_that_can_stop_it():
 
 
 def test_the_diff_command_opens_a_pane_of_the_working_changes(tmp_path):
-    from pyclaw.tui.screens import DiffScreen
 
     async def scenario():
         team = _FakeTeam()
@@ -5280,8 +5289,6 @@ def test_the_diff_command_says_so_when_nothing_has_changed(tmp_path):
 
 
 def test_the_memory_command_opens_the_picker_and_hands_the_file_to_the_editor(monkeypatch, tmp_path):
-    from pyclaw import editor
-    from pyclaw.tui.screens import MemoryScreen
 
     user_file = tmp_path / "pyclaw-home" / "AGENTS.md"
     monkeypatch.setattr("pyclaw.team.memory._user_memory_file", lambda: user_file)
@@ -5398,8 +5405,6 @@ def _hook_events_app(**kw):
 
 
 def test_hook_activity_reaches_the_transcript_only_when_asked():
-    from chatchat.hooks import events
-
     async def scenario():
         async with _hook_events_app(hook_events=True).run_test(size=(100, 40)) as pilot:
             app = pilot.app
@@ -5417,8 +5422,6 @@ def test_hook_activity_reaches_the_transcript_only_when_asked():
 
 
 def test_hook_activity_stays_out_of_the_transcript_by_default():
-    from chatchat.hooks import events
-
     async def scenario():
         async with _hook_events_app().run_test(size=(100, 40)) as pilot:
             app = pilot.app
@@ -5505,7 +5508,6 @@ async def _type(pilot, text):
 
 
 async def _ask_on_screen(app, pilot, questions):
-    from pyclaw.tui.question_card import _QuestionPrompt
 
     task = asyncio.create_task(app._ask_questions("lead", questions))
     for _ in range(3):
@@ -5608,7 +5610,6 @@ def test_the_question_card_keeps_the_prompt_history_out_of_its_way():
 
 def test_the_session_can_answer_a_model_question():
     async def scenario():
-        from chatchat.tools.team_tools import ask_user
 
         async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
             app = pilot.app
@@ -5628,7 +5629,6 @@ def test_the_session_can_answer_a_model_question():
 
 
 def test_a_finished_turn_is_written_into_the_usage_history(tmp_path, monkeypatch):
-    from pyclaw import usage_history
 
     home = tmp_path / "usage"
     monkeypatch.setattr(usage_history, "_directory", lambda: home)
@@ -5642,7 +5642,6 @@ def test_a_finished_turn_is_written_into_the_usage_history(tmp_path, monkeypatch
     asyncio.run(scenario())
     rows = [line for path in list(home.glob("*.jsonl")) for line in path.read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 1
-    import json
 
     written = json.loads(rows[0])
     assert written["metrics"]["tool_calls"] == 1
@@ -5684,12 +5683,9 @@ def test_a_lingering_row_leaves_when_the_grace_window_ends(monkeypatch):
 
 
 def test_the_run_writes_what_happened_into_a_local_event_stream(tmp_path, monkeypatch):
-    import json
-
-    from pyclaw import events
 
     home = tmp_path / "events"
-    monkeypatch.setattr(events, "_directory", lambda: home)
+    monkeypatch.setattr(pyclaw_events, "_directory", lambda: home)
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
@@ -5763,14 +5759,9 @@ def test_a_disabled_backend_sends_nothing(monkeypatch):
 
 
 def test_a_crash_is_written_down_before_the_app_goes(tmp_path, monkeypatch):
-    import json
-
-    from textual.app import App
-
-    from pyclaw import events
 
     home = tmp_path / "events"
-    monkeypatch.setattr(events, "_directory", lambda: home)
+    monkeypatch.setattr(pyclaw_events, "_directory", lambda: home)
     handed_over = []
     monkeypatch.setattr(App, "_handle_exception", lambda self, error: handed_over.append(str(error)))
 
@@ -5791,7 +5782,6 @@ def test_a_crash_is_written_down_before_the_app_goes(tmp_path, monkeypatch):
 
 
 def test_the_overlay_focus_has_one_source_of_truth():
-    from pyclaw.tui.screens import HelpScreen
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -5889,7 +5879,6 @@ def test_a_rule_list_takes_the_navigation_aliases():
 
 
 def test_the_resume_picker_lists_named_conversations_and_continues_one(tmp_path, monkeypatch):
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
     session_store.save_transcript(
@@ -5924,7 +5913,6 @@ def test_the_resume_picker_lists_named_conversations_and_continues_one(tmp_path,
 
 
 def test_a_call_that_throws_work_away_says_so_on_the_card():
-    from pyclaw.tui.theme import DESTRUCTIVE_NOTE
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:
@@ -5948,7 +5936,6 @@ def test_a_call_that_throws_work_away_says_so_on_the_card():
 
 
 def test_asking_to_remove_a_worktree_is_marked_and_keeping_is_not():
-    from pyclaw.permissions import is_destructive
 
     assert is_destructive("ExitWorktree", {"action": "remove"}) is True
     assert is_destructive("ExitWorktree", {"action": "keep"}) is False
@@ -5956,7 +5943,6 @@ def test_asking_to_remove_a_worktree_is_marked_and_keeping_is_not():
 
 
 def test_a_submitted_prompt_is_persisted_to_the_history_file(tmp_path):
-    import json
 
     async def scenario():
         async with PyClawApp(builder=_builder).run_test() as pilot:

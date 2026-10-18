@@ -192,7 +192,6 @@ def test_sweep_drops_only_the_stale_conversation(tmp_path):
 def test_an_im_turn_is_recorded_on_the_conversation_the_session_is_on(tmp_path):
     """After /resume the session owns a new conversation; the next message must
     not drag it back to the one the channel resolved first."""
-    from pyclaw.gateway.im import run_im_interaction
 
     class Adapter:
         async def send_message(self, to, msg):

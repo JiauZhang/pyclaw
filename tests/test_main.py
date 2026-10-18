@@ -6,6 +6,10 @@ from logging.handlers import RotatingFileHandler
 import pytest
 
 from pyclaw import __main__
+import pyclaw.config as config_module
+from chatchat.hooks import events
+import inspect
+from pyclaw.team.builder import build_team as the_real_builder
 
 
 def _args(**kw):
@@ -47,8 +51,6 @@ def test_start_server_does_not_persist_cli_overrides(monkeypatch):
 
     monkeypatch.setattr(__main__, "GatewayServer", lambda *a, **k: FakeGateway())
     monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m", "enabled_channels": ["wechat"]})
-
-    import pyclaw.config as config_module
 
     monkeypatch.setattr(config_module, "save", lambda c: saved_calls.append(c))
 
@@ -178,7 +180,6 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
     serve/rebind subparsers do), so the TUI died with AttributeError before
     it painted anything. Hand-built namespaces in other tests hid it.
     """
-    from chatchat.hooks import events
 
     calls = []
     saved_handlers = _strip_root_handlers()
@@ -300,9 +301,6 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(tmp_path, monk
     args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
     __main__.run_tui(args)
     holders["builder"]()
-    import inspect
-
-    from pyclaw.team.builder import build_team as the_real_builder
 
     app_kw, build_kw = built
     missing = set(build_kw) - set(inspect.signature(the_real_builder).parameters)

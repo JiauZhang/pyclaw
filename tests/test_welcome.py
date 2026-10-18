@@ -5,6 +5,7 @@ from textual.content import Content
 
 from pyclaw import welcome
 from pyclaw.session import store as session_store
+from pyclaw import config
 
 
 def _markup_is_valid(lines):
@@ -142,7 +143,6 @@ def test_feeds_only_appear_while_onboarding_or_on_a_new_version(monkeypatch, tmp
 
 
 def test_remember_skips_the_write_when_nothing_changes(monkeypatch):
-    from pyclaw import config
 
     saved = []
     state = {"welcome": {"seen": 2, "lastVersion": "0.0.5"}}

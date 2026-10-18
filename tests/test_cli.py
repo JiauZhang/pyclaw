@@ -1,6 +1,7 @@
 from unittest import mock
 
 from pyclaw import cli
+from pyclaw.permissions.bash_rules import bash_allowed_by
 
 
 def _main(capsys, argv, monkeypatch, stdout=""):
@@ -8,7 +9,7 @@ def _main(capsys, argv, monkeypatch, stdout=""):
         mock.patch("pyclaw.cli.subprocess.run") as run,
         mock.patch("pyclaw.config.load", return_value={"gateway": {"http": {"port": 12321, "host": "127.0.0.1"}}}),
     ):
-        from pyclaw.__main__ import main
+        from pyclaw.__main__ import main  # noqa: PLC0415
 
         run.return_value.stdout = stdout
         monkeypatch.setattr("sys.argv", ["pyclaw", *argv])
@@ -97,7 +98,6 @@ def test_stop_command_all_kills_serve_processes(capsys, monkeypatch):
 
 
 def test_a_heredoc_with_space_before_the_delimiter_still_matches_the_prefix():
-    from pyclaw.permissions.bash_rules import bash_allowed_by
 
     command = 'chatool-paper mark << \'JSON\'\n{"date": "2026-10-08", "papers": [{"id": "1"}]}'
     assert bash_allowed_by(["Bash(chatool-paper:*)"], command)

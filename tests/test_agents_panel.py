@@ -10,6 +10,14 @@ from pyclaw.tui.agents_panel import AgentsScreen
 
 from test_tui import _FakeTeam, _flatten
 from markup import plain as _plain
+from pyclaw.tools import BUILTIN_TOOLS
+from pyclaw.team import defs as mod
+from textual.widgets import Static
+from textual.widgets import Input
+from pyclaw.team import defs as agent_defs
+from chatchat.team.agent_memory import AgentMemory
+from chatchat.team.agents import AgentRegistry
+from types import SimpleNamespace
 
 
 REVIEWER = """---
@@ -26,8 +34,6 @@ Read the diff and report only real defects.
 class _AgentsTeam(_FakeTeam):
     def __init__(self, cwd, tools):
         super().__init__()
-        from chatchat.team.agents import AgentRegistry
-        from types import SimpleNamespace
 
         self.agent_defs = AgentRegistry()
         self.agent_defs.define("general-purpose", system_prompt="p", default=True)
@@ -43,13 +49,11 @@ class _AgentsTeam(_FakeTeam):
 
 
 def _tools():
-    from pyclaw.tools import BUILTIN_TOOLS
 
     return list(BUILTIN_TOOLS)
 
 
 def _home(monkeypatch, tmp_path):
-    from pyclaw.team import defs as mod
 
     user = tmp_path / "home" / "agents"
     user.mkdir(parents=True, exist_ok=True)
@@ -70,7 +74,6 @@ def _write_agents(root, *names):
 
 
 def _body(screen) -> str:
-    from textual.widgets import Static
 
     return str(screen.query_one("#agents-body", Static).content)
 
@@ -277,7 +280,6 @@ def test_the_create_wizard_writes_a_file_and_uses_it_live(monkeypatch, tmp_path)
 
 
 async def _type(pilot, screen, text):
-    from textual.widgets import Input
 
     screen.query_one("#agents-input", Input).value = text
     await pilot.pause()
@@ -328,7 +330,6 @@ def test_escaping_the_panel_without_changes_only_dismisses(monkeypatch, tmp_path
 
 
 def test_the_tools_step_marks_buckets_by_full_selection(monkeypatch, tmp_path):
-    from pyclaw.team import defs as agent_defs
 
     _home(monkeypatch, tmp_path)
     _project(tmp_path)
@@ -483,7 +484,6 @@ def test_an_agent_from_the_command_line_is_listed_and_read_only(tmp_path):
 
 
 def _noted(monkeypatch, tmp_path, pending=False):
-    from chatchat.team.agent_memory import AgentMemory
 
     user = _write_agents(_home(monkeypatch, tmp_path), "reviewer")
     (user / "reviewer.md").write_text(

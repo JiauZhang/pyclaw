@@ -2,6 +2,8 @@
 
 from pyclaw.tui import ui
 from pyclaw.tui.theme import POINTER
+from textual.content import Content
+from pyclaw.tui.formatting import escape
 
 
 def test_a_heading_carries_its_value():
@@ -44,8 +46,6 @@ def test_text_from_outside_can_never_open_a_tag():
     """Textual starts a tag at any bracket that is not already escaped, so the
     escaping layer has to cover every bracket and not just the tag-shaped
     ones: a quoted list in tool output used to swallow the markup after it."""
-    from textual.content import Content
-    from pyclaw.tui.formatting import escape
 
     for raw in [
         "Git -> [\"ssh -i '/tmp/k' -o IdentitiesOnly=yes\"]",

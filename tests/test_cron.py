@@ -7,6 +7,11 @@ from chatchat.tasks import cron_schedule
 from chatchat.tasks.cron_schedule import CronStore, SchedulerLock
 
 from pyclaw.cron import run, tick
+from pyclaw.team.builder import build_team
+from pyclaw.tui import PyClawApp
+from test_tui import _FakeTeam
+import json
+import subprocess
 
 
 CREATED = datetime(2026, 5, 4, 8, 0)
@@ -107,7 +112,6 @@ def test_the_loop_keeps_ticking_until_it_is_cancelled(tmp_path, monkeypatch):
 
 
 def test_a_built_team_schedules_into_its_own_project(tmp_path):
-    from pyclaw.team.builder import build_team
 
     async def main():
         return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
@@ -117,9 +121,6 @@ def test_a_built_team_schedules_into_its_own_project(tmp_path):
 
 
 def test_a_fired_prompt_becomes_a_turn_of_the_conversation(tmp_path):
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam
 
     async def scenario():
         team = _FakeTeam()
@@ -137,9 +138,6 @@ def test_a_fired_prompt_becomes_a_turn_of_the_conversation(tmp_path):
 
 
 def test_the_owning_session_runs_the_durable_prompts(tmp_path):
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam
 
     async def scenario():
         team = _FakeTeam()
@@ -163,11 +161,6 @@ def test_the_owning_session_runs_the_durable_prompts(tmp_path):
 
 
 def test_a_missed_one_shot_is_removed_and_left_to_the_model_to_confirm(tmp_path):
-    import json
-
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam
 
     async def scenario():
         team = _FakeTeam()
@@ -191,11 +184,6 @@ def test_a_missed_one_shot_is_removed_and_left_to_the_model_to_confirm(tmp_path)
 
 
 def test_a_missed_recurring_prompt_is_not_surfaced_as_missed(tmp_path):
-    import json
-
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam
 
     async def scenario():
         team = _FakeTeam()
@@ -216,9 +204,6 @@ def test_a_missed_recurring_prompt_is_not_surfaced_as_missed(tmp_path):
 
 
 def test_a_cron_for_a_gone_teammate_is_removed_not_routed_to_the_lead(tmp_path):
-    from pyclaw.tui import PyClawApp
-
-    from test_tui import _FakeTeam
 
     async def scenario():
         team = _FakeTeam()
@@ -238,8 +223,6 @@ def test_a_cron_for_a_gone_teammate_is_removed_not_routed_to_the_lead(tmp_path):
 
 
 def test_a_dead_owner_lock_is_taken_over_by_the_next_tick(tmp_path, monkeypatch):
-    import json
-    import subprocess
 
     store, lock = _setup(tmp_path, monkeypatch)
     dead = subprocess.Popen(["sleep", "30"])

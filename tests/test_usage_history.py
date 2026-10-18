@@ -6,6 +6,12 @@ from datetime import date, timedelta
 from chatchat.team.team import Team
 
 from pyclaw import usage_history as mod
+from pyclaw.cost import usage_cost
+from chatchat.client import MockClient
+from pyclaw.session import Session
+import asyncio
+from pyclaw import slash, usage_history, session as session_mod
+from pyclaw.session import store as session_store
 
 
 def _home(monkeypatch, tmp_path):
@@ -98,7 +104,6 @@ def test_the_days_are_listed_newest_first(monkeypatch, tmp_path):
 
 
 def test_cost_of_a_recorded_row_uses_the_configured_rates():
-    from pyclaw.cost import usage_cost
 
     pricing = {"agnes-2.5-flash": {"input": 0.01, "output": 0.02}}
     cost = usage_cost(ROW["model"], ROW, pricing)
@@ -107,9 +112,6 @@ def test_cost_of_a_recorded_row_uses_the_configured_rates():
 
 
 def _history(tmp_path, monkeypatch):
-    from chatchat.client import MockClient
-
-    from pyclaw.session import Session
 
     usage = {"prompt_tokens": 1000, "completion_tokens": 100, "prompt_tokens_details": {"cached_tokens": 400}}
 
@@ -132,7 +134,6 @@ def _history(tmp_path, monkeypatch):
 
 
 def test_a_recorded_turn_carries_only_what_this_turn_used(tmp_path, monkeypatch):
-    import asyncio
 
     async def main():
         session, home = await _history(tmp_path, monkeypatch)()
@@ -150,7 +151,6 @@ def test_a_recorded_turn_carries_only_what_this_turn_used(tmp_path, monkeypatch)
 
 
 def test_resetting_the_session_starts_the_history_at_zero_again(tmp_path, monkeypatch):
-    import asyncio
 
     async def main():
         session, home = await _history(tmp_path, monkeypatch)()
@@ -180,11 +180,6 @@ def test_the_totals_of_one_conversation_are_read_back(monkeypatch, tmp_path):
 
 
 def test_a_resumed_conversation_keeps_the_numbers_it_had(tmp_path, monkeypatch):
-    import asyncio
-
-    from chatchat.client import MockClient
-    from pyclaw import slash, usage_history, session as session_mod
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
     _home(monkeypatch, tmp_path)
@@ -244,10 +239,6 @@ def test_a_resumed_conversation_keeps_the_numbers_it_had(tmp_path, monkeypatch):
 def test_a_resumed_conversation_picks_up_the_clock_where_it_stopped(tmp_path, monkeypatch):
     """Wall seconds are stored per turn, so what the status row shows after a
     resume is the time really spent on the conversation, not a guess."""
-    import asyncio
-
-    from chatchat.client import MockClient
-    from pyclaw.session import Session, store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
     _home(monkeypatch, tmp_path)

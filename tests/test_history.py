@@ -8,6 +8,7 @@ from chatchat.team.team import Team
 from pyclaw import __main__, session as session_mod
 from pyclaw.session import store as session_store
 from pyclaw.session.store import load_transcript
+from pyclaw import slash
 
 
 @pytest.fixture(autouse=True)
@@ -143,7 +144,6 @@ def test_clear_rotates_session_id_and_keeps_the_old_transcript():
 
 
 def test_slash_resume_lists_and_loads_a_saved_session():
-    from pyclaw import slash
 
     session_store.save_transcript("old", [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}])
 
@@ -170,7 +170,6 @@ def _saved(session_id, title):
 
 
 def test_resuming_by_name_loads_the_named_conversation():
-    from pyclaw import slash
 
     _saved("deadbeef", "git-ssh-key")
 
@@ -182,7 +181,6 @@ def test_resuming_by_name_loads_the_named_conversation():
 
 
 def test_a_name_two_conversations_share_is_not_guessed_at():
-    from pyclaw import slash
 
     _saved("aaaa1111", "same name")
     _saved("bbbb2222", "same name")
@@ -198,7 +196,6 @@ def test_a_name_two_conversations_share_is_not_guessed_at():
 
 
 def test_a_name_has_to_be_the_whole_name():
-    from pyclaw import slash
 
     _saved("deadbeef", "git-ssh-key")
 
@@ -296,7 +293,6 @@ def test_branching_nothing_refuses():
 
 def test_the_rename_and_branch_commands_reach_the_session():
     async def main():
-        from pyclaw import slash
 
         session = await _talked_session()
         renamed = await slash.handle_slash("/rename parser work", session)
@@ -312,7 +308,6 @@ def test_the_rename_and_branch_commands_reach_the_session():
 
 
 def test_naming_a_conversation_without_a_name_uses_what_it_was_asked():
-    from pyclaw import slash
 
     async def main():
         session = _session(_answer, "auto-name")
@@ -326,7 +321,6 @@ def test_naming_a_conversation_without_a_name_uses_what_it_was_asked():
 
 
 def test_an_unnamed_conversation_says_so_in_status():
-    from pyclaw import slash
 
     async def main():
         session = _session(_answer, "status-name")
@@ -336,7 +330,6 @@ def test_an_unnamed_conversation_says_so_in_status():
 
 
 def test_a_named_conversation_shows_its_name_in_status():
-    from pyclaw import slash
 
     async def main():
         session = _session(_answer, "status-named")

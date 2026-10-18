@@ -123,7 +123,7 @@ class TaskRegistry:
 
 def notification(task: Task, delta: str = "", tool_use_id: str = "") -> str:
     """What the model is told when a task reaches a terminal state."""
-    lines = [f"<task-notification>", f"<task-id>{task.id}</task-id>"]
+    lines = ["<task-notification>", f"<task-id>{task.id}</task-id>"]
     if tool_use_id:
         lines.append(f"<tool-use-id>{tool_use_id}</tool-use-id>")
     lines += [

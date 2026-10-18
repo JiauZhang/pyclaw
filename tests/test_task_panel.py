@@ -4,6 +4,7 @@ data and joins the others with a single blank line."""
 from pyclaw.tui.task_panel import agent_tree, panel_text, shell_rows, subagent_rows, task_detail_lines, tool_rows
 
 from markup import plain
+from textual.content import Content
 
 
 class _Agent:
@@ -88,7 +89,6 @@ def test_a_blank_line_only_separates_sections_that_exist():
 def test_output_full_of_brackets_still_leaves_the_whole_panel_readable():
     """Tool output quotes things as ["ssh -i '/tmp/k'"], and Textual opens a
     tag at any unescaped bracket: one such row must not take the panel down."""
-    from textual.content import Content
 
     output = "Git(ssh_key) -> [\"ssh -i '/tmp/k' -o IdentitiesOnly=yes\"] and [/bold] too"
     text = panel_text(

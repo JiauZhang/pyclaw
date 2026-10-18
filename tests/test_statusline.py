@@ -10,6 +10,7 @@ from fakes import Usage
 from pyclaw import config as config_module
 from pyclaw.statusline import build_payload, clean_output, user_padding, context_percentages, run, user_command
 from pyclaw.team.defs import STATUSLINE_SYSTEM_PROMPT
+from pyclaw import statusline
 
 
 class _StatusSession:
@@ -34,7 +35,6 @@ class _StatusSession:
 
 @pytest.fixture(autouse=True)
 def _home(tmp_path, monkeypatch):
-    from pyclaw import statusline
 
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
     monkeypatch.setattr(config_module, "__config_file__", tmp_path / "config.json")
@@ -133,7 +133,6 @@ def test_a_broken_status_line_command_leaves_a_trace_in_the_log(caplog):
 
 
 def test_a_slow_command_is_cut_off(monkeypatch):
-    import pyclaw.statusline as statusline
 
     _use_command("sleep 5")
     monkeypatch.setattr(statusline, "STATUS_LINE_TIMEOUT_SECONDS", 0.1)

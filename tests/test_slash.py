@@ -4,6 +4,20 @@ from fakes import Usage
 from markup import plain
 
 from pyclaw import config, slash
+from chatchat.runtime.thinking import Thinking
+from types import SimpleNamespace
+import json
+from datetime import date
+from pyclaw import usage_history
+from chatchat.runtime.metrics import Metrics
+from datetime import timedelta
+from datetime import datetime
+from pyclaw import events
+import base64
+from pyclaw.export import copy_targets
+from pyclaw.export import export_text, filename_for
+from pyclaw.session import Session
+from pyclaw.team.builder import build_team
 
 
 HELP_KEYWORDS = ("/help", "/clear", "/resume", "/status", "/model", "/cost", "/agents", "/context")
@@ -15,7 +29,6 @@ class _Bare:
 
 
 def _thinking():
-    from chatchat.runtime.thinking import Thinking
 
     return Thinking()
 
@@ -109,7 +122,6 @@ def test_non_slash_returns_none():
 
 
 def test_agents_command_lists_the_types():
-    from types import SimpleNamespace
 
     session = SimpleNamespace(agent_types=[("reviewer", "Reviews code")])
     reply = asyncio.run(_call("/agents", session))
@@ -625,7 +637,6 @@ def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
 
 
 def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
-    from chatchat.runtime.thinking import Thinking
 
     monkeypatch.setattr(config, "load", lambda: {"thinking": {}})
     session = _fake_session()
@@ -637,10 +648,6 @@ def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
 
 
 def _history(monkeypatch, tmp_path, rows):
-    import json
-    from datetime import date
-
-    from pyclaw import usage_history
 
     home = tmp_path / "usage"
     home.mkdir(exist_ok=True)
@@ -655,7 +662,6 @@ def _history(monkeypatch, tmp_path, rows):
 
 
 def _row(day, **kw):
-    from chatchat.runtime.metrics import Metrics
 
     base = {
         "at": f"{day}T09:00:00",
@@ -677,7 +683,6 @@ def _row(day, **kw):
 
 
 def test_usage_reports_the_measured_numbers_for_one_day(monkeypatch, tmp_path):
-    from datetime import date
 
     today = date.today().isoformat()
     _history(
@@ -700,7 +705,6 @@ def test_usage_reports_the_measured_numbers_for_one_day(monkeypatch, tmp_path):
 
 
 def test_usage_can_widen_to_a_week(monkeypatch, tmp_path):
-    from datetime import date, timedelta
 
     today = date.today()
     old = (today - timedelta(days=5)).isoformat()
@@ -722,7 +726,6 @@ def test_usage_says_so_when_nothing_has_been_recorded(monkeypatch, tmp_path):
 
 
 def test_stats_lists_the_days_newest_first(monkeypatch, tmp_path):
-    from datetime import date, timedelta
 
     today = date.today()
     _history(monkeypatch, tmp_path, [_row((today - timedelta(days=1)).isoformat()), _row(today.isoformat(), output=900)])
@@ -736,9 +739,6 @@ def test_stats_lists_the_days_newest_first(monkeypatch, tmp_path):
 
 
 def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch, tmp_path):
-    from datetime import date, datetime
-
-    from pyclaw import events
 
     today = date.today()
     _history(monkeypatch, tmp_path, [_row(today.isoformat())])
@@ -756,7 +756,6 @@ def test_stats_counts_the_errors_recorded_in_the_same_window(monkeypatch, tmp_pa
 
 
 def _clipboard(sequence: str) -> str:
-    import base64
 
     payload = sequence.split(";c;")[1].rstrip("\x07")
     return base64.b64decode(payload).decode()
@@ -826,7 +825,6 @@ def test_copy_says_so_when_there_is_nothing_to_copy(monkeypatch):
 
 
 def test_the_copy_targets_are_the_reply_and_its_code_blocks():
-    from pyclaw.export import copy_targets
 
     session = _turn_session()
     targets = copy_targets(session.transcript())
@@ -838,9 +836,6 @@ def test_the_copy_targets_are_the_reply_and_its_code_blocks():
 
 
 def test_the_export_names_itself_after_the_first_prompt(tmp_path):
-    from datetime import datetime
-
-    from pyclaw.export import export_text, filename_for
 
     session = _turn_session()
     body = export_text(session.transcript(), session_id="abc123")
@@ -851,8 +846,6 @@ def test_the_export_names_itself_after_the_first_prompt(tmp_path):
 
 
 def test_add_dir_names_the_directory_it_took_and_the_ones_it_refused(tmp_path):
-    from pyclaw.session import Session
-    from pyclaw.team.builder import build_team
 
     project = tmp_path / "project"
     project.mkdir()

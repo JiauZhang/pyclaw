@@ -4,6 +4,7 @@ from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
 
 from pyclaw.session import Session
+import subprocess
 
 
 class _Lead:
@@ -63,7 +64,6 @@ def test_the_command_runs_in_the_session_directory(tmp_path):
 
 
 def test_a_command_that_cannot_run_reports_why(tmp_path, monkeypatch):
-    import subprocess
 
     session = _session(tmp_path)
 

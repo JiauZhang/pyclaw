@@ -16,6 +16,8 @@ from pyclaw.tui.readout import CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS, conte
 
 from fakes import Usage
 from markup import plain as _plain
+from pyclaw import task_registry
+from pyclaw.tools import background
 
 TOP = (0x00, 0x84, 0xE4)
 BOTTOM = (0xF0, 0xCC, 0x00)
@@ -216,7 +218,6 @@ def test_the_session_exposes_the_parts_of_a_request_it_s_about_to_send():
 
 
 def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
-    from pyclaw import task_registry
 
     class _Running:
         def poll(self):
@@ -274,7 +275,6 @@ def test_a_stopped_teammate_keeps_a_row_that_says_so():
 
 
 def test_stopping_a_shell_row_kills_that_shell(monkeypatch):
-    from pyclaw.tools import background
 
     stopped = []
     monkeypatch.setattr(background, "stop", lambda task_id: stopped.append(task_id))

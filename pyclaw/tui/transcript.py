@@ -77,7 +77,7 @@ class TranscriptMixin:
         # fresh id this one now writes under.
         title = name or session_id[:8]
         if not count:
-            await self._append_note(f"That conversation has nothing recorded to come back to.")
+            await self._append_note("That conversation has nothing recorded to come back to.")
             return
         await self._replay_transcript()
         await self._append_note(f'Continuing "{title}" · {_plural(count, "message")} read back')

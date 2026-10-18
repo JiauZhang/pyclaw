@@ -291,7 +291,7 @@ def run_tui(args):
     if not model:
         print("Model not set. Use --model provider/model or run `pyclaw config` first.")
         sys.exit(1)
-    from pyclaw.tui import PyClawApp
+    from pyclaw.tui import PyClawApp  # noqa: PLC0415
 
     logging.getLogger(__name__).info("tui session starting (model=%s team=%s log=%s)", model, args.use_team, log_path)
     session_id, resume_from = _cli_session(args)

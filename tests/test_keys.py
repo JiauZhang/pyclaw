@@ -1,6 +1,8 @@
 """One table holds every key; bindings and the hints that name them both read it."""
 
 from pyclaw.tui import keys
+from pyclaw.tui.screens import TasksScreen
+from pyclaw.tui.theme import EXPAND_HINT, SELECT_HINT, TEAMMATE_VIEW_HINT
 
 
 def test_a_hint_is_the_key_and_what_it_does():
@@ -44,7 +46,6 @@ def test_the_app_bindings_are_the_table():
 
 
 def test_a_screen_binding_is_the_table():
-    from pyclaw.tui.screens import TasksScreen
 
     bound = _by_action(TasksScreen.BINDINGS)
     for action in ("stop_selected", "stop_all", "open", "dismiss"):
@@ -52,7 +53,6 @@ def test_a_screen_binding_is_the_table():
 
 
 def test_the_rendered_hints_name_the_bound_key():
-    from pyclaw.tui.theme import EXPAND_HINT, SELECT_HINT, TEAMMATE_VIEW_HINT
 
     assert SELECT_HINT.startswith(keys.display("agent_prev"))
     assert EXPAND_HINT.startswith(keys.display("toggle_transcript"))

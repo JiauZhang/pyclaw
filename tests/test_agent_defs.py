@@ -23,6 +23,7 @@ from pyclaw.team.defs import (
 )
 from pyclaw.team.builder import build_team
 from pyclaw.tools import BUILTIN_TOOLS
+from pyclaw.team.defs import builtin_agent_defs
 
 
 @pytest.fixture(autouse=True)
@@ -459,8 +460,6 @@ def test_inherit_and_a_missing_model_both_mean_the_parent_model():
 
 
 def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
-    from pyclaw.team.defs import builtin_agent_defs
-    from pyclaw.tools import BUILTIN_TOOLS
 
     defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}
 
@@ -473,8 +472,6 @@ def test_the_built_in_agents_include_a_read_only_explorer_and_a_planner():
 
 
 def test_the_explorer_says_what_it_is_for():
-    from pyclaw.team.defs import builtin_agent_defs
-    from pyclaw.tools import BUILTIN_TOOLS
 
     defs = {d.agent_type: d for d in builtin_agent_defs(list(BUILTIN_TOOLS))}
 

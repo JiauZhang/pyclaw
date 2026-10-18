@@ -4,6 +4,8 @@ degrades to the default instead of taking the transcript down."""
 
 from pyclaw.tui import toolui
 from pyclaw.tui.toolui import build_tool_ui, collapse_kinds, hidden_card, read_key, result_summary, tool_args, tool_label
+from pyclaw.tools import BUILTIN_TOOLS, names
+from pyclaw.tui.toolui import TOOL_UIS
 
 
 def test_an_unregistered_tool_gets_the_plain_name():
@@ -111,8 +113,6 @@ def test_build_tool_ui_fills_every_default_and_overrides_win():
 def test_a_tool_declares_its_name_once():
     """The schema and the display card read the same constant, so renaming a
     tool cannot leave one of the two behind."""
-    from pyclaw.tools import BUILTIN_TOOLS, names
-    from pyclaw.tui.toolui import TOOL_UIS
 
     built_in = {names.READ, names.GLOB, names.GREP, names.WRITE, names.EDIT, names.BASH, names.TASK_OUTPUT, names.TASK_STOP}
     assert built_in == {tool.name for tool in BUILTIN_TOOLS}

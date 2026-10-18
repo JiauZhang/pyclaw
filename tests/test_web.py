@@ -2,6 +2,10 @@ import asyncio
 
 
 from pyclaw.channels.web import WebChannelAdapter
+from pyclaw.session import store as session_store
+from chatchat.hooks.events import AGENT_WARN, RuntimeEvent
+import pytest
+from chatchat.hooks.events import AGENT_TOOL_CALL
 
 
 class _CollectingAdapter(WebChannelAdapter):
@@ -110,11 +114,8 @@ def test_process_message_slash_command_streams_reply():
 def test_a_failed_turn_reaches_the_page_as_an_error(tmp_path, monkeypatch):
     """The turn died on an API 503; the browser has to be told, not left
     staring at an empty reply."""
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
-
-    from chatchat.hooks.events import AGENT_WARN, RuntimeEvent
 
     failure = "503, message='Service Unavailable'"
 
@@ -143,7 +144,6 @@ def test_a_failed_turn_reaches_the_page_as_an_error(tmp_path, monkeypatch):
 
 
 def test_a_web_turn_stays_on_the_conversation_the_session_chose(tmp_path, monkeypatch):
-    from pyclaw.session import store as session_store
 
     monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
 
@@ -219,9 +219,6 @@ class _WSSession:
 
 
 def _run_socket(adapter, incoming, get_session, runtime=None, monkeypatch=None, tmp_path=None):
-    import pytest
-
-    from pyclaw.session import store as session_store
 
     if tmp_path is not None:
         monkeypatch.setattr(session_store, "_logs_dir", lambda: tmp_path)
@@ -235,7 +232,6 @@ def _run_socket(adapter, incoming, get_session, runtime=None, monkeypatch=None, 
 def test_the_socket_announces_the_conversation_and_creates_the_session_upfront(monkeypatch, tmp_path):
     """会话在连接时创建：环境/磁盘类错误在握手阶段就推给客户端，
     而不是等第一条消息发出去才发现。"""
-    from pyclaw.channels.web import WebChannelAdapter
 
     created = []
 
@@ -253,7 +249,6 @@ def test_the_socket_announces_the_conversation_and_creates_the_session_upfront(m
 
 
 def test_an_abort_reaches_the_team_lead_and_is_acknowledged(monkeypatch, tmp_path):
-    from pyclaw.channels.web import WebChannelAdapter
 
     session = _WSSession()
 
@@ -270,7 +265,6 @@ def test_an_abort_reaches_the_team_lead_and_is_acknowledged(monkeypatch, tmp_pat
 
 
 def test_a_second_message_while_a_turn_runs_is_refused(monkeypatch, tmp_path):
-    from pyclaw.channels.web import WebChannelAdapter
 
     class BusySession(_WSSession):
         def stream(self, message, on_event=None):
@@ -297,7 +291,6 @@ def test_a_second_message_while_a_turn_runs_is_refused(monkeypatch, tmp_path):
 
 
 def test_tool_activity_reaches_the_page_as_structured_progress(tmp_path):
-    from chatchat.hooks.events import AGENT_TOOL_CALL, RuntimeEvent
 
     class EventSession(_WSSession):
         def stream(self, message, on_event=None):

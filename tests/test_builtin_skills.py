@@ -9,6 +9,11 @@ from pyclaw.session import Session
 from pyclaw.session import store as session_store
 from pyclaw.slash import handle_slash
 from pyclaw.team.builder import build_team
+from chatchat.runtime.skills import Skill, listing_budget
+import logging
+from chatchat.tools import team_tools as team_tools
+import subprocess
+from pyclaw.slash import skill_rows, suggest
 
 
 def _opened(tmp_path, monkeypatch, conversation="conv-debug", line=None):
@@ -42,7 +47,6 @@ def test_the_debug_skill_is_registered_on_every_team(tmp_path, monkeypatch):
 
 
 def test_the_model_is_never_shown_the_debug_skill(tmp_path, monkeypatch):
-    from chatchat.runtime.skills import Skill, listing_budget
 
     _session, team, _reply = _opened(tmp_path, monkeypatch)
     team.skills.register(Skill(name="commit", description="write a message", body_text="summarise the change"))
@@ -55,7 +59,6 @@ def test_the_model_is_never_shown_the_debug_skill(tmp_path, monkeypatch):
 
 
 def test_asking_for_debug_turns_logging_on_and_sends_the_log_to_the_model(tmp_path, monkeypatch):
-    import logging
 
     session, team, _reply = _opened(tmp_path, monkeypatch, "conv-asking")
     _recorded(team, ["INFO the run began", "ERROR the tool failed"])
@@ -103,8 +106,6 @@ def test_skills_lists_the_built_in_one_with_its_own_terms(tmp_path, monkeypatch)
 
 
 def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(tmp_path, monkeypatch):
-    from chatchat.runtime.skills import Skill
-    from chatchat.tools import team_tools as team_tools
 
     _session, team, _reply = _opened(tmp_path, monkeypatch, "conv-grants")
     team.skills.register(
@@ -121,7 +122,6 @@ def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(tmp_p
 
 
 def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path, monkeypatch):
-    import os
 
     session, team, _reply = _opened(tmp_path, monkeypatch, "conv-statusline")
     gate = team._pyclaw_gate
@@ -135,7 +135,6 @@ def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path, monkeyp
 
 def _in_repo(tmp_path, files=None):
     """A real git repository with a change staged but not committed."""
-    import subprocess
 
     root = tmp_path / "repo"
     root.mkdir()
@@ -172,7 +171,6 @@ def test_a_skill_the_user_keeps_for_themselves_is_not_offered_to_the_model(tmp_p
 def test_typing_a_skill_name_runs_it_and_sends_its_prompt(tmp_path, monkeypatch):
     root = _in_repo(tmp_path, {"b.py": "import os\n"})
     monkeypatch.setenv("PYCLAW_DEBUG", "")
-    from pyclaw.team.builder import build_team
 
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id="conv-typed")
@@ -189,7 +187,6 @@ def test_typing_a_skill_name_runs_it_and_sends_its_prompt(tmp_path, monkeypatch)
 def test_the_security_review_reports_the_change_it_cannot_fit(tmp_path, monkeypatch):
     root = _in_repo(tmp_path, {"big.py": "x = 1\n" * 6_000})
     monkeypatch.setenv("PYCLAW_DEBUG", "")
-    from pyclaw.team.builder import build_team
 
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id="conv-sec")
@@ -218,7 +215,6 @@ def test_the_doctor_names_the_files_it_checked(tmp_path, monkeypatch):
 
 
 def test_a_skill_shows_up_where_the_terminal_lists_its_commands(tmp_path, monkeypatch):
-    from pyclaw.slash import skill_rows, suggest
 
     session, team, _reply = _opened(tmp_path, monkeypatch, "conv-palette")
     rows = skill_rows(session)

@@ -14,6 +14,8 @@ from pyclaw.session import Session
 from pyclaw.session import store
 from pyclaw.team.builder import build_team
 from pyclaw.tui import PyClawApp
+from pyclaw.tui.screens import WorktreeExitScreen
+from tests.test_tui import _GateTeam
 
 git = pytest.importorskip("shutil").which("git")
 
@@ -132,7 +134,6 @@ def _quitting(changes):
     do and what screen is on top."""
 
     async def scenario():
-        from tests.test_tui import _GateTeam
 
         async with PyClawApp(builder=lambda: _GateTeam()).run_test(size=(120, 40)) as pilot:
             app = pilot.app
@@ -158,10 +159,8 @@ def test_an_untouched_worktree_is_removed_without_asking():
 
 
 def test_choosing_to_keep_the_worktree_leaves_it_on_disk():
-    from pyclaw.tui.screens import WorktreeExitScreen
 
     async def scenario():
-        from tests.test_tui import _GateTeam
 
         async with PyClawApp(builder=lambda: _GateTeam()).run_test(size=(120, 40)) as pilot:
             app = pilot.app
@@ -182,7 +181,6 @@ def test_choosing_to_keep_the_worktree_leaves_it_on_disk():
 
 def test_backing_out_of_the_question_stays_in_the_worktree():
     async def scenario():
-        from tests.test_tui import _GateTeam
 
         async with PyClawApp(builder=lambda: _GateTeam()).run_test(size=(120, 40)) as pilot:
             app = pilot.app

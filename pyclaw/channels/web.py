@@ -8,6 +8,7 @@ from starlette.websockets import WebSocketDisconnect
 from .base import ChannelAdapter, InboundMessage, OutboundMessage
 from ..slash import handle_slash
 from ..session.store import append_conv, record_meta
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +84,6 @@ class WebChannelAdapter(ChannelAdapter):
         for the first permission_response - the desktop-side permission bridge,
         mirroring claude-code's remote permission bridge. None means nobody
         answered in time and the caller falls back to its own handling."""
-        import uuid
 
         request_id = uuid.uuid4().hex
         future: asyncio.Future = asyncio.get_running_loop().create_future()

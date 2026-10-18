@@ -6,6 +6,8 @@ from datetime import datetime
 from chatchat.hooks.events import AGENT_TEXT, AGENT_TOOL_CALL, AGENT_TURN_FINISHED, RuntimeEvent
 
 from pyclaw import events as mod
+from types import SimpleNamespace
+from pyclaw.session import Session
 
 
 def _home(monkeypatch, tmp_path):
@@ -118,11 +120,6 @@ def test_opening_a_stream_throws_away_the_days_it_no_longer_needs(monkeypatch, t
 def test_a_session_only_sees_events_from_its_own_team():
     """Two conversations in one process both own an agent called 'lead', so
     membership by name alone lets one of them watch the other work."""
-    from types import SimpleNamespace
-
-    from chatchat.hooks.events import AGENT_TEXT, RuntimeEvent
-
-    from pyclaw.session import Session
 
     def session(team_name):
         agents = {"lead": SimpleNamespace(name="lead")}

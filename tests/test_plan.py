@@ -4,6 +4,9 @@ from pyclaw.team.builder import agent_instruction, team_instruction
 
 from pyclaw.tui.plan import next_pending, next_task_line, plan_lines, recent_completions
 from markup import plain
+import asyncio
+from pyclaw.team.builder import build_team
+from pyclaw.session import Session
 
 
 def _tasks(tmp_path):
@@ -167,9 +170,6 @@ def test_both_instructions_point_at_the_task_list():
 
 
 def _built(tmp_path):
-    import asyncio
-
-    from pyclaw.team.builder import build_team
 
     async def build():
         return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
@@ -192,7 +192,6 @@ def test_plan_mode_lets_the_model_write_only_the_plan_file(tmp_path):
 
 
 def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
-    import asyncio
 
     team = _built(tmp_path)
     team.ask_user = lambda agent, questions: []
@@ -206,7 +205,6 @@ def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
 
 
 def _conversation(tmp_path, session_id):
-    from pyclaw.session import Session
 
     return Session(_built(tmp_path), session_id=session_id)
 

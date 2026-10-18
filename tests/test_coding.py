@@ -41,6 +41,18 @@ from pyclaw.team.builder import build_team
 from pyclaw import task_registry
 from pyclaw.tools import BUILTIN_TOOLS, background
 from pyclaw.tools import bash as shell
+from pyclaw.tools import read as read_mod
+from chatchat.tool import DEFAULT_MAX_RESULT_CHARS
+from pyclaw.permissions import AUTO_TOOLS
+from unittest import mock
+from pyclaw import config
+import subprocess
+from chatchat.client import MockClient
+from chatchat.team.team import Team
+import logging
+from pyclaw import slash
+from pyclaw.permissions.rules import _matches_pattern
+from pyclaw.permissions import is_destructive
 
 
 def _tools(d, files=None):
@@ -129,7 +141,6 @@ def test_read_returns_an_image_block_for_image_files():
 
 
 def test_read_rejects_an_oversized_image():
-    from pyclaw.tools import read as read_mod
 
     with tempfile.TemporaryDirectory() as d:
         Path(d, "big.png").write_bytes(_MIN_PNG)
@@ -655,7 +666,6 @@ def test_bash_persists_truncated_output_for_readback(monkeypatch, tmp_path):
 
 
 def test_bash_budget_keeps_its_own_output_pointer_readable(monkeypatch, tmp_path):
-    from chatchat.tool import DEFAULT_MAX_RESULT_CHARS
 
     t = _tools(str(tmp_path))
     assert t["Bash"].tool.max_result_chars > DEFAULT_MAX_RESULT_CHARS
@@ -876,8 +886,6 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
         seen = []
 
         async def main():
-            from pyclaw.session import Session
-            from pyclaw.team.builder import build_team
 
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.on("PreToolUse", fn=lambda inp: seen.append(inp.get("permission_mode", "missing")) or True)
@@ -1307,7 +1315,6 @@ def test_team_tools_never_ask_the_human():
     which in a fresh cwd meant the human had to approve each delegation.
     Team tools are always allowed.
     """
-    from pyclaw.permissions import AUTO_TOOLS
 
     with tempfile.TemporaryDirectory() as d:
         gate = PermissionController(mode="default", cwd=d)
@@ -1386,9 +1393,6 @@ def test_a_team_keeps_file_history_under_the_pyclaw_home():
 
 
 def test_file_history_can_be_switched_off():
-    from unittest import mock
-
-    from pyclaw import config
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
@@ -1554,7 +1558,6 @@ def test_the_session_reports_the_team_it_joined(tmp_path):
 
 
 def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
-    import subprocess
 
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
     subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=tmp_path, check=True)
@@ -1653,7 +1656,6 @@ def test_loading_the_defs_seeds_an_agents_notes_from_the_project(tmp_path):
 
 
 def _git(directory, *args):
-    import subprocess
 
     return subprocess.run(("git", *args), cwd=str(directory), capture_output=True, text=True)
 
@@ -1779,9 +1781,6 @@ def test_an_exact_rule_keeps_the_whole_command_not_its_head():
 
 
 def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
-    from pyclaw.session import Session
-    from chatchat.client import MockClient
-    from chatchat.team.team import Team
 
     saved = tmp_path / "settings.local.json"
     monkeypatch.setattr(perm, "_local_settings_file", lambda cwd: saved)
@@ -1802,7 +1801,6 @@ def test_dont_ask_persists_every_derived_rule(tmp_path, monkeypatch):
 
 
 def test_a_permission_decision_says_which_rule_decided_it(tmp_path, caplog):
-    import logging
 
     gate = PermissionController(mode="default", cwd=str(tmp_path), allow=["Bash(git status:*)"])
     with caplog.at_level(logging.INFO, logger="pyclaw.permissions.gate"):
@@ -1839,13 +1837,6 @@ def test_a_prefix_rule_is_still_written_even_over_an_interpreter():
 
 
 def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(tmp_path):
-    import asyncio
-
-    from pyclaw import slash
-    from pyclaw.session import Session
-    from chatchat.client import MockClient
-    from chatchat.team.team import Team
-
     async def answer(messages, tools=None, *, stream_cb=None):
         return "ok"
 
@@ -1862,7 +1853,6 @@ def test_the_permission_listing_says_which_rule_lets_the_model_run_anything(tmp_
 
 
 def test_a_rule_written_for_home_or_an_absolute_path_reaches_an_absolute_target():
-    from pyclaw.permissions.rules import _matches_pattern
 
     home = os.path.expanduser("~")
     assert _matches_pattern("~/**", f"{home}/.zshrc", "/somewhere/project")
@@ -1876,7 +1866,6 @@ def test_a_rule_written_for_home_or_an_absolute_path_reaches_an_absolute_target(
 
 
 def test_a_granted_rule_lets_through_and_is_listed_as_a_session_rule(tmp_path):
-    from pyclaw.permissions import PermissionController
 
     home = os.path.expanduser("~")
     gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
@@ -1888,7 +1877,6 @@ def test_a_granted_rule_lets_through_and_is_listed_as_a_session_rule(tmp_path):
 
 
 def test_a_granted_rule_still_cannot_hand_over_the_machine(tmp_path):
-    from pyclaw.permissions import PermissionController
 
     gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
     assert gate.grant_rules(("Bash(python:*)", "Agent")) == []
@@ -1897,7 +1885,6 @@ def test_a_granted_rule_still_cannot_hand_over_the_machine(tmp_path):
 
 
 def test_a_granted_edit_reaches_one_file_and_no_other(tmp_path):
-    from pyclaw.permissions import PermissionController
 
     config = os.path.expanduser("~/.pyclaw/config.json")
     gate = PermissionController(mode="default", cwd=tmp_path, tools=BUILTIN_TOOLS)
@@ -1907,7 +1894,6 @@ def test_a_granted_edit_reaches_one_file_and_no_other(tmp_path):
 
 
 def test_only_a_call_that_throws_work_away_is_marked_destructive():
-    from pyclaw.permissions import is_destructive
 
     assert is_destructive("ExitWorktree", {"action": "remove"}) is True
     assert is_destructive("ExitWorktree", {"action": "keep"}) is False
@@ -1918,7 +1904,6 @@ def test_only_a_call_that_throws_work_away_is_marked_destructive():
 
 
 def test_an_added_directory_reaches_every_root_check(tmp_path):
-    from pyclaw.permissions import PermissionController
 
     elsewhere = tmp_path / "other"
     elsewhere.mkdir()
@@ -1934,7 +1919,6 @@ def test_an_added_directory_reaches_every_root_check(tmp_path):
 
 
 def test_a_directory_can_only_be_added_once_and_must_be_a_directory(tmp_path):
-    from pyclaw.permissions import PermissionController
 
     project = tmp_path / "project"
     project.mkdir()
@@ -1960,8 +1944,6 @@ def test_a_directory_can_only_be_added_once_and_must_be_a_directory(tmp_path):
 
 
 def test_a_tool_reads_and_writes_through_an_added_directory(tmp_path):
-    from chatchat.tool import ToolContext
-    from pyclaw.tools import BUILTIN_TOOLS
 
     project = tmp_path / "project"
     project.mkdir()
