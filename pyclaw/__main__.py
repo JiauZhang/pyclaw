@@ -7,6 +7,7 @@ import secrets
 import sys
 from logging.handlers import RotatingFileHandler
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from chatchat.runtime import ratelimit
 from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
 from pyclaw.session import Session
@@ -585,6 +586,7 @@ def main():
         return
 
     session_store.sweep(int(load_config().get("cleanupPeriodDays", 30)))
+    ratelimit.configure(load_config().get("rate_limit") or {})
 
     if args.print is not None:
         asyncio.run(run_headless(args))
