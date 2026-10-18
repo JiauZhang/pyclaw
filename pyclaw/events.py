@@ -1,11 +1,7 @@
 from __future__ import annotations
-
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
-
-KEEP_DAYS = 7
-
 from chatchat.hooks.events import (
     AGENT_PROGRESS,
     AGENT_REASON_START,
@@ -16,9 +12,11 @@ from chatchat.hooks.events import (
     AGENT_TURN_FINISHED,
     AGENT_WARN,
 )
-
 from pyclaw.home import pyclaw_home
 from pyclaw.tools.names import BASH, EDIT, GLOB, GREP, READ, WRITE
+
+KEEP_DAYS = 7
+
 
 KINDS = {
     AGENT_TEXT: "text",

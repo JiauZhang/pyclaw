@@ -230,7 +230,7 @@ class PromptMixin:
         start = max(0, min(self._suggest_selected - 2, len(items) - 6))
         window = items[start : start + 6]
         labels = [_suggest_label(i) for i in window]
-        width = max((len(l) for l in labels), default=0)
+        width = max((len(label) for label in labels), default=0)
         lines = []
         for i, item in enumerate(window):
             index = start + i

@@ -215,9 +215,9 @@ def render_feeds(feeds: list, brand: str) -> list[str]:
     return out
 
 
-def block(*, version, model, provider, cwd, feeds, brand, username=None) -> str:
+def block(*, version, model, cwd, feeds, brand, username=None) -> str:
     lines = [f"[bold]{escape(welcome_message(username))}[/]", f"[bold]PyClaw[/] [dim]v{escape(str(version))}[/]"]
-    facts = " \u00b7 ".join(escape(str(part)) for part in (model, provider) if part)
+    facts = " \u00b7 ".join(escape(str(part)) for part in (model,) if part)
     if facts:
         lines.append(f"[dim]{facts}[/]")
     path = home_path(cwd)

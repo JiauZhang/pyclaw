@@ -8,9 +8,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
-
 from textual.widgets import Input, Static
-
 from chatchat.hooks.events import (
     AGENT_COMPACT,
     AGENT_PROGRESS,
@@ -23,11 +21,6 @@ from chatchat.hooks.events import (
     emit,
 )
 from chatchat.tool import ToolContext
-
-
-_real_emit = emit
-
-
 import sys
 from pyclaw.tui.formatting import _format_count as fmt
 from pyclaw.tui.suggest import _apply_at, _at_token
@@ -54,14 +47,6 @@ from pyclaw.permissions import PermissionController
 from pyclaw.tools import BUILTIN_TOOLS
 from chatchat.hooks.manager import HookManager
 from chatchat.tools.team_tools import ask_user
-
-
-def emit(kind, *, team="t", **fields):
-    """A double emits the way a real agent does: from inside its own team, so
-    listeners can tell which conversation an event belongs to."""
-    _real_emit(kind, team=team, **fields)
-
-
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
 from pyclaw.session import store as session_store
@@ -82,6 +67,14 @@ from chatchat.runtime.skills import SkillRegistry
 from chatchat.runtime.thinking import Thinking
 from fakes import Usage
 from markup import plain
+
+_real_emit = emit
+
+
+def emit(kind, *, team="t", **fields):
+    """A double emits the way a real agent does: from inside its own team, so
+    listeners can tell which conversation an event belongs to."""
+    _real_emit(kind, team=team, **fields)
 
 
 class _NullHooks:
@@ -3071,7 +3064,10 @@ def test_the_tab_hint_follows_the_focused_row():
             app = pilot.app
             await pilot.pause()
             task, prompt = await _asked_prompt(app, pilot)
-            painted = lambda: _plain(_flatten(app))
+
+            def painted():
+                return _plain(_flatten(app))
+
             assert "tab adds a note" in painted()
             assert "enter to confirm" not in painted()
             await pilot.press("down")
@@ -4574,7 +4570,8 @@ def test_the_logo_greets_you_under_the_wordmark(monkeypatch):
     text = asyncio.run(scenario())
     assert "Good to see you." in text
     assert "PyClaw v" in text
-    assert "m \u00b7 p" in text
+    assert "p/m" in text
+    assert "· p" not in text
     assert str(Path.cwd()) in text or "~/" in text
 
 

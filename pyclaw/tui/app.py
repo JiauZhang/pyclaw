@@ -391,7 +391,6 @@ class PyClawApp(
         text = welcome.block(
             version=version,
             model=str(getattr(session, "model", "") or ""),
-            provider=str(getattr(session, "provider", "") or ""),
             cwd=cwd,
             feeds=feeds,
             brand=self.brand,

@@ -159,13 +159,14 @@ def test_remember_skips_the_write_when_nothing_changes(monkeypatch):
     assert saved[1]["welcome"]["lastVersion"] == "0.0.6"
 
 
-def test_block_reports_the_version_model_provider_and_cwd():
+def test_block_reports_the_version_model_and_cwd():
     text = welcome.block(
-        version="0.0.5", model="hunyuan-lite", provider="tencent", cwd=str(Path.home() / "code"), feeds=[], brand="#FF6B80"
+        version="0.0.5", model="hunyuan/tencent-lite", cwd=str(Path.home() / "code"), feeds=[], brand="#FF6B80"
     )
     assert "Good to see you." in text
     assert "PyClaw" in text and "v0.0.5" in text
-    assert "hunyuan-lite" in text and "tencent" in text
+    assert "hunyuan/tencent-lite" in text
+    assert " · tencent" not in text and "tencent-lite ·" not in text
     assert "~/code" in text
     _markup_is_valid(text.split("\n"))
 

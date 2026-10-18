@@ -1,4 +1,10 @@
-import argparse, asyncio, json, logging, os, secrets, sys
+import argparse
+import asyncio
+import json
+import logging
+import os
+import secrets
+import sys
 from logging.handlers import RotatingFileHandler
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
 from pyclaw.events import open_stream
