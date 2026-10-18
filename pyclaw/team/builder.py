@@ -268,6 +268,7 @@ def build_team(
             mode=mode,
             tool_use_id=str(hook_input.get("tool_use_id") or ""),
             agent="" if asker == team.lead.name else asker,
+            hook_allowed=bool(hook_input.get("hook_allowed")),
         )
         specific = outcome.get("hookSpecificOutput") or {} if isinstance(outcome, dict) else {}
         if specific.get("permissionDecision") == "deny":
@@ -275,7 +276,7 @@ def build_team(
         return outcome
 
     team.hooks.permission_mode = gate.mode.value
-    team.hooks.register("PreToolUse", fn=_permission_gate, timeout=3600)
+    team.permission_gate = _permission_gate
 
     async def _permission_request(tool_name, tool_input, tool_use_id, agent):
         asker = (team.get_by_name(agent) if agent else None) or team.lead

@@ -409,7 +409,9 @@ class PermissionController:
                 if not task.done():
                     task.cancel()
 
-    async def authorize(self, tool_name: str, tool_input, mode=None, tool_use_id: str = "", agent: str = "") -> bool | dict:
+    async def authorize(
+        self, tool_name: str, tool_input, mode=None, tool_use_id: str = "", agent: str = "", hook_allowed: bool = False
+    ) -> bool | dict:
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
         logger.info(
@@ -433,6 +435,8 @@ class PermissionController:
             return _pre_tool_decision(
                 "deny", reason=f"{tool_name} is not allowed in {mode.value} mode / by your permission rules."
             )
+        if decision == "ask" and hook_allowed:
+            return True
         if self.request is None:
             decided = await self._hook_decision(tool_name, tool_input, tool_use_id, agent)
             if decided is not None:

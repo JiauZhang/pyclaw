@@ -294,10 +294,14 @@ def test_the_gate_asks_the_tool_what_it_addresses():
 
 
 async def _gate_call(team, tool_name, tool_input, agent_type):
-    matched = team.hooks.get_matching_hooks("PreToolUse", tool_name, {"hook_event_name": "PreToolUse", "tool_name": tool_name})
-    fn = matched[0].config.fn
-    return await fn(
-        {"hook_event_name": "PreToolUse", "tool_name": tool_name, "tool_input": tool_input, "agent_type": agent_type}
+    return await team.permission_gate(
+        {
+            "hook_event_name": "PreToolUse",
+            "tool_name": tool_name,
+            "tool_input": tool_input,
+            "agent_type": agent_type,
+            "agent_id": team.lead.agent_id,
+        }
     )
 
 
@@ -786,7 +790,7 @@ def test_build_team_wires_bash_through_permission_hook():
 
     names, blocked, allowed = asyncio.run(main())
     assert "Bash" in names
-    assert "hook blocked" in blocked.text
+    assert "not allowed" in blocked.text
     assert "hi" in allowed.text
 
 
@@ -1969,3 +1973,59 @@ def test_a_tool_reads_and_writes_through_an_added_directory(tmp_path):
     assert "from the other directory" in str(allowed)
     refused = asyncio.run(read(ToolContext(cwd=project), file_path=str(elsewhere / "notes.md")))
     assert "from the other directory" not in str(refused)
+
+
+def test_a_hook_allow_satisfies_the_ask_without_an_approval_ui():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                "PreToolUse",
+                "*",
+                fn=lambda inp: {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}},
+            )
+            outcome = await team.execute_tool("Edit", {"file_path": "a.txt", "content": "x"}, team.lead, "t1")
+            return outcome.text
+
+        text_out = asyncio.run(main())
+        assert "needs approval" not in text_out
+
+
+def test_a_deny_rule_still_vetoes_a_hook_allow():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, disallowed_tools=["Bash(curl:*)"])
+            team.hooks.register(
+                "PreToolUse",
+                "*",
+                fn=lambda inp: {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "allow"}},
+            )
+            outcome = await team.execute_tool("Bash", {"command": "curl http://example.com"}, team.lead, "t1")
+            return outcome.text
+
+        text_out = asyncio.run(main())
+        assert "not allowed" in text_out
+
+
+def test_the_permission_gate_sees_the_input_a_hook_rewrote():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                "PreToolUse",
+                "*",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PreToolUse",
+                        "updatedInput": {"command": "echo safe"},
+                    }
+                },
+            )
+            outcome = await team.execute_tool("Bash", {"command": "rm -rf /"}, team.lead, "t1")
+            return outcome.text
+
+        text_out = asyncio.run(main())
+        assert "needs approval" not in text_out
