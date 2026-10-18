@@ -4,7 +4,9 @@ from pyclaw.tui import keys
 
 import asyncio
 import logging
+import os
 
+from pyclaw.tui import history
 from pyclaw.tui.formatting import escape
 from textual.widgets import Static, TextArea
 
@@ -36,6 +38,7 @@ class PromptMixin:
         self._history_index = None
         if text and (not self._history or self._history[-1] != text):
             self._history.append(text)
+            history.append(os.getcwd(), text)
         if self._view_selection == "selecting-agent":
             await self._confirm_selection()
             return

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import dataclasses
 import logging
+import os
 import time
 
 from textual.app import App, ComposeResult
@@ -13,6 +14,7 @@ from chatchat.hooks.events import register_hook_event_handler, register_runtime_
 from pyclaw import __version__, banner, config, statusline, welcome
 from pyclaw.session import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
+from pyclaw.tui import history
 
 from pyclaw import events
 from pyclaw.tui.permission_card import _Approval
@@ -275,7 +277,7 @@ class PyClawApp(
         self._agent_group: _AgentGroupBlock | None = None
         self._solo_spawn: str | None = None
         self._last_interrupt = 0.0
-        self._history: list[str] = []
+        self._history: list[str] = history.load(os.getcwd())
         self._history_index: int | None = None
         self._draft = ""
 

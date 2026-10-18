@@ -79,3 +79,10 @@ def _home_dir_is_a_temp_folder(tmp_path, monkeypatch):
         os.unlink(secret_path)
     except OSError:
         pass
+
+
+@pytest.fixture(autouse=True)
+def _isolated_prompt_history(tmp_path, monkeypatch):
+    """The TUI's prompt history lives in ~/.pyclaw/history.jsonl; tests must
+    never read the real one (a user's history would leak into assertions)."""
+    monkeypatch.setattr("pyclaw.tui.history.path", lambda: tmp_path / "history.jsonl")

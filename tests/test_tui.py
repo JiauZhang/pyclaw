@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import os
 import tempfile
 import time
 from pathlib import Path
@@ -5952,3 +5953,15 @@ def test_asking_to_remove_a_worktree_is_marked_and_keeping_is_not():
     assert is_destructive("ExitWorktree", {"action": "remove"}) is True
     assert is_destructive("ExitWorktree", {"action": "keep"}) is False
     assert is_destructive("EnterWorktree", {"name": "x"}) is False
+
+
+def test_a_submitted_prompt_is_persisted_to_the_history_file(tmp_path):
+    import json
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            await _submit_and_wait(pilot, "remember me")
+
+    asyncio.run(scenario())
+    entries = [json.loads(line) for line in (tmp_path / "history.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(entry["display"] == "remember me" and entry["project"] == os.getcwd() for entry in entries)
