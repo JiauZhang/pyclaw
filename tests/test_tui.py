@@ -327,14 +327,14 @@ def test_alt_t_toggles_thinking(monkeypatch):
         async with PyClawApp(builder=lambda: _FakeTeam()).run_test(size=(120, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
-            assert app._session.thinking.mode == "off"
+            assert app._session.thinking.level == "off"
             await pilot.press("alt+t")
             await pilot.pause()
-            assert app._session.thinking.mode == "on"
-            assert written["thinking"]["mode"] == "on"
+            assert app._session.thinking.level == "medium"
+            assert written["thinking"] == "medium"
             await pilot.press("alt+t")
             await pilot.pause()
-            assert app._session.thinking.mode == "off"
+            assert app._session.thinking.level == "off"
 
     asyncio.run(scenario())
 
@@ -2506,7 +2506,7 @@ class _TwoTurnTeam(_FakeTeam):
         return text
 
 
-def test_second_turn_reuses_the_single_work_line():
+def test_each_turn_leaves_its_own_work_line():
     def work_lines(app):
         return [t for w in app.query_one("#conv").children if "Handled for" in (t := _block_text(w))]
 
@@ -2517,7 +2517,7 @@ def test_second_turn_reuses_the_single_work_line():
             await _submit_and_wait(pilot, "one", 6)
             assert len(work_lines(app)) == 1
             await _submit_and_wait(pilot, "two", 6)
-            assert len(work_lines(app)) == 1
+            assert len(work_lines(app)) == 2
             assert "answer1" in _flatten(app)
             assert "answer2" in _flatten(app)
 
@@ -5948,3 +5948,28 @@ def test_a_submitted_prompt_is_persisted_to_the_history_file(tmp_path):
     asyncio.run(scenario())
     entries = [json.loads(line) for line in (tmp_path / "history.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(entry["display"] == "remember me" and entry["project"] == os.getcwd() for entry in entries)
+
+
+def test_every_turn_earns_its_own_duration_line():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            appended = []
+            orig = app._append_block
+
+            async def spy(text):
+                block = await orig(text)
+                appended.append(block)
+                return block
+
+            app._append_block = spy
+            for past in ("Reviewed", "Analyzed"):
+                app._begin_turn()
+                app._turn_past = past
+                await app._finish_work()
+            return appended
+
+    blocks = asyncio.run(scenario())
+    assert len(blocks) == 2
+    assert blocks[0] is not blocks[1]

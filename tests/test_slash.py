@@ -622,29 +622,29 @@ def test_status_names_the_worktree_the_session_moved_into():
     assert "Worktree: wt/side" in out
 
 
-def test_effort_is_a_level_and_auto_gives_it_back(monkeypatch):
-    monkeypatch.setattr(config, "load", lambda: {"thinking": {}})
+def test_effort_takes_the_unified_vocabulary(monkeypatch):
+    monkeypatch.setattr(config, "load", lambda: {"thinking": "low"})
     monkeypatch.setattr(config, "save", lambda cfg: None)
     session = _fake_session()
 
     asyncio.run(_call("/effort high", session))
-    assert session.set[-1].effort == "high"
+    assert session.set[-1].level == "high"
     assert session.remembered
-    asyncio.run(_call("/effort auto", session))
-    assert session.set[-1].effort == ""
+    asyncio.run(_call("/effort off", session))
+    assert session.set[-1].level == "off"
     unknown = asyncio.run(_call("/effort extreme", session))
-    assert "low, medium, high" in unknown
+    assert "off, low, medium, high, xhigh" in unknown
 
 
 def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
 
-    monkeypatch.setattr(config, "load", lambda: {"thinking": {}})
+    monkeypatch.setattr(config, "load", lambda: {"thinking": "low"})
     session = _fake_session()
-    session.thinking = Thinking("adaptive", effort="medium")
+    session.thinking = Thinking("xhigh")
 
     out = asyncio.run(_call("/status", session, session_key="k1"))
 
-    assert "thinking adaptive" in out and "effort medium" in out
+    assert "thinking xhigh" in out
 
 
 def _history(monkeypatch, tmp_path, rows):

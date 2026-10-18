@@ -47,6 +47,7 @@ class TurnFlowMixin:
         self._set_title(True)
         self._live = None
         self._live_text = ""
+        self._work_block = None
         self._turn_usage = _agent_tokens(self._team.lead)
         self._wrote_body = False
         self._interrupted_call = False

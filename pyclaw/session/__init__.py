@@ -170,13 +170,15 @@ class Session(HistoryMixin, ReadoutMixin):
 
     def remember_thinking(self):
         saved = config.load()
-        saved["thinking"] = {"mode": self.thinking.mode, "budget": self.thinking.budget, "effort": self.thinking.effort}
+        saved["thinking"] = self.thinking.native or self.thinking.level
         config.save(saved)
 
     def toggle_thinking(self) -> str:
-        current = self.thinking
-        mode = "on" if not current.enabled else "off"
-        self.set_thinking(Thinking(mode=mode, budget=current.budget, effort=current.effort))
+        if self.thinking.enabled:
+            self._last_enabled_level = self.thinking.level
+            self.set_thinking(Thinking("off"))
+        else:
+            self.set_thinking(Thinking(getattr(self, "_last_enabled_level", "medium")))
         self.remember_thinking()
         return self.thinking.label()
 

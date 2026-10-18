@@ -103,10 +103,10 @@ def _dispatch_event(on_event, ev):
 
 
 def thinking_from_config() -> Thinking:
-    setting = config.load().get("thinking") or {}
-    return Thinking(
-        mode=str(setting.get("mode") or "on"), budget=int(setting.get("budget") or 0), effort=str(setting.get("effort") or "")
-    )
+    setting = config.load().get("thinking")
+    if isinstance(setting, dict):
+        return Thinking(native=setting)
+    return Thinking(setting or "medium")
 
 
 def _agent_memory(cwd: str):

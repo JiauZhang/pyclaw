@@ -42,7 +42,7 @@ COMMANDS = [
     {"name": "agents", "desc": "List and manage the agent definitions PyClaw can delegate to", "hint": ""},
     {"name": "plan", "desc": "Enter plan (read-only) mode", "hint": ""},
     {"name": "model", "desc": "Show or switch the model for this session", "hint": "[name]"},
-    {"name": "effort", "desc": "Show or set the reasoning effort", "hint": "[low|medium|high|auto]"},
+    {"name": "effort", "desc": "Show or set the reasoning effort", "hint": "[off|low|medium|high|xhigh]"},
     {"name": "cost", "desc": "Show token usage and cost at your configured rates", "hint": ""},
     {"name": "usage", "desc": "What the recorded turns cost: today or week", "hint": "[today|week]"},
     {"name": "stats", "desc": "Per-day totals of the recorded work", "hint": "[days]"},
