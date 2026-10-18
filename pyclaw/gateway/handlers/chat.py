@@ -26,6 +26,18 @@ async def handle_chat_history(params: Dict[str, Any], context: Dict[str, Any]) -
     session = runtime.get_session(session_key)
 
     if not session:
-        return {"messages": [], "count": 0}
+        return {"messages": [], "count": 0, "total_messages": 0}
 
-    return {"session_key": session_key, "messages": [], "count": 0, "total_messages": session.message_count}
+    messages = []
+    for entry in session.transcript():
+        role = entry.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = entry.get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                part.get("text", "") for part in content if isinstance(part, dict) and part.get("type") == "text"
+            ).strip()
+        messages.append({"role": role, "content": str(content or "")})
+
+    return {"session_key": session_key, "messages": messages, "count": len(messages), "total_messages": session.message_count}

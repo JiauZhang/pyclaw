@@ -21,6 +21,7 @@ class WebChannelAdapter(ChannelAdapter):
         self._clients: Dict[str, Dict[str, Any]] = {}
         self._client_sessions: Dict[str, str] = {}
         self._busy: set = set()
+        self._pending_approvals: Dict[str, asyncio.Future] = {}
         self._message_handler: Optional[Callable[[InboundMessage, str], asyncio.Future]] = None
 
     async def connect(self) -> bool:
@@ -77,6 +78,37 @@ class WebChannelAdapter(ChannelAdapter):
             }
         return {"id": user_id, "name": "Unknown"}
 
+    async def request_approval(self, tool_name: str, tool_input, timeout: float = 300.0):
+        """Push an approval request to every connected webchat client and wait
+        for the first permission_response - the desktop-side permission bridge,
+        mirroring claude-code's remote permission bridge. None means nobody
+        answered in time and the caller falls back to its own handling."""
+        import uuid
+
+        request_id = uuid.uuid4().hex
+        future: asyncio.Future = asyncio.get_running_loop().create_future()
+        self._pending_approvals[request_id] = future
+        payload = {"type": "permission_request", "id": request_id, "tool": tool_name, "input": tool_input}
+        delivered = False
+        for client_id, info in list(self._clients.items()):
+            websocket = info.get("websocket")
+            if websocket is None:
+                continue
+            try:
+                await websocket.send_json(payload)
+                delivered = True
+            except Exception:
+                continue
+        if not delivered:
+            self._pending_approvals.pop(request_id, None)
+            return None
+        try:
+            return await asyncio.wait_for(future, timeout=timeout)
+        except asyncio.TimeoutError:
+            return None
+        finally:
+            self._pending_approvals.pop(request_id, None)
+
     async def register_client(self, client_id: str, websocket, name: str = "Web User"):
         self._clients[client_id] = {
             "websocket": websocket,
@@ -93,6 +125,14 @@ class WebChannelAdapter(ChannelAdapter):
 
     async def handle_incoming_message(self, client_id: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         msg_type = data.get("type", "message")
+
+        if msg_type == "permission_response":
+            future = self._pending_approvals.get(str(data.get("id") or ""))
+            if future is not None and not future.done():
+                future.set_result(
+                    {"decision": str(data.get("decision") or "denied"), "feedback": str(data.get("feedback") or "")}
+                )
+            return None
 
         if msg_type == "message":
             inbound = InboundMessage(

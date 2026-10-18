@@ -604,3 +604,64 @@ def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
     asyncio.run(server._start_cron())
     assert len(started) == 1
     asyncio.run(server._stop_cron())
+
+
+def test_chat_history_returns_the_real_transcript():
+    import asyncio
+
+    from pyclaw.gateway.handlers.chat import handle_chat_history
+
+    class _FakeSession:
+        message_count = 2
+
+        def transcript(self):
+            return [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": [{"type": "text", "text": "hello there"}]},
+            ]
+
+    class _FakeRuntime:
+        def get_session(self, key):
+            return _FakeSession()
+
+    payload = asyncio.run(handle_chat_history({"sessionKey": "s1"}, {"runtime": _FakeRuntime()}))
+    assert payload["count"] == 2
+    assert payload["messages"][0] == {"role": "user", "content": "hi"}
+    assert payload["messages"][1]["content"] == "hello there"
+
+
+def test_request_approval_resolves_when_the_client_answers():
+    import asyncio
+
+    from pyclaw.channels.web import WebChannelAdapter
+
+    class _WS:
+        def __init__(self):
+            self.sent = []
+
+        async def send_json(self, payload):
+            self.sent.append(payload)
+
+    async def main():
+        adapter = WebChannelAdapter({})
+        ws = _WS()
+        await adapter.register_client("c1", ws)
+        task = asyncio.create_task(adapter.request_approval("Bash", {"command": "rm"}, timeout=5))
+        await asyncio.sleep(0.05)
+        request_id = ws.sent[0]["id"]
+        await adapter.handle_incoming_message("c1", {"type": "permission_response", "id": request_id, "decision": "approved"})
+        return await task
+
+    assert asyncio.run(main()) == {"decision": "approved", "feedback": ""}
+
+
+def test_request_approval_returns_none_with_no_clients():
+    import asyncio
+
+    from pyclaw.channels.web import WebChannelAdapter
+
+    async def main():
+        adapter = WebChannelAdapter({})
+        return await adapter.request_approval("Bash", {}, timeout=1)
+
+    assert asyncio.run(main()) is None

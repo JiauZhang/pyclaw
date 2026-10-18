@@ -128,7 +128,7 @@ class GatewayServer:
         return "web" in self.config.enabled_channels
 
     def _new_session(self, conversation_id: str, model=None) -> Session:
-        return Session(
+        session = Session(
             build_team(
                 model=model or self.config.model,
                 http_options={"timeout": 300},
@@ -139,6 +139,23 @@ class GatewayServer:
             ),
             session_id=conversation_id,
         )
+        gate = getattr(session, "_gate", None)
+        if gate is not None:
+            inner = gate.permission_hooks
+            channel = self.web_channel
+
+            async def app_bridge(tool_name, tool_input, tool_use_id="", agent=""):
+                answer = await channel.request_approval(tool_name, tool_input)
+                if answer is None:
+                    if inner is not None:
+                        return await inner(tool_name, tool_input, tool_use_id, agent)
+                    return None
+                if answer["decision"] == "approved":
+                    return {"behavior": "allow", "updated_input": None, "message": ""}
+                return {"behavior": "deny", "updated_input": None, "message": answer.get("feedback") or "denied in the app"}
+
+            gate.permission_hooks = app_bridge
+        return session
 
     async def _get_session(self, session_key: str, model=None) -> Session:
         session = self._sessions.get(session_key)
@@ -394,6 +411,14 @@ class GatewayServer:
                 )
             finally:
                 logger.info("WebChat client for conversation %s disconnected", conversation_id)
+
+        @self.app.post("/chat/api/session/{conversation_id}/interrupt")
+        async def interrupt_session(conversation_id: str):
+            session = self._sessions.get(conversation_id)
+            if session is None:
+                return {"error": "no such session"}
+            session._team.lead.abort_work()
+            return {"interrupted": True}
 
         @self.app.get("/chat/api/conversations")
         async def conversations_api():

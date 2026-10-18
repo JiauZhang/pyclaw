@@ -145,7 +145,12 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
                 }
             ],
             "model": model_param,
-            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "usage": {
+                "prompt_tokens": session.usage.prompt_tokens,
+                "completion_tokens": session.usage.completion_tokens,
+                "total_tokens": session.usage.total_tokens,
+            },
+            "pyclaw": {"session_key": resolved["session_key"], "stateful": True},
         }
     except Exception as e:
         logger.error(f"Chat completions error: {e}")
