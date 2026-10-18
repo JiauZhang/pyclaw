@@ -110,7 +110,7 @@ def test_a_built_team_schedules_into_its_own_project(tmp_path):
     from pyclaw.team.builder import build_team
 
     async def main():
-        return build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
 
     team = asyncio.run(main())
     assert team.cron.directory == tmp_path / ".pyclaw"

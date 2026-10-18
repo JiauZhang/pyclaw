@@ -860,7 +860,7 @@ def test_add_dir_names_the_directory_it_took_and_the_ones_it_refused(tmp_path):
     (elsewhere / "inner").mkdir(parents=True)
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(project))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(project))
         session = Session(team, session_id="add-dir")
         added = await _call(f"/add-dir {elsewhere}", session)
         again = await _call(f"/add-dir {elsewhere / 'inner'}", session)

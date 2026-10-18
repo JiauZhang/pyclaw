@@ -56,7 +56,7 @@ def setup_logging(level: str = "INFO", *, console: bool = True):
 
 
 def _apply_overrides(config: dict, args) -> dict:
-    for key, value in (("provider", args.provider), ("model", args.model), ("enabled_channels", args.channels)):
+    for key, value in (("model", args.model), ("enabled_channels", args.channels)):
         if value is not None:
             config[key] = value
     return config
@@ -78,7 +78,6 @@ async def start_api(args):
     gateway_config = GatewayConfig(
         port=0,
         host="127.0.0.1",
-        provider=settings.get("provider"),
         model=settings.get("model"),
         enabled_channels=["web"],
         use_team=bool(settings.get("use_team")),
@@ -124,7 +123,6 @@ async def start_server(args):
     gateway_config = GatewayConfig(
         port=args.port if args.port is not None else gw_http.get("port", 12321),
         host=args.host if args.host is not None else gw_http.get("host", "127.0.0.1"),
-        provider=settings["provider"],
         model=settings["model"],
         enabled_channels=settings["enabled_channels"],
         use_team=args.use_team or bool(settings.get("use_team")),
@@ -133,7 +131,7 @@ async def start_server(args):
     )
 
     gateway = GatewayServer(gateway_config, app_config=config)
-    logger.info(f"Using provider={gateway_config.provider}, model={gateway_config.model}")
+    logger.info(f"Using model={gateway_config.model}")
 
     try:
         await gateway.start()
@@ -163,7 +161,6 @@ def _cli_resume(args) -> bool:
 
 
 async def prompt_once(
-    provider,
     model,
     prompt,
     *,
@@ -183,7 +180,6 @@ async def prompt_once(
     allow_all_unlocked=False,
 ) -> dict:
     team = build_team(
-        provider,
         model,
         permission_mode=permission_mode,
         allow_all_unlocked=allow_all_unlocked,
@@ -258,15 +254,13 @@ def _json_schema(args):
 async def run_headless(args):
     setup_logging(console=False)
     config = load_config()
-    provider = args.provider or config.get("provider")
     model = args.model or config.get("model")
-    if not provider or not model:
-        print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
+    if not model:
+        print("Model not set. Use --model provider/model or run `pyclaw config` first.")
         sys.exit(1)
     session_id, resume_from = _cli_session(args)
     try:
         out = await prompt_once(
-            provider,
             model,
             args.print,
             permission_mode=args.permission_mode,
@@ -293,16 +287,13 @@ def run_tui(args):
     clear_runtime_sinks()
     log_path = setup_logging(console=False)
     config = load_config()
-    provider = args.provider or config.get("provider")
     model = args.model or config.get("model")
-    if not provider or not model:
-        print("Provider/model not set. Use --provider/--model or run `pyclaw config` first.")
+    if not model:
+        print("Model not set. Use --model provider/model or run `pyclaw config` first.")
         sys.exit(1)
     from pyclaw.tui import PyClawApp
 
-    logging.getLogger(__name__).info(
-        "tui session starting (provider=%s model=%s team=%s log=%s)", provider, model, args.use_team, log_path
-    )
+    logging.getLogger(__name__).info("tui session starting (model=%s team=%s log=%s)", model, args.use_team, log_path)
     session_id, resume_from = _cli_session(args)
     if args.worktree is not None:
         if not in_repository(os.getcwd()):
@@ -315,7 +306,6 @@ def run_tui(args):
     hook_events = bool(args.include_hook_events or config.get("includeHookEvents"))
     app = PyClawApp(
         builder=lambda: build_team(
-            provider,
             model,
             permission_mode=args.permission_mode,
             allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
@@ -454,8 +444,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "The run ends by calling the StructuredOutput tool "
         "with a payload validated against it.",
     )
-    parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
-    parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    parser.add_argument("--model", type=str, default=None, help='Model as "provider/model" (overrides config)')
     parser.add_argument("-d", "--debug", action="store_true", help="Log every streamed event to the conversation log")
     parser.add_argument(
         "--permission-mode",
@@ -486,8 +475,7 @@ def _build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument(
         "--use-team", action="store_true", default=False, help="Give every conversation a team to work with"
     )
-    serve_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
-    serve_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    serve_parser.add_argument("--model", type=str, default=None, help='Model as "provider/model" (overrides config)')
     serve_parser.add_argument(
         "--allow-all",
         action="store_true",
@@ -497,8 +485,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     api_parser = subparsers.add_parser("api", help="Run the headless local API server (used by pyclaw-desktop)")
     api_parser.add_argument("--log-level", type=str, default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
-    api_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
-    api_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    api_parser.add_argument("--model", type=str, default=None, help='Model as "provider/model" (overrides config)')
     api_parser.add_argument(
         "--allow-all",
         action="store_true",
@@ -525,8 +512,7 @@ def _build_parser() -> argparse.ArgumentParser:
     stop_parser.add_argument("--all", action="store_true", help="Kill every `pyclaw serve` process, ignoring port")
 
     tui_parser = subparsers.add_parser("tui", help="Launch the interactive terminal UI")
-    tui_parser.add_argument("--provider", type=str, default=None, help="AI model provider (overrides config)")
-    tui_parser.add_argument("--model", type=str, default=None, help="AI model name (overrides config)")
+    tui_parser.add_argument("--model", type=str, default=None, help='Model as "provider/model" (overrides config)')
     tui_parser.add_argument(
         "--permission-mode",
         type=str,
@@ -548,7 +534,7 @@ def _build_parser() -> argparse.ArgumentParser:
 def _finalize_args(args) -> argparse.Namespace:
     if not hasattr(args, "log_level"):
         args.log_level = "INFO"
-    for field in ("provider", "model", "channels", "port", "host", "resume", "allow", "ask", "deny"):
+    for field in ("model", "channels", "port", "host", "resume", "allow", "ask", "deny"):
         if not hasattr(args, field):
             setattr(args, field, None)
     if not hasattr(args, "continue_session"):

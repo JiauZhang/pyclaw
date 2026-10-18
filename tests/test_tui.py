@@ -70,8 +70,7 @@ class _NullHooks:
 
 
 class _FakeTeam:
-    provider = "p"
-    model = "m"
+    model = "p/m"
     thinking = Thinking("off")
     name = "t"
     compact_threshold = 0
@@ -1078,7 +1077,7 @@ def _meter_team(used: int, completion: int = 0):
 
 
 def test_the_first_row_leads_with_the_model_and_its_context_meter():
-    assert _row1(lambda: _meter_team(68_000)(), window=200_000).startswith("m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34%")
+    assert _row1(lambda: _meter_team(68_000)(), window=200_000).startswith("p/m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34%")
 
 
 def test_the_note_stays_on_the_footer_while_its_own_row():
@@ -1099,17 +1098,17 @@ def test_the_context_meter_names_the_window_it_measures_against():
     """The percentage alone is meaningless without the window it is a share of,
     so the meter prints the real configured window next to it."""
     assert _row1(lambda: _meter_team(68_000)(), window=200_000).startswith(
-        "m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (200k)"
+        "p/m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (200k)"
     )
     assert _row1(lambda: _meter_team(340_000)(), window=1_000_000).startswith(
-        "m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (1m)"
+        "p/m \u00b7 thinking off \u00b7 │███░░░░░░░│ 34% (1m)"
     )
     assert "(0)" not in _row1(lambda: _meter_team(68_000)())
 
 
 def test_the_first_row_shortens_its_meters_on_a_narrow_terminal():
     assert _row1(lambda: _meter_team(80_000)(), window=200_000, size=(60, 40)).startswith(
-        "m \u00b7 thinking off \u00b7 │██░░░│ 40%"
+        "p/m \u00b7 thinking off \u00b7 │██░░░│ 40%"
     )
 
 
@@ -1135,7 +1134,7 @@ def test_the_first_row_carries_the_usage_bar_and_its_counts():
     """No context meter here: with no window configured there is nothing for
     the bar to measure against."""
     assert _row1() == (
-        "m \u00b7 thinking off \u00b7 │▒▒▒▒▒▓▓▓██│ \u00b7 in: 1.9k  out: 500  "
+        "p/m \u00b7 thinking off \u00b7 │▒▒▒▒▒▓▓▓██│ \u00b7 in: 1.9k  out: 500  "
         "cache: 63%  total: 2.4k \u00b7 0 msg \u00b7 \u23f1 0s"
     )
 
@@ -4986,7 +4985,7 @@ def test_a_row_drops_its_tail_instead_of_being_cut_through_a_number():
     narrow = _row1(size=(60, 40))
     assert len(narrow) <= 58
     assert "msg" not in narrow
-    assert narrow.startswith("m \u00b7 thinking off")
+    assert narrow.startswith("p/m \u00b7 thinking off")
 
 
 def test_the_second_row_holds_the_directory_then_git():

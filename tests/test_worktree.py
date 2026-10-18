@@ -37,7 +37,7 @@ def _repo(tmp_path):
 
 
 def _team(root, conversation):
-    return build_team("agnes", "agnes-2.5-flash", cwd=str(root), conversation_id=conversation)
+    return build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id=conversation)
 
 
 def test_moving_into_a_worktree_moves_the_process_and_reads_it_from_there(tmp_path):
@@ -205,7 +205,7 @@ def _start_in(root, worktree, conversation="conv-start"):
 
     async def scenario():
         async with PyClawApp(
-            builder=lambda: build_team("agnes", "agnes-2.5-flash", cwd=str(root), conversation_id=conversation),
+            builder=lambda: build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id=conversation),
             session_id=conversation,
             worktree=worktree,
         ).run_test(size=(120, 40)) as pilot:

@@ -9,37 +9,35 @@ from pyclaw import __main__
 
 
 def _args(**kw):
-    args = argparse.Namespace(provider=None, model=None, channels=None, port=None, host=None, log_level="INFO")
+    args = argparse.Namespace(model=None, channels=None, port=None, host=None, log_level="INFO")
     for k, v in kw.items():
         setattr(args, k, v)
     return args
 
 
 def test_apply_overrides_only_set_values():
-    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    settings = __main__._apply_overrides(dict(saved), _args(model="m1"))
+    saved = {"model": "p0/m0", "enabled_channels": ["wechat"]}
+    settings = __main__._apply_overrides(dict(saved), _args(model="p1/m1"))
 
-    assert settings["provider"] == "p0"
-    assert settings["model"] == "m1"
+    assert settings["model"] == "p1/m1"
     assert settings["enabled_channels"] == ["wechat"]
-    assert saved["model"] == "m0"
+    assert saved["model"] == "p0/m0"
 
 
 def test_apply_overrides_none_no_change():
-    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
+    saved = {"model": "p0/m0", "enabled_channels": ["wechat"]}
     settings = __main__._apply_overrides(dict(saved), _args())
 
     assert settings == saved
 
 
 def test_apply_overrides_all():
-    saved = {"provider": "p0", "model": "m0", "enabled_channels": ["wechat"]}
-    settings = __main__._apply_overrides(dict(saved), _args(provider="p1", model="m1", channels=["web", "wechat"]))
+    saved = {"model": "p0/m0", "enabled_channels": ["wechat"]}
+    settings = __main__._apply_overrides(dict(saved), _args(model="p1/m1", channels=["web", "wechat"]))
 
-    assert settings["provider"] == "p1"
-    assert settings["model"] == "m1"
+    assert settings["model"] == "p1/m1"
     assert settings["enabled_channels"] == ["web", "wechat"]
-    assert saved["provider"] == "p0"
+    assert saved["model"] == "p0/m0"
 
 
 def test_start_server_does_not_persist_cli_overrides(monkeypatch):
@@ -48,13 +46,13 @@ def test_start_server_does_not_persist_cli_overrides(monkeypatch):
     saved_calls = []
 
     monkeypatch.setattr(__main__, "GatewayServer", lambda *a, **k: FakeGateway())
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m", "enabled_channels": ["wechat"]})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m", "enabled_channels": ["wechat"]})
 
     import pyclaw.config as config_module
 
     monkeypatch.setattr(config_module, "save", lambda c: saved_calls.append(c))
 
-    args = __main__._finalize_args(__main__._build_parser().parse_args(["serve", "--provider", "other", "--channels", "qq"]))
+    args = __main__._finalize_args(__main__._build_parser().parse_args(["serve", "--model", "p/other", "--channels", "qq"]))
     asyncio.run(__main__.start_server(args))
     assert saved_calls == []
 
@@ -92,8 +90,7 @@ def test_parse_args_without_subcommand_has_no_log_level():
 def test_finalize_args_fills_serve_fields_with_none():
     args = __main__._build_parser().parse_args([])
     finalized = __main__._finalize_args(args)
-    assert (finalized.provider, finalized.model, finalized.channels, finalized.port, finalized.host) == (
-        None,
+    assert (finalized.model, finalized.channels, finalized.port, finalized.host) == (
         None,
         None,
         None,
@@ -120,11 +117,11 @@ def test_start_server_runs_with_default_args(monkeypatch):
         return FakeGateway()
 
     monkeypatch.setattr(__main__, "GatewayServer", fake_gateway)
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m", "enabled_channels": ["wechat"]})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m", "enabled_channels": ["wechat"]})
 
     args = __main__._finalize_args(__main__._build_parser().parse_args([]))
     asyncio.run(__main__.start_server(args))
-    assert captured["config"].provider == "p"
+    assert captured["config"].model == "p/m"
 
 
 def _strip_root_handlers():
@@ -219,7 +216,7 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
@@ -245,7 +242,7 @@ def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(monkeypatch
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
@@ -264,7 +261,7 @@ def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
     args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
@@ -291,11 +288,11 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(tmp_path, monk
         def run(self):
             return None
 
-    monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
+    monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
 
-    def build_team(provider, model, **kw):
+    def build_team(model, **kw):
         built.append(kw)
         return object()
 

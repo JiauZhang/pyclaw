@@ -8,8 +8,7 @@ from pyclaw import __main__
 
 def _fake_team():
     class T:
-        provider = "p"
-        model = "m"
+        model = "p/m"
         thinking = Thinking("off")
         name = "t"
         provided_tools = []
@@ -33,8 +32,7 @@ class _FakeSession:
     conv_session_id = "hl"
     mode = "team"
     permission_mode = "default"
-    provider = "p"
-    model = "m"
+    model = "p/m"
     thinking = Thinking("off")
     usage = _U()
 
@@ -61,7 +59,7 @@ class _FakeSession:
 def test_prompt_once_returns_original_text(monkeypatch):
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _fake_team())
     monkeypatch.setattr(__main__, "Session", _FakeSession)
-    out = asyncio.run(__main__.prompt_once("p", "m", "hi"))
+    out = asyncio.run(__main__.prompt_once("p/m", "hi"))
     assert out["text"] == "\n\nhello\n"
     assert out["mode"] == "team"
     assert out["messages"] == 2
@@ -80,8 +78,7 @@ SCHEMA = {"type": "object", "properties": {"name": {"type": "string"}}, "require
 
 
 class _ShapeTeam:
-    provider = "p"
-    model = "m"
+    model = "p/m"
     thinking = Thinking("off")
     name = "t"
     provided_tools = []
@@ -107,7 +104,7 @@ def test_print_mode_installs_the_shape_before_asking(monkeypatch):
     team = _ShapeTeam()
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
     monkeypatch.setattr(__main__, "Session", _FakeSession)
-    out = asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema=SCHEMA))
+    out = asyncio.run(__main__.prompt_once("p/m", "hi", json_schema=SCHEMA))
     assert team.installed == [SCHEMA]
     assert out["structured_output"] is None
 
@@ -116,7 +113,7 @@ def test_a_shape_that_is_not_a_shape_stops_the_run(monkeypatch):
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _FakeSession)
     try:
-        asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema={"type": "not-a-type"}))
+        asyncio.run(__main__.prompt_once("p/m", "hi", json_schema={"type": "not-a-type"}))
     except ValueError as exc:
         assert "not-a-type" in str(exc)
     else:
@@ -132,7 +129,7 @@ def test_the_payload_is_what_print_mode_hands_over(capsys, monkeypatch):
     team = _ShapeTeam()
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: team)
     monkeypatch.setattr(__main__, "Session", _AnsweringSession)
-    out = asyncio.run(__main__.prompt_once("p", "m", "hi", json_schema=SCHEMA))
+    out = asyncio.run(__main__.prompt_once("p/m", "hi", json_schema=SCHEMA))
     assert out["structured_output"] == {"name": "round"}
     __main__.render_output("text", out)
     assert json.loads(capsys.readouterr().out) == {"name": "round"}
@@ -177,7 +174,7 @@ def test_a_print_run_records_what_the_turn_used(monkeypatch):
 
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _RecordingSession)
-    asyncio.run(__main__.prompt_once("p", "m", "hi"))
+    asyncio.run(__main__.prompt_once("p/m", "hi"))
 
     assert recorded == ["t"]
 
@@ -197,7 +194,7 @@ def test_a_print_run_records_its_events_locally(monkeypatch, tmp_path):
 
     monkeypatch.setattr(__main__, "build_team", lambda *a, **k: _ShapeTeam())
     monkeypatch.setattr(__main__, "Session", _EmittingSession)
-    asyncio.run(__main__.prompt_once("p", "m", "hi"))
+    asyncio.run(__main__.prompt_once("p/m", "hi"))
 
     rows = [json.loads(line) for path in home.glob("*.jsonl") for line in path.read_text(encoding="utf-8").splitlines()]
     assert [row["kind"] for row in rows] == ["text"]

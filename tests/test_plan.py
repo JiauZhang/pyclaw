@@ -172,7 +172,7 @@ def _built(tmp_path):
     from pyclaw.team.builder import build_team
 
     async def build():
-        return build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
 
     return asyncio.run(build())
 

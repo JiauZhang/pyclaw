@@ -311,7 +311,7 @@ def test_permission_gate_resolves_subagent_mode():
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
             file = {"file_path": str(Path(d) / "a.txt")}
             planned = await _gate_call(team, "Write", file, "reader")
@@ -332,7 +332,7 @@ def test_permission_gate_parent_mode_takes_precedence():
         with tempfile.TemporaryDirectory() as d:
 
             def accept_edits_team():
-                team = build_team("agnes", "agnes-2.5-flash", cwd=d, permission_mode="acceptEdits")
+                team = build_team("agnes/agnes-2.5-flash", cwd=d, permission_mode="acceptEdits")
                 team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
                 return team
 
@@ -341,7 +341,7 @@ def test_permission_gate_parent_mode_takes_precedence():
             edit_in_accept_edits = await _gate_call(team, "Edit", file, "reader")
             bash_in_accept_edits = await _gate_call(team, "Bash", {"command": "echo hi"}, "reader")
 
-            unlocked = build_team("agnes", "agnes-2.5-flash", cwd=d, permission_mode="allowAll")
+            unlocked = build_team("agnes/agnes-2.5-flash", cwd=d, permission_mode="allowAll")
             unlocked.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
             edit_in_allow_all = await _gate_call(unlocked, "Edit", file, "reader")
             datetime_in_allow_all = await _gate_call(unlocked, "datetime", {}, "reader")
@@ -778,7 +778,7 @@ def test_bash_bare_deny_removes_tool_but_rule_does_not():
 def test_build_team_wires_bash_through_permission_hook():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, disallowed_tools=["Bash(curl:*)"])
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, disallowed_tools=["Bash(curl:*)"])
             names = [t["name"] for t in team.tool_schemas(team.tool_context)]
             blocked = await team.execute_tool("Bash", {"command": "curl http://example.com"}, team.lead)
             allowed = await team.execute_tool("Bash", {"command": "echo hi"}, team.lead)
@@ -794,7 +794,7 @@ def test_approval_feedback_lands_beside_the_tool_result():
     with tempfile.TemporaryDirectory() as d:
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
             async def approve(name, inp, *, tool_use_id="", agent=""):
                 return PermissionChoice("approved", feedback="run the tests first")
@@ -812,7 +812,7 @@ def test_a_permission_request_hook_answers_before_the_user():
         asked = []
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
             async def ask(name, inp, *, tool_use_id="", agent=""):
                 asked.append(name)
@@ -842,7 +842,7 @@ def test_a_permission_request_hook_denial_reaches_the_model():
         asked = []
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
             async def ask(name, inp, *, tool_use_id="", agent=""):
                 asked.append(name)
@@ -875,7 +875,7 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
             from pyclaw.session import Session
             from pyclaw.team.builder import build_team
 
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.on("PreToolUse", fn=lambda inp: seen.append(inp.get("permission_mode", "missing")) or True)
             await team.execute_tool("Read", {"file_path": __file__}, team.lead, "t1")
             Session(team).set_permission_mode("plan")
@@ -888,7 +888,7 @@ def test_the_gate_reports_the_session_permission_mode_to_the_hooks():
 def test_build_team_removes_bash_when_denied_by_bare_name():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, disallowed_tools=["Bash"])
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, disallowed_tools=["Bash"])
             return [t["name"] for t in team.tool_schemas(team.tool_context)]
 
     assert "Bash" not in asyncio.run(main())
@@ -898,8 +898,8 @@ def test_build_team_mode_gating():
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            single = build_team("agnes", "agnes-2.5-flash", cwd=d)
-            teams = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            single = build_team("agnes/agnes-2.5-flash", cwd=d)
+            teams = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
             s_single = session_mod.Session(single, session_id="ga")
             s_team = session_mod.Session(teams, session_id="gt")
             return (
@@ -922,7 +922,7 @@ def test_build_team_mode_gating():
 def test_build_team_tools_differ_by_mode():
     async def names(**kw):
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, **kw)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, **kw)
             return {t["name"] for t in team.tool_schemas(team.tool_context)}
 
     single = asyncio.run(names())
@@ -937,7 +937,7 @@ def test_build_team_tools_differ_by_mode():
 def test_a_team_tool_is_offered_once_even_when_the_pool_has_the_same_name():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
             names = [t["name"] for t in team.tool_schemas(team.tool_context)]
             return names
 
@@ -1110,7 +1110,7 @@ def test_session_remove_rule(tmp_path):
             local = Path(d) / ".pyclaw" / "settings.local.json"
             local.parent.mkdir(parents=True)
             json.write(local, {"permissions": {"allow": ["Bash(git push:*)"]}})
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             session = session_mod.Session(team, session_id="s")
             return session.remove_rule("Bash(git push:*)")
 
@@ -1280,7 +1280,7 @@ def test_build_team_wires_task_notifications_to_lead():
 
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             background.spawn(d, "exit 3")
             for _ in range(50):
                 msgs = [m for m in team.lead.messages if isinstance(m, dict) and "<task-notification>" in str(m.get("content"))]
@@ -1372,7 +1372,7 @@ def test_a_file_created_by_the_tools_can_be_taken_away_again():
 def test_a_team_keeps_file_history_under_the_pyclaw_home():
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            return build_team("agnes", "agnes-2.5-flash", cwd=d), d
+            return build_team("agnes/agnes-2.5-flash", cwd=d), d
 
     team, d = asyncio.run(main())
     assert team.file_history is not None
@@ -1389,7 +1389,7 @@ def test_file_history_can_be_switched_off():
     async def main():
         with tempfile.TemporaryDirectory() as d:
             with mock.patch.object(config, "load", lambda: {"checkpoints": False}):
-                return build_team("agnes", "agnes-2.5-flash", cwd=d)
+                return build_team("agnes/agnes-2.5-flash", cwd=d)
 
     team = asyncio.run(main())
     assert team.file_history is None
@@ -1417,7 +1417,7 @@ def test_a_project_skill_is_offered_and_loads_on_demand():
         )
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             schemas = team.tool_schemas(team.tool_context)
             schema = next(schema for schema in schemas if schema["name"] == "Skill")
             outcome = await team.execute_tool("Skill", {"skill": "notes"}, team.lead)
@@ -1434,7 +1434,7 @@ def test_the_skills_that_ship_with_the_program_are_the_only_ones_offered():
     with tempfile.TemporaryDirectory() as d:
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, skills=[])
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, skills=[])
             return team.skills.listing(listing_budget(team.context_window))
 
         listed = asyncio.run(main())
@@ -1448,7 +1448,7 @@ def test_a_denied_call_is_reported_to_hooks():
         seen = []
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("PermissionDenied", "*", fn=lambda inp: seen.append(inp) or True)
             team._pyclaw_gate.request = None
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
@@ -1466,7 +1466,7 @@ def test_a_remembered_rule_is_reported_as_a_config_change():
             return PermissionChoice("dont_ask")
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
@@ -1483,7 +1483,7 @@ def test_an_ordinary_approval_changes_no_configuration():
             return PermissionChoice("approved")
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
@@ -1497,7 +1497,7 @@ def test_changing_a_setting_reports_the_config_change():
         seen = []
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             session = session_mod.Session(team, session_id="cfg")
             await session.note_config_change("config")
@@ -1515,7 +1515,7 @@ def test_a_denied_rule_only_change_is_reported_once():
             return PermissionChoice("denied")
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
             team._pyclaw_gate.request = refuse
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
@@ -1527,7 +1527,7 @@ def test_a_denied_rule_only_change_is_reported_once():
 def test_the_team_has_a_store_the_lead_can_name(tmp_path):
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            return build_team("agnes", "agnes-2.5-flash", cwd=d)
+            return build_team("agnes/agnes-2.5-flash", cwd=d)
 
     team = asyncio.run(main())
     assert team.team_store is not None
@@ -1538,7 +1538,7 @@ def test_the_team_has_a_store_the_lead_can_name(tmp_path):
 def test_the_session_reports_the_team_it_joined(tmp_path):
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
             session = session_mod.Session(team, session_id="teamctx")
             before = session.team_context
             await session._team.execute_tool("TeamCreate", {"team_name": "parser", "description": "rework"}, team.lead)
@@ -1560,7 +1560,7 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
     subprocess.run(["git", "commit", "-qm", "first"], cwd=tmp_path, check=True)
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         session = session_mod.Session(team, session_id="wtree")
         before = Path(team._pyclaw_gate.cwd)
         await team.enter_worktree("side")
@@ -1590,7 +1590,7 @@ def test_a_teammate_approval_request_names_that_teammate():
             return PermissionChoice("approved")
 
         async def main():
-            team = build_team("agnes", "agnes-2.5-flash", cwd=d, use_team=True)
+            team = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
             team._pyclaw_gate.request = ask
             worker = team.create_agent("worker", instruction="do work")
             return await team.execute_tool("Write", {"file_path": "a.txt", "content": "x"}, worker)
@@ -1601,7 +1601,7 @@ def test_a_teammate_approval_request_names_that_teammate():
 
 def test_a_built_team_gives_every_agent_type_a_place_for_notes(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         return team.agent_memory
 
     memory = asyncio.run(main())
@@ -1612,7 +1612,7 @@ def test_a_built_team_gives_every_agent_type_a_place_for_notes(tmp_path):
 
 def test_an_agent_writing_its_own_notes_needs_no_approval(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
         return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
 
@@ -1621,7 +1621,7 @@ def test_an_agent_writing_its_own_notes_needs_no_approval(tmp_path):
 
 def test_an_explicit_rule_still_asks_about_a_notes_file(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), ask=["Write(*)"])
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), ask=["Write(*)"])
         held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
         return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
 
@@ -1641,7 +1641,7 @@ def test_loading_the_defs_seeds_an_agents_notes_from_the_project(tmp_path):
     )
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         held = team.agent_memory.directory("reviewer", "project") / "MEMORY.md"
         return held.read_text(encoding="utf-8") if held.exists() else ""
 
@@ -1656,7 +1656,7 @@ def _git(directory, *args):
 
 def test_the_diff_shows_the_working_tree_of_a_repository(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         session = Session(team, session_id="diff1")
         _git(tmp_path, "init", "-q")
         _git(tmp_path, "config", "user.email", "t@example.com")
@@ -1677,7 +1677,7 @@ def test_the_diff_shows_the_working_tree_of_a_repository(tmp_path):
 
 def test_outside_a_repository_the_diff_lists_what_this_session_touched(tmp_path):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), permission_mode="acceptEdits")
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), permission_mode="acceptEdits")
         session = Session(team, session_id="diff2")
         (tmp_path / "notes.md").write_text("first\nsecond\n", encoding="utf-8")
         team.file_history.snapshot(1)

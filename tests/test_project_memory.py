@@ -6,7 +6,7 @@ from pyclaw.team.builder import build_team
 
 def _team(tmp_path):
     async def main():
-        return build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
 
     return asyncio.run(main())
 
@@ -88,7 +88,7 @@ def test_reading_a_covered_file_brings_its_rule_into_the_turn(tmp_path):
     _rule(tmp_path / ".pyclaw" / "rules", "python", "paths: src/*.py", "Annotate every argument.\n")
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         out = await team.execute_tool("Read", {"file_path": "src/a.py"}, team.lead, "t1")
         await team.end_session("done")
         return out

@@ -123,8 +123,7 @@ def _history(tmp_path, monkeypatch):
     async def build():
         team = Team(
             "hist",
-            provider="agnes",
-            model="agnes-2.5-flash",
+            model="agnes/agnes-2.5-flash",
             client_factory=lambda inst, model=None: MockClient(handler=respond, usage=usage),
         )
         return Session(team, session_id="hist"), home

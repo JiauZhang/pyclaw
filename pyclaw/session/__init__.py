@@ -38,7 +38,6 @@ from pyclaw.team.builder import _dispatch_event, checkpoints_enabled
 class Session(HistoryMixin, ReadoutMixin):
     def __init__(self, entity, session_id=None, resume_from=None):
         self._team: Team = entity
-        self._provider = entity.provider
         self._model = entity.model
         self._tools = entity.provided_tools
         self.mode = getattr(entity, "_pyclaw_mode", "agent")
@@ -106,7 +105,7 @@ class Session(HistoryMixin, ReadoutMixin):
 
     @property
     def provider(self) -> str:
-        return self._provider
+        return str(self._model or "").partition("/")[0]
 
     @property
     def model(self) -> str:
@@ -231,7 +230,7 @@ class Session(HistoryMixin, ReadoutMixin):
         entry = row(
             turn,
             str(self.conv_session_id or self.name),
-            self._provider,
+            self.provider,
             self._model,
             input_tokens=usage.prompt_tokens - seen["input"],
             output_tokens=usage.completion_tokens - seen["output"],

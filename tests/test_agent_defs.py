@@ -80,7 +80,7 @@ def _builtin_types():
 
 
 async def _agent_def(cwd, agent_type):
-    team = build_team("agnes", "agnes-2.5-flash", cwd=str(cwd))
+    team = build_team("agnes/agnes-2.5-flash", cwd=str(cwd))
     return team.agent_defs.get(agent_type)
 
 
@@ -120,7 +120,7 @@ def test_build_team_offers_every_agent_it_loaded(tmp_path):
     _project(tmp_path, "reviewer.md", REVIEWER)
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path))
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         schema = next(t for t in team.tool_schemas(team.tool_context) if t["name"] == "Agent")
         return team.agent_defs, schema["description"]
 
@@ -361,7 +361,7 @@ def test_bad_agent_json_is_reported_instead_of_swallowed():
 
 
 async def _cli_agent(cwd, agents_json):
-    team = build_team("agnes", "agnes-2.5-flash", cwd=str(cwd), agents_json=agents_json)
+    team = build_team("agnes/agnes-2.5-flash", cwd=str(cwd), agents_json=agents_json)
     return team.agent_defs.get("reviewer")
 
 
@@ -432,12 +432,12 @@ def test_an_unquoted_glob_in_frontmatter_survives_the_quoting_repair():
     assert defn.description == "reads diffs: fast and thorough"
 
 
-def test_a_claude_code_alias_model_warns_and_inherits():
+def test_a_bare_model_name_is_kept_for_spawn_to_qualify():
     defn, problem = mod._definition_from_md(
         "---\nname: reviewer\ndescription: reads diffs\nmodel: sonnet\n---\n\n" + "be harsh " * 10, ALL_TOOLS
     )
-    assert defn.model is None
-    assert "claude-code alias" in problem
+    assert defn.model == "sonnet"
+    assert problem == ""
 
 
 def test_a_provider_model_value_is_kept_for_spawn_resolution():

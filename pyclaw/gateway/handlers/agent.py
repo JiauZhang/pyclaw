@@ -10,18 +10,14 @@ def _resolve_params(params: Dict[str, Any], context: Dict[str, Any]) -> Dict[str
 
     message = params.get("message", "").strip()
     session_key = params.get("sessionKey") or params.get("session_id") or "default"
-    provider = params.get("provider")
     model = params.get("model")
 
-    if not provider and gateway and gateway.config.provider:
-        provider = gateway.config.provider
     if not model and gateway and gateway.config.model:
         model = gateway.config.model
 
     return dict(
         message=message,
         session_key=session_key,
-        provider=provider,
         model=model,
         stream=params.get("stream", False),
         runtime=runtime,
@@ -33,7 +29,6 @@ async def _get_session(resolved: Dict[str, Any]):
     gateway = resolved["gateway"]
     return await gateway._get_session(
         resolved["session_key"],
-        resolved["provider"],
         resolved["model"],
     )
 
@@ -127,13 +122,9 @@ async def handle_chat_completions(params: Dict[str, Any], context: Dict[str, Any
         return {"error": "No messages provided"}
 
     resolved = _resolve_params(params, context)
-    provider = resolved["provider"]
-    model_name = model_param
-    if "/" in model_param:
-        provider, model_name = model_param.split("/", 1)
 
     try:
-        session = await _get_session({**resolved, "provider": provider, "model": model_name})
+        session = await _get_session({**resolved, "model": model_param})
     except Exception as e:
         return {"error": f"Failed to initialize agent: {str(e)}"}
 

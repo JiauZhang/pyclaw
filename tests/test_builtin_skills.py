@@ -17,7 +17,7 @@ def _opened(tmp_path, monkeypatch, conversation="conv-debug", line=None):
 
     async def main():
         monkeypatch.setenv("PYCLAW_DEBUG", "")
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), conversation_id=conversation)
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), conversation_id=conversation)
         session = Session(team, session_id=conversation)
         reply = await handle_slash(line, session) if line else None
         return session, team, reply
@@ -175,7 +175,7 @@ def test_typing_a_skill_name_runs_it_and_sends_its_prompt(tmp_path, monkeypatch)
     from pyclaw.team.builder import build_team
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(root), conversation_id="conv-typed")
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id="conv-typed")
         session = Session(team, session_id="conv-typed")
         return await handle_slash("/review the branch", session)
 
@@ -192,7 +192,7 @@ def test_the_security_review_reports_the_change_it_cannot_fit(tmp_path, monkeypa
     from pyclaw.team.builder import build_team
 
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(root), conversation_id="conv-sec")
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(root), conversation_id="conv-sec")
         session = Session(team, session_id="conv-sec")
         return await handle_slash("/security-review", session)
 

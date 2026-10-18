@@ -122,7 +122,6 @@ def _agent_memory(cwd: str):
 
 
 def build_team(
-    provider: str,
     model: str,
     instruction: Optional[str] = None,
     tools: Optional[list] = None,
@@ -178,7 +177,6 @@ def build_team(
         cron_root = pyclaw_home()
     team = Team(
         f"pyclaw-{next(_name_counter)}",
-        provider=provider,
         model=model,
         tools=resolved,
         tool_context=ToolContext(cwd=Path(cwd).resolve(), extra_dirs=tuple(gate.extra_dirs)),

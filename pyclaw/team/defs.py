@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 
 from chatchat.runtime.markdown import parse_frontmatter
-from chatchat.team.agents import AgentDefinition, agent_model_problem
+from chatchat.team.agents import AgentDefinition
 
 from pyclaw.config import __config_file__
 from pyclaw.home import pyclaw_home
@@ -139,8 +139,7 @@ def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | N
     else:
         tools = [by_name[n] for n in raw_tools if n in by_name]
     raw_model = str(meta.get("model") or "").strip()
-    problem = agent_model_problem(raw_model)
-    model = None if problem or raw_model in ("", "inherit") else raw_model
+    model = None if raw_model in ("", "inherit") else raw_model
     return (
         AgentDefinition(
             name,
@@ -151,7 +150,7 @@ def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | N
             description=description,
             memory=_memory_scope(meta.get("memory")),
         ),
-        problem,
+        "",
     )
 
 
@@ -218,9 +217,6 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
             raise ValueError(f"--agents: {name} must be an object")
         wanted = spec.get("tools")
         tools = list(all_tools) if not wanted else [by_name[n] for n in wanted if n in by_name]
-        model_problem = agent_model_problem(spec.get("model"))
-        if model_problem:
-            raise ValueError(f"--agents: {name}: {model_problem}")
         defs.append(
             AgentDefinition(
                 str(name),

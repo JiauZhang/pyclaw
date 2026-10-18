@@ -1,4 +1,5 @@
 import os
+import warnings
 from functools import lru_cache
 from pathlib import Path
 
@@ -20,8 +21,7 @@ def load() -> dict:
         "gateway": {
             "http": {"port": 12321, "host": "127.0.0.1"},
         },
-        "provider": "agnes",
-        "model": "agnes-2.5-flash",
+        "model": "agnes/agnes-2.5-flash",
         "contextWindow": 200_000,
         "enabled_channels": ["wechat"],
         "greeting_text": "PyClaw 已上线，随时为您服务！",
@@ -37,6 +37,12 @@ def load() -> dict:
             config = _deep_merge(defaults, saved)
         except Exception:
             config = defaults
+        if isinstance(config.get("provider"), str) and config["provider"]:
+            warnings.warn(
+                'config key "provider" is obsolete: the model is now one "provider/model" '
+                'string in the "model" key, and this config value is ignored',
+                UserWarning,
+            )
     else:
         config = defaults
     return config

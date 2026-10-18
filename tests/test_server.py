@@ -89,15 +89,14 @@ def test_serve_overrides_apply_to_the_run_without_touching_the_saved_config():
 
     from pyclaw.__main__ import _apply_overrides
 
-    saved = {"provider": "agnes", "model": "m1", "enabled_channels": ["wechat"]}
-    args = argparse.Namespace(provider="p", model="m", channels=["web"])
+    saved = {"model": "agnes/m1", "enabled_channels": ["wechat"]}
+    args = argparse.Namespace(model="p/m", channels=["web"])
 
     settings = _apply_overrides(dict(saved), args)
 
-    assert settings["provider"] == "p"
-    assert settings["model"] == "m"
+    assert settings["model"] == "p/m"
     assert settings["enabled_channels"] == ["web"]
-    assert saved == {"provider": "agnes", "model": "m1", "enabled_channels": ["wechat"]}
+    assert saved == {"model": "agnes/m1", "enabled_channels": ["wechat"]}
 
 
 def test_commands_payload_survives_real_skill_objects():

@@ -60,7 +60,6 @@ class GatewayConfig:
     port: int = 12321
     host: str = "127.0.0.1"
     cors_origins: List[str] = field(default_factory=list)
-    provider: Optional[str] = None
     model: Optional[str] = None
     enabled_channels: List[str] = field(default_factory=lambda: ["wechat"])
     use_team: bool = False
@@ -128,10 +127,9 @@ class GatewayServer:
     def webchat_enabled(self) -> bool:
         return "web" in self.config.enabled_channels
 
-    def _new_session(self, conversation_id: str, provider=None, model=None) -> Session:
+    def _new_session(self, conversation_id: str, model=None) -> Session:
         return Session(
             build_team(
-                provider=provider or self.config.provider,
                 model=model or self.config.model,
                 http_options={"timeout": 300},
                 conversation_id=conversation_id,
@@ -142,10 +140,10 @@ class GatewayServer:
             session_id=conversation_id,
         )
 
-    async def _get_session(self, session_key: str, provider=None, model=None) -> Session:
+    async def _get_session(self, session_key: str, model=None) -> Session:
         session = self._sessions.get(session_key)
         if session is None:
-            session = self._new_session(session_key, provider, model)
+            session = self._new_session(session_key, model)
             session.restore_transcript()
             self._sessions[session_key] = session
             self.runtime.get_or_create_session(session_key, session.name)
@@ -233,7 +231,7 @@ class GatewayServer:
                 "session_id": conversation_id,
                 "idle": True,
                 "model": self.config.model or "",
-                "provider": self.config.provider or "",
+                "provider": (self.config.model or "").partition("/")[0],
                 "mode": "default",
                 "context": {"used": 0, "window": int(configured_context_window() or 0), "percent": None},
                 "usage": {"input": 0, "output": 0, "cached": 0, "total": 0},

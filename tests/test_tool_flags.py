@@ -35,7 +35,7 @@ def test_a_comma_inside_a_rule_argument_stays_in_that_rule():
 
 def _team(tmp_path, **kw):
     async def main():
-        team = build_team("agnes", "agnes-2.5-flash", cwd=str(tmp_path), **kw)
+        team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), **kw)
         await team.end_session("done")
         return team._pyclaw_gate
 
