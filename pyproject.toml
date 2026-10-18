@@ -26,6 +26,9 @@ dependencies = [
     "textual~=8.2.8",
 ]
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.17.0"]
+
 [project.scripts]
 pyclaw = "pyclaw.__main__:main"
 
