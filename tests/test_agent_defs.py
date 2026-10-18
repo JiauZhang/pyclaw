@@ -538,3 +538,32 @@ def test_load_agent_defs_passes_package_dirs_through(tmp_path):
     agents = _package_agents_dir(tmp_path)
     defs = mod.load_agent_defs(str(tmp_path), ALL_TOOLS, package_dirs=[(agents, "chatool")])
     assert "paper-analyst" in [d.agent_type for d in defs]
+
+
+def test_the_extended_frontmatter_fields_reach_the_definition():
+    defn, problem = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs\ndisallowedTools: Write, Edit\n"
+        "skills: review-rules, safety\nmaxTurns: 12\neffort: high\nisolation: worktree\n---\n\n" + "be harsh " * 10,
+        ALL_TOOLS,
+    )
+    assert problem == ""
+    assert {t.name for t in defn.tools} == {t.name for t in ALL_TOOLS} - {"Write", "Edit"}
+    assert defn.skills == ("review-rules", "safety")
+    assert defn.max_turns == 12
+    assert defn.effort == "high"
+    assert defn.isolation == "worktree"
+
+
+def test_an_unknown_isolation_value_is_dropped():
+    defn, _ = mod._definition_from_md(
+        "---\nname: reviewer\ndescription: reads diffs\nisolation: container\n---\n\n" + "be harsh " * 10, ALL_TOOLS
+    )
+    assert defn.isolation == ""
+
+
+def test_a_zero_or_garbage_max_turns_is_not_a_limit():
+    for raw in ("0", "-3", "soon"):
+        defn, _ = mod._definition_from_md(
+            f"---\nname: reviewer\ndescription: reads diffs\nmaxTurns: {raw}\n---\n\n" + "be harsh " * 10, ALL_TOOLS
+        )
+        assert defn.max_turns is None

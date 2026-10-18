@@ -114,6 +114,14 @@ def _parse_tools_field(raw) -> list[str] | None:
     return [t.strip() for t in raw.split(",") if t.strip()]
 
 
+def _positive_int(raw) -> int | None:
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
 MEMORY_SCOPES = ("user", "project", "local")
 
 
@@ -140,6 +148,13 @@ def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | N
         tools = [by_name[n] for n in raw_tools if n in by_name]
     raw_model = str(meta.get("model") or "").strip()
     model = None if raw_model in ("", "inherit") else raw_model
+    disallowed = tuple(_parse_tools_field(meta.get("disallowedTools", "")) or ())
+    skills = tuple(_parse_tools_field(meta.get("skills", "")) or ())
+    effort = str(meta.get("effort") or "").strip()
+    isolation = str(meta.get("isolation") or "").strip()
+    if isolation and isolation != "worktree":
+        isolation = ""
+    tools = [t for t in tools if t.name not in set(disallowed)]
     return (
         AgentDefinition(
             name,
@@ -149,6 +164,11 @@ def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | N
             permission_mode=str(meta.get("permissionMode") or "") or None,
             description=description,
             memory=_memory_scope(meta.get("memory")),
+            disallowed_tools=disallowed,
+            skills=skills,
+            max_turns=_positive_int(meta.get("maxTurns")),
+            effort=effort,
+            isolation=isolation,
         ),
         "",
     )
@@ -226,6 +246,13 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
                 permission_mode=spec.get("permissionMode") or None,
                 description=str(spec.get("description") or ""),
                 memory=_memory_scope(spec.get("memory")),
+                disallowed_tools=tuple(_parse_tools_field(spec.get("disallowedTools", "")) or ()),
+                skills=tuple(_parse_tools_field(spec.get("skills", "")) or ()),
+                max_turns=_positive_int(spec.get("maxTurns")),
+                effort=str(spec.get("effort") or "").strip(),
+                isolation=str(spec.get("isolation") or "").strip()
+                if str(spec.get("isolation") or "").strip() == "worktree"
+                else "",
             )
         )
     return defs
