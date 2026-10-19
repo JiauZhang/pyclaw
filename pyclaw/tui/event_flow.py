@@ -59,12 +59,17 @@ class EventRouterMixin:
     def _member_names(self) -> set:
         return {a.name for a in self._team.agents.values()}
 
+    def _thinking_shut(self) -> bool:
+        return self._session is not None and not self._session.thinking.enabled
+
     async def _handle(self, ev):
         logger.debug("event %s agent=%r data=%s", ev.kind, ev.agent, _log_data(ev.data))
         name = ev.agent or ""
         lead = str(getattr(self._team.lead, "name", ""))
         mine = not name or name == lead
         if ev.kind == AGENT_REASON_START:
+            if self._thinking_shut():
+                return
             self._note(name, think=True)
             if mine:
                 await self._add_think(ev)

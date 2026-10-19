@@ -2430,6 +2430,7 @@ def test_a_leading_blank_delta_keeps_the_status_row():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
+            app._session.set_thinking(Thinking("medium"))
             await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
             await app._handle(RuntimeEvent(AGENT_TEXT, agent="lead", data={"delta": "\n"}))
             assert app._think is not None
@@ -2446,6 +2447,7 @@ def test_the_status_row_hands_over_to_the_tool_row():
         async with PyClawApp(builder=_builder).run_test() as pilot:
             app = pilot.app
             await pilot.pause()
+            app._session.set_thinking(Thinking("medium"))
             await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
             alive = []
             real = app._add_tool
@@ -2476,6 +2478,7 @@ def test_the_status_row_outlives_the_leader_while_teammates_run():
             app = pilot.app
             await pilot.pause()
             team.worker_busy = True
+            app._session.set_thinking(Thinking("medium"))
             await app._handle(RuntimeEvent(AGENT_REASON_START, agent="lead"))
             await app._handle(RuntimeEvent(AGENT_TURN_FINISHED, agent="lead"))
             assert app._think is not None
@@ -5973,3 +5976,20 @@ def test_every_turn_earns_its_own_duration_line():
     blocks = asyncio.run(scenario())
     assert len(blocks) == 2
     assert blocks[0] is not blocks[1]
+
+
+def test_a_shut_thinking_dial_keeps_the_thinking_line_away():
+    async def scenario():
+        async with PyClawApp(builder=lambda: _FakeTeam()).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            app._session.set_thinking(Thinking("off"))
+            emit(AGENT_REASON_START, agent="lead")
+            await pilot.pause()
+            assert app._state(str(app._team.lead.name))["think"] is False
+            app._session.set_thinking(Thinking("medium"))
+            emit(AGENT_REASON_START, agent="lead")
+            await pilot.pause()
+            assert app._state(str(app._team.lead.name))["think"] is True
+
+    asyncio.run(scenario())
