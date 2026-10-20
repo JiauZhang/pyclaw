@@ -12,6 +12,13 @@ class _Conv(VerticalScroll):
         except Exception:
             pass
 
+    def watch_virtual_size(self, virtual_size):
+        try:
+            if self.app._follow:
+                self.scroll_end(animate=False)
+        except Exception:
+            pass
+
 
 def _content_width(widget, indent: int) -> int:
     width = widget.size.width or 0

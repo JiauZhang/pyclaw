@@ -2740,7 +2740,7 @@ def test_follow_pauses_and_jump_to_bottom_resumes():
             await app._add_tool(
                 RuntimeEvent(AGENT_TOOL_CALL, agent="lead", data={"tool": "k", "input": {"x": 1}, "tool_use_id": "t2"})
             )
-            assert calls == [1]
+            assert calls  # the mount and the virtual-size growth each pin the bottom
 
     asyncio.run(scenario())
 
@@ -5995,3 +5995,55 @@ def test_a_shut_thinking_dial_keeps_the_thinking_line_away():
             assert app._state(str(app._team.lead.name))["think"] is True
 
     asyncio.run(scenario())
+
+
+def test_the_turn_footer_stays_in_view_when_the_reply_fills_the_screen():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(80, 12)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            conv = app._conv()
+            states = []
+            for i in range(10):
+                await app._append_block(f"reply line {i} with some content")
+                states.append((app._follow, conv.is_vertical_scroll_end))
+            await app._append_block("* Worked for 12s")
+            await pilot.pause()
+            states.append(("after-footer", app._follow, conv.is_vertical_scroll_end))
+            return states
+
+    states = asyncio.run(scenario())
+    for state in states:
+        print("STATE", state)
+    assert states[-1][1] is True and states[-1][2] is True
+
+
+def test_the_footer_stays_pinned_after_a_wrapped_reply_fills_the_screen():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(80, 12)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            conv = app._conv()
+            await app._append_block("\n".join(f"body line {i}" for i in range(11)))
+            await app._append_block("* Worked for 12s")
+            await pilot.pause()
+            return conv.is_vertical_scroll_end, app._follow
+
+    assert asyncio.run(scenario()) == (True, True)
+
+
+def test_the_footer_stays_pinned_when_the_streamed_body_fills_the_screen():
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test(size=(80, 12)) as pilot:
+            app = pilot.app
+            await pilot.pause()
+            conv = app._conv()
+            app._begin_turn()
+            await app._start_live()
+            app._live_text = "\n".join(f"body line {i}" for i in range(11))
+            app._update_live()
+            await app._finish_work()
+            await pilot.pause()
+            return conv.is_vertical_scroll_end, app._follow
+
+    assert asyncio.run(scenario()) == (True, True)
