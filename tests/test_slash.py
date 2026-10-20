@@ -633,18 +633,18 @@ def test_effort_takes_the_unified_vocabulary(monkeypatch):
     asyncio.run(_call("/effort off", session))
     assert session.set[-1].level == "off"
     unknown = asyncio.run(_call("/effort extreme", session))
-    assert "off, low, medium, high, xhigh" in unknown
+    assert "off, low, medium, high, max" in unknown
 
 
 def test_the_status_line_shows_the_reasoning_setting(monkeypatch):
 
     monkeypatch.setattr(config, "load", lambda: {"thinking": "low"})
     session = _fake_session()
-    session.thinking = Thinking("xhigh")
+    session.thinking = Thinking("max")
 
     out = asyncio.run(_call("/status", session, session_key="k1"))
 
-    assert "thinking xhigh" in out
+    assert "thinking max" in out
 
 
 def _history(monkeypatch, tmp_path, rows):

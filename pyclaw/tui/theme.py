@@ -90,7 +90,9 @@ AGENT_COLORS = ("#FF6B80", "#4782C8", "#4EBA65", "#FFC107", "#AF87FF", "#D77757"
 
 MODE_SYMBOLS = {"acceptEdits": "\u23f5\u23f5", "allowAll": "\u23f5\u23f5", "plan": "\u23f8"}
 MODE_TITLES = {"acceptEdits": "accept edits", "plan": "plan mode", "allowAll": "skip permission prompts"}
-MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C", "allowAll": "#FF6B80"}
+MODE_COLORS = {"acceptEdits": "#AF87FF", "plan": "#48968C", "allowAll": "#E24B4A"}
+THINKING_GLYPHS = {"off": "\u25cb", "low": "\u25d4", "medium": "\u25d0", "high": "\u25d5", "max": "\u25cf"}
+THINKING_COLORS = {"off": "$text-muted", "low": "#378ADD", "medium": "#1D9E75", "high": "#EF9F27", "max": "#E24B4A"}
 
 
 SPINNER_CHARS = ["\u00b7", "\u2722", "\u2733", "\u2736", "\u273b", "\u273d"]

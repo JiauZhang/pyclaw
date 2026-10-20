@@ -163,7 +163,16 @@ def test_usage_hud_lists_the_numbers_the_bar_is_made_of():
         (Usage(), "in: 0  out: 0  cache: 0%  total: 0"),
         (Usage(prompt=1_000, completion=20, total=1_020), "in: 1k  out: 20  cache: 0%  total: 1k"),
     ):
-        assert usage_hud(usage) == expected
+        assert _plain(usage_hud(TRIPLE, usage)) == expected
+
+
+def test_usage_hud_wears_the_same_colours_as_its_bar_segments():
+    markup = usage_hud(TRIPLE, Usage(prompt=1901, completion=500, total=2401, cached=1200))
+    fields = {label: colour for colour, label in re.findall(r"\[(#[0-9A-F]{6})\]([a-z]+):", markup)}
+    assert fields["cache"] == banner.rgb_to_hex(banner.ramp(TOP, BOTTOM, 0.0))
+    assert fields["in"] == banner.rgb_to_hex(banner.ramp(TOP, BOTTOM, 0.5))
+    assert fields["out"] == banner.rgb_to_hex(banner.ramp(TOP, BOTTOM, 1.0))
+    assert "total:" in _plain(markup)
 
 
 def test_git_label_names_the_branch_and_the_dirty_files():

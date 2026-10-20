@@ -147,7 +147,7 @@ class StatusMixin:
                     thinking_label(s),
                     context_meter(self._triple, s.used_context, s.context_window, cells),
                     usage_meter(self._triple, s.usage, cells),
-                    usage_hud(s.usage),
+                    usage_hud(self._triple, s.usage),
                     message_count(s),
                     elapsed_row(self._hud_started),
                 ),

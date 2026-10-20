@@ -7,7 +7,7 @@ from pyclaw import banner
 
 from pyclaw.tui import keys
 from pyclaw.tui.formatting import _format_count, duration
-from pyclaw.tui.theme import MODE_COLORS, MODE_SYMBOLS, MODE_TITLES
+from pyclaw.tui.theme import MODE_COLORS, MODE_SYMBOLS, MODE_TITLES, THINKING_COLORS, THINKING_GLYPHS
 
 
 CONTEXT_WARNING_BUFFER_TOKENS = 20_000
@@ -86,16 +86,18 @@ def usage_meter(triple: tuple, usage, cells: int = CONTEXT_METER_CELLS) -> str:
     return f"{_meter_edges()}{body}{_meter_edges()}"
 
 
-def usage_hud(usage) -> str:
+def usage_hud(triple: tuple, usage) -> str:
     prompt = int(getattr(usage, "prompt_tokens", 0) or 0)
     completion = int(getattr(usage, "completion_tokens", 0) or 0)
     total = int(getattr(usage, "total_tokens", 0) or 0)
     details = getattr(usage, "prompt_tokens_details", None) or {}
     cached = int(details.get("cached_tokens", 0) or 0)
+    spans = [banner.rgb_to_hex(banner.ramp(triple[0], triple[1], stop)) for stop in (0.0, 0.5, 1.0)]
     return (
-        f"in: {_format_count(prompt)}  out: {_format_count(completion)}  "
-        f"cache: {round(cached / prompt * 100) if prompt else 0}%  "
-        f"total: {_format_count(total)}"
+        f"[{spans[1]}]in: {_format_count(prompt)}[/]  "
+        f"[{spans[2]}]out: {_format_count(completion)}[/]  "
+        f"[{spans[0]}]cache: {round(cached / prompt * 100) if prompt else 0}%[/]  "
+        f"[dim]total: {_format_count(total)}[/]"
     )
 
 
@@ -147,7 +149,10 @@ def context_note(session) -> str:
 
 
 def thinking_label(session) -> str:
-    return f"[dim]{session.thinking.label()}[/]"
+    level = session.thinking.level
+    color = THINKING_COLORS.get(level, "$text-muted")
+    glyph = THINKING_GLYPHS.get(level, "\u25cb")
+    return f"[{color}]{glyph} thinking {level}[/]"
 
 
 def mode_pill(session, *, background: bool) -> str:
