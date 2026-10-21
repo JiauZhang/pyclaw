@@ -28,7 +28,7 @@ The main way to use PyClaw is the terminal UI, run from the directory you want
 it to work in:
 
 ```shell
-pyclaw tui --provider agnes --model agnes-3.0-flash --use-team
+pyclaw --model agnes/agnes-3.0-flash --use-team
 ```
 
 | Flag | Description |

@@ -246,7 +246,7 @@ def test_a_started_worktree_that_cannot_be_made_says_so_and_leaves(tmp_path):
 def test_the_worktree_flag_is_refused_where_there_is_no_git(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(__main__, "load_config", lambda: {"provider": "p", "model": "m"})
-    args = __main__._build_parser().parse_args(["tui", "--worktree"])
+    args = __main__._build_parser().parse_args(["--worktree"])
     with pytest.raises(SystemExit) as exit_info:
         __main__.run_tui(args)
     assert exit_info.value.code == 1

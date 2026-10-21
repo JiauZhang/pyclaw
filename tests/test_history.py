@@ -123,7 +123,7 @@ def test_parser_exposes_resume_flags():
     assert headless.resume is None
     assert __main__._cli_resume(headless) is True
 
-    tui = parser.parse_args(["tui", "--resume", "s1"])
+    tui = parser.parse_args(["--resume", "s1"])
     assert tui.resume == "s1"
     assert __main__._cli_resume(tui) is True
 

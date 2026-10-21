@@ -60,7 +60,7 @@ def test_start_server_does_not_persist_cli_overrides(monkeypatch):
 
 
 def test_session_parsers_carry_the_flags_that_steer_a_run():
-    for argv, team in ((["-p", "hi"], False), (["tui"], True)):
+    for argv, team in ((["-p", "hi"], False), ([], True)):
         args = __main__._build_parser().parse_args(
             argv
             + ["--allowed-tools", "Bash(git push:*)", "--disallowed-tools", "Bash(curl:*)", "--ask", "Bash(docker:*)"]
@@ -176,7 +176,7 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
     """run_tui / run_headless must not reach for flags the parser lacks.
 
     Regression: both called `setup_logging(args.log_level, console=False)`
-    while neither `pyclaw tui` nor `pyclaw -p` defines --log-level (only the
+    while neither bare `pyclaw` nor `pyclaw -p` defines --log-level (only the
     serve/rebind subparsers do), so the TUI died with AttributeError before
     it painted anything. Hand-built namespaces in other tests hid it.
     """
@@ -192,7 +192,7 @@ def test_session_commands_start_logging_from_the_real_parser(monkeypatch):
         with pytest.raises(SystemExit):
             asyncio.run(__main__.run_headless(headless))
 
-        tui = __main__._build_parser().parse_args(["tui"])
+        tui = __main__._build_parser().parse_args([])
         assert not hasattr(tui, "log_level")
         with pytest.raises(SystemExit):
             __main__.run_tui(tui)
@@ -221,12 +221,12 @@ def test_the_hook_event_flag_reaches_the_tui(monkeypatch):
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
-    args = __main__._build_parser().parse_args(["tui", "--include-hook-events"])
+    args = __main__._build_parser().parse_args(["--include-hook-events"])
     assert args.include_hook_events is True
     __main__.run_tui(args)
     assert started["hook_events"] is True
 
-    args = __main__._build_parser().parse_args(["tui"])
+    args = __main__._build_parser().parse_args([])
     assert args.include_hook_events is False
     __main__.run_tui(args)
     assert started["hook_events"] is False
@@ -247,7 +247,7 @@ def test_what_became_of_the_worktree_is_said_once_the_screen_is_gone(monkeypatch
     monkeypatch.setattr(__main__, "setup_logging", lambda *a, **kw: None)
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
-    __main__.run_tui(__main__._build_parser().parse_args(["tui"]))
+    __main__.run_tui(__main__._build_parser().parse_args([]))
     assert "The worktree was removed." in capsys.readouterr().out
 
 
@@ -265,7 +265,7 @@ def test_a_worktree_that_cannot_be_opened_stops_the_run(monkeypatch, capsys):
     monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
     monkeypatch.setattr("pyclaw.tui.PyClawApp", _App)
     monkeypatch.setattr(__main__, "build_team", lambda *a, **kw: object())
-    args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
+    args = __main__._build_parser().parse_args(["--worktree", "side"])
     with pytest.raises(SystemExit) as exit_info:
         __main__.run_tui(args)
     assert exit_info.value.code == 1
@@ -298,7 +298,7 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(tmp_path, monk
         return object()
 
     monkeypatch.setattr(__main__, "build_team", build_team)
-    args = __main__._build_parser().parse_args(["tui", "--worktree", "side"])
+    args = __main__._build_parser().parse_args(["--worktree", "side"])
     __main__.run_tui(args)
     holders["builder"]()
 

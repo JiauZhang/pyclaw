@@ -248,8 +248,8 @@ def _json_schema(args):
     raw = getattr(args, "json_schema", None)
     if raw is None:
         return None
-    if getattr(args, "print", None) is None:
-        print("--json-schema needs --print: it shapes the answer of a non-interactive run.")
+    if getattr(args, "prompt", None) is None:
+        print("--json-schema needs --prompt: it shapes the answer of a non-interactive run.")
         raise SystemExit(1)
     try:
         return json.loads(raw)
@@ -269,7 +269,7 @@ async def run_headless(args):
     try:
         out = await prompt_once(
             model,
-            args.print,
+            args.prompt,
             permission_mode=args.permission_mode,
             allow_all_unlocked=bool(getattr(args, "allow_all_unlocked", args.allow_all)),
             session_id=session_id,
@@ -435,19 +435,19 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-V", "--version", action="store_true", help="Show version and exit")
     parser.add_argument(
         "-p",
-        "--print",
+        "--prompt",
         type=str,
         metavar="PROMPT",
         default=None,
-        help="Print mode: run one prompt non-interactively and print the result",
+        help="Run one prompt non-interactively and print the result",
     )
-    parser.add_argument("--output", type=str, default="text", choices=["text", "json"], help="Output format for print mode")
+    parser.add_argument("--output", type=str, default="text", choices=["text", "json"], help="Output format for prompt mode")
     parser.add_argument(
         "--json-schema",
         type=str,
         default=None,
         metavar="SCHEMA",
-        help="JSON Schema the answer has to match (needs --print). "
+        help="JSON Schema the answer has to match (needs --prompt). "
         "The run ends by calling the StructuredOutput tool "
         "with a payload validated against it.",
     )
@@ -518,20 +518,6 @@ def _build_parser() -> argparse.ArgumentParser:
     stop_parser.add_argument("--force", action="store_true", help="Send SIGKILL instead of SIGTERM")
     stop_parser.add_argument("--all", action="store_true", help="Kill every `pyclaw serve` process, ignoring port")
 
-    tui_parser = subparsers.add_parser("tui", help="Launch the interactive terminal UI")
-    tui_parser.add_argument("--model", type=str, default=None, help='Model as "provider/model" (overrides config)')
-    tui_parser.add_argument(
-        "--permission-mode",
-        type=str,
-        default=None,
-        choices=["default", "acceptEdits", "plan", "allowAll"],
-        help="Session permission mode",
-    )
-    tui_parser.add_argument(
-        "--allow-all", action="store_true", default=False, help="Unlock allowAll for this session. Refused under root/sudo."
-    )
-    _add_session_args(tui_parser)
-
     cli_config(subparsers)
 
     parser._channel_parser = channel_parser
@@ -588,7 +574,7 @@ def main():
     session_store.sweep(int(load_config().get("cleanupPeriodDays", 30)))
     ratelimit.configure(load_config().get("rate_limit") or {})
 
-    if args.print is not None:
+    if args.prompt is not None:
         asyncio.run(run_headless(args))
         return
 
@@ -607,16 +593,15 @@ def main():
         stop_server_cmd(args)
         return
 
-    if args.command == "tui":
-        run_tui(args)
-        return
-
     if args.command == "api":
         asyncio.run(start_api(args))
         return
 
-    if args.command == "serve" or args.command is None:
+    if args.command == "serve":
         asyncio.run(start_server(args))
+        return
+
+    run_tui(args)
 
 
 if __name__ == "__main__":

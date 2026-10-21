@@ -154,7 +154,7 @@ def test_a_shape_needs_a_prompt_to_shape(capsys):
     try:
         __main__._json_schema(args)
     except SystemExit:
-        assert "--json-schema needs --print" in capsys.readouterr().out
+        assert "--json-schema needs --prompt" in capsys.readouterr().out
     else:
         raise AssertionError("the shape reached an interactive run")
 

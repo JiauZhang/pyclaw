@@ -21,7 +21,7 @@ def _finalize(argv, config=None, monkeypatch=None):
 
 def test_the_flag_is_accepted_by_every_host():
     parser = main._build_parser()
-    for argv in (["--allow-all"], ["serve", "--allow-all"], ["api", "--allow-all"], ["tui", "--allow-all"]):
+    for argv in (["--allow-all"], ["serve", "--allow-all"], ["api", "--allow-all"]):
         assert parser.parse_args(argv).allow_all is True
 
 

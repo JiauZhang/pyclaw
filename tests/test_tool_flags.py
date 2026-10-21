@@ -18,12 +18,12 @@ def test_one_value_can_carry_several_comma_separated_rules():
 
 
 def test_a_repeated_flag_adds_to_the_list():
-    args = __main__._build_parser().parse_args(["tui", "--allowed-tools", "Read", "--allowed-tools", "Edit,WebSearch"])
+    args = __main__._build_parser().parse_args(["--allowed-tools", "Read", "--allowed-tools", "Edit,WebSearch"])
     assert args.allowed_tools == ["Read", "Edit", "WebSearch"]
 
 
 def test_a_rule_without_tools_is_an_empty_list_not_a_denial_of_nothing():
-    args = __main__._build_parser().parse_args(["tui"])
+    args = __main__._build_parser().parse_args([])
     assert args.allowed_tools == []
     assert args.disallowed_tools == []
     assert args.tools is None
