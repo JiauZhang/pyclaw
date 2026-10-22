@@ -37,6 +37,12 @@ def load() -> dict:
             config = _deep_merge(defaults, saved)
         except Exception:
             config = defaults
+        if config.get("rate_limit"):
+            warnings.warn(
+                'config key "rate_limit" is obsolete: rpm now lives in the chatchat config, '
+                'set it with "pyclaw config --provider <name> --rpm <n>"',
+                UserWarning,
+            )
         if isinstance(config.get("provider"), str) and config["provider"]:
             warnings.warn(
                 'config key "provider" is obsolete: the model is now one "provider/model" '

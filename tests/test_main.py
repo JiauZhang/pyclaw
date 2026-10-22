@@ -308,3 +308,60 @@ def test_the_terminal_builds_the_team_with_what_the_run_asked_for(tmp_path, monk
     assert "worktree" not in build_kw
     assert build_kw["conversation_id"]
     assert app_kw["worktree"] is None or app_kw["worktree"] == "side"
+
+
+class TestConfigCommand:
+    def _secret(self, tmp_path, monkeypatch, data):
+        path = tmp_path / "secrets.json"
+        path.write_text(__import__("json").dumps(data))
+        monkeypatch.setenv("CHATCHAT_SECRET_FILE", str(path))
+        return path
+
+    def _run(self, monkeypatch, argv):
+        monkeypatch.setattr("sys.argv", ["pyclaw"] + argv)
+        with pytest.raises(SystemExit) as exc:
+            __main__.main()
+        return exc.value.code
+
+    def test_the_bare_command_shows_profiles_then_pyclaw_settings(self, monkeypatch, capsys, tmp_path):
+        self._secret(
+            tmp_path,
+            monkeypatch,
+            {"agnes": {"type": "openai", "base_url": "https://x.example/v1", "api_key": "sk-1234567890abcd", "rpm": 60}},
+        )
+        monkeypatch.setattr(config_module, "__config_file__", tmp_path / "config.json")
+        monkeypatch.setattr(
+            __main__,
+            "load_config",
+            lambda: {
+                "model": "agnes/agnes-3.0-flash",
+                "contextWindow": 200000,
+                "gateway": {"http": {"host": "127.0.0.1", "port": 12321}},
+                "enabled_channels": ["web", "wechat"],
+                "permissions": {"defaultMode": "default"},
+            },
+        )
+        assert self._run(monkeypatch, ["config"]) == 0
+        out = capsys.readouterr().out
+        assert "agnes" in out and "sk-123****abcd" in out and "rpm=60" in out
+        assert "pyclaw config:" in out and "agnes/agnes-3.0-flash" in out and "127.0.0.1:12321" in out
+
+    def test_a_write_keeps_the_pyclaw_section_out(self, monkeypatch, capsys, tmp_path):
+        secret = self._secret(tmp_path, monkeypatch, {})
+        assert self._run(monkeypatch, ["config", "--provider", "agnes", "--rpm", "30"]) == 0
+        out = capsys.readouterr().out
+        assert "pyclaw config:" not in out
+        assert "rpm" in secret.read_text()
+
+    def test_the_rpm_limit_comes_from_the_chatchat_profiles(self, monkeypatch):
+        configured = {}
+        monkeypatch.setattr(__main__.ratelimit, "configure", lambda limits: configured.update(limits))
+        monkeypatch.setattr(__main__, "rate_limits", lambda: {"agnes": 60})
+        monkeypatch.setattr(__main__, "load_config", lambda: {"model": "p/m"})
+        monkeypatch.setattr(__main__, "parse_config", lambda args: 0)
+        monkeypatch.setattr(__main__, "is_write_request", lambda args: False)
+        monkeypatch.setattr(__main__, "_show_pyclaw_config", lambda: None)
+        monkeypatch.setattr("sys.argv", ["pyclaw", "config"])
+        with pytest.raises(SystemExit):
+            __main__.main()
+        assert configured == {"agnes": 60}

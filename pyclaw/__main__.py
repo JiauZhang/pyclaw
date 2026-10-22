@@ -7,6 +7,7 @@ import secrets
 import sys
 from logging.handlers import RotatingFileHandler
 from pyclaw import GatewayServer, GatewayConfig, load as load_config, __version__
+from chatchat.client import rate_limits
 from chatchat.runtime import ratelimit
 from pyclaw.events import open_stream
 from pyclaw.home import pyclaw_home
@@ -15,10 +16,11 @@ from pyclaw.session import store as session_store
 from pyclaw.session.store import LOG_FORMAT as _LOG_FORMAT, resolve_session_id
 from pyclaw.team.builder import build_team
 from pyclaw.channels.im import IMChannelAdapter
+from pyclaw import config as pyclaw_config
 from pyclaw.config import debug_on
 from pyclaw.cli import stop_server
 from pyclaw.permissions import split_rules
-from chatchat.cli.config import parse_config, cli_config
+from chatchat.cli.config import cli_config, is_write_request, parse_config
 
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
 from chatchat.team.worktrees import in_repository
@@ -560,6 +562,19 @@ def _refuse_allow_all_under_root(args) -> None:
         raise SystemExit(1)
 
 
+def _show_pyclaw_config():
+    cfg = load_config()
+    http = (cfg.get("gateway") or {}).get("http") or {}
+    permissions = cfg.get("permissions") or {}
+    print()
+    print(f"pyclaw config: {pyclaw_config.__config_file__}")
+    print(f"  model          {cfg.get('model') or '-'}")
+    print(f"  contextWindow  {cfg.get('contextWindow') or '-'}")
+    print(f"  gateway        http://{http.get('host', '-')}:{http.get('port', '-')}")
+    print(f"  channels       {', '.join(cfg.get('enabled_channels') or []) or '-'}")
+    print(f"  permissions    defaultMode={permissions.get('defaultMode', '-')}")
+
+
 def main():
     parser = _build_parser()
     args = _finalize_args(parser.parse_args())
@@ -572,15 +587,17 @@ def main():
         return
 
     session_store.sweep(int(load_config().get("cleanupPeriodDays", 30)))
-    ratelimit.configure(load_config().get("rate_limit") or {})
+    ratelimit.configure(rate_limits())
 
     if args.prompt is not None:
         asyncio.run(run_headless(args))
         return
 
     if args.command == "config":
-        parse_config(args)
-        return
+        code = parse_config(args)
+        if code == 0 and not is_write_request(args):
+            _show_pyclaw_config()
+        sys.exit(code)
 
     if args.command == "channel":
         if args.channel_command == "rebind":
