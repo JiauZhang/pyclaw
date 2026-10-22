@@ -12,7 +12,15 @@ from chatchat.team.team import Team
 from pyclaw import banner, config
 from pyclaw import session as session_mod
 from pyclaw.team.builder import build_team
-from pyclaw.tui.readout import CONTEXT_METER_CELLS, METER_TRACK_LIGHTNESS, context_meter, git_label, usage_hud, usage_meter
+from pyclaw.tui.readout import (
+    CONTEXT_METER_CELLS,
+    METER_TRACK_LIGHTNESS,
+    context_meter,
+    git_label,
+    message_count,
+    usage_hud,
+    usage_meter,
+)
 
 from fakes import Usage
 from markup import plain as _plain
@@ -336,3 +344,37 @@ def test_a_background_sub_agent_is_a_stoppable_row():
     assert rows[0]["stoppable"] is True
     assert "Stopped" in text
     assert left == {}
+
+
+class _CountingSession:
+    def __init__(self, messages):
+        self._messages = messages
+
+    def transcript(self):
+        return list(self._messages)
+
+
+class TestMessageCount:
+    def test_counts_user_and_assistant_turns(self):
+        session = _CountingSession(
+            [
+                {"role": "user", "content": "hi"},
+                {"role": "assistant", "content": "hello"},
+                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "ok"}]},
+            ]
+        )
+        assert message_count(session) == "3 msg"
+
+    def test_attachment_injections_do_not_bump_the_count(self):
+        session = _CountingSession(
+            [
+                {"role": "user", "content": "hi"},
+                {
+                    "role": "user",
+                    "content": "<system-reminder>\nAvailable skills:\n- debug: …\n</system-reminder>",
+                    "attachment": True,
+                },
+                {"role": "assistant", "content": "hello"},
+            ]
+        )
+        assert message_count(session) == "2 msg"

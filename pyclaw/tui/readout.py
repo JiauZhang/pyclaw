@@ -3,6 +3,8 @@ from __future__ import annotations
 import subprocess
 import time
 
+from chatchat.runtime.agent import is_attachment_message
+
 from pyclaw import banner
 
 from pyclaw.tui import keys
@@ -166,7 +168,11 @@ def mode_pill(session, *, background: bool) -> str:
 
 
 def message_count(session) -> str:
-    return f"{len(session.transcript())} msg"
+    """Conversation turns, not context injections: the skill listing rides the
+    transcript as a marked attachment message (claude-code builds the same
+    [userMessage, ...attachmentMessages] sequence and keeps invisible
+    attachments out of its count), so those do not bump the number."""
+    return f"{sum(1 for m in session.transcript() if not is_attachment_message(m))} msg"
 
 
 def elapsed_row(since: float) -> str:
