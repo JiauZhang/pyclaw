@@ -5444,7 +5444,7 @@ def _question(multi=False):
     return {
         "question": "Which shape?",
         "header": "shape",
-        "options": [{"label": "round", "description": "a circle"}, {"label": "square"}],
+        "options": [{"label": "round", "description": "a circle"}, {"label": "square", "description": "a box"}],
         "multiSelect": multi,
     }
 

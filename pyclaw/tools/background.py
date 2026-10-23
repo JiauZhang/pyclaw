@@ -187,22 +187,24 @@ atexit.register(cleanup_background_tasks)
 
 @tool(
     name=TASK_OUTPUT,
-    description="Reads a background task, returning a status header, the tail "
-    "of its combined stdout and stderr, and the exit code once it "
-    "has exited. Waits for the task by default, so a timeout "
-    "report means it is still running rather than that it failed.",
+    description="""Reads a background task, returning a status header, the tail of its combined stdout and stderr,
+and the exit code once it has exited.
+Waits for the task by default, so a timeout report means it is still running rather than that it failed.""",
     parameters={
         "type": "object",
         "properties": {
             "task_id": {"type": "string", "description": "Background task ID (starts with b)."},
-            "block": {"type": "boolean", "description": "Wait for the task to finish before returning.", "default": True},
+            "block": {"type": "boolean", "default": True, "description": "Wait for the task to finish before returning."},
             "timeout": {
                 "type": "integer",
-                "description": f"Milliseconds to wait when block is true (max {TASK_MAX_TIMEOUT_MS}).",
+                "minimum": 0,
+                "maximum": TASK_MAX_TIMEOUT_MS,
                 "default": TASK_DEFAULT_TIMEOUT_MS,
+                "description": f"Milliseconds to wait when block is true (max {TASK_MAX_TIMEOUT_MS}).",
             },
         },
         "required": ["task_id"],
+        "additionalProperties": False,
     },
 )
 def TaskOutput(context, task_id: str, block: bool = True, timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
@@ -243,15 +245,15 @@ def TaskOutput(context, task_id: str, block: bool = True, timeout: int = TASK_DE
 
 @tool(
     name=TASK_STOP,
-    description="Stops a background task, killing its whole process tree, and "
-    "reports what was stopped. The output collected so far stays "
-    "readable with TaskOutput afterwards.",
+    description="""Stops a background task, killing its whole process tree, and reports what was stopped.
+The output collected so far stays readable with TaskOutput afterwards.""",
     parameters={
         "type": "object",
         "properties": {
             "task_id": {"type": "string", "description": "Background task ID (starts with b)."},
         },
         "required": ["task_id"],
+        "additionalProperties": False,
     },
 )
 def TaskStop(context, task_id: str) -> str:

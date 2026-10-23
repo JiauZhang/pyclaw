@@ -170,13 +170,10 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
 
 @tool(
     name=BASH,
-    description="Runs a shell command in the workspace and returns stdout "
-    "and stderr combined. Prefer Read, Glob, Grep, Edit "
-    "and Write over cat, find, grep, sed and shell redirection. "
-    "A command that outlives its timeout usually moves to the "
-    "background and reports its task ID instead of failing. Ask "
-    "before destructive git commands like push --force or reset "
-    "--hard.",
+    description="""Runs a shell command in the workspace and returns stdout and stderr combined.
+Prefer Read, Glob, Grep, Edit and Write over cat, find, grep, sed and shell redirection.
+A command that outlives its timeout usually moves to the background and reports its task ID instead of failing.
+Ask before destructive git commands like push --force or reset --hard.""",
     max_result_chars=MAX_OUTPUT_UPPER_LIMIT + 1_000,
     parameters={
         "type": "object",
@@ -187,10 +184,10 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             },
             "timeout": {
                 "type": "integer",
-                "description": "Milliseconds to wait before the command is "
-                f"moved to the background (default "
-                f"{get_default_timeout_ms()}, max "
-                f"{get_max_timeout_ms()}).",
+                "minimum": 1,
+                "maximum": get_max_timeout_ms(),
+                "description": f"Milliseconds to wait before the command is moved to the background "
+                f"(default {get_default_timeout_ms()}, max {get_max_timeout_ms()}).",
             },
             "description": {
                 "type": "string",
@@ -198,12 +195,12 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             },
             "run_in_background": {
                 "type": "boolean",
-                "description": "Run in the background and return a task ID "
-                "immediately; read what it produced with "
-                'TaskOutput. Never append "&".',
+                "default": False,
+                "description": 'Run in the background and return a task ID immediately; read what it produced with TaskOutput. Never append "&".',
             },
         },
         "required": ["command"],
+        "additionalProperties": False,
     },
 )
 def Bash(

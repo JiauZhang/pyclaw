@@ -12,6 +12,7 @@ from textual.theme import BUILTIN_THEMES
 from textual.widgets import Static
 from chatchat.hooks.events import register_hook_event_handler, register_runtime_handler
 from pyclaw import __version__, banner, config, statusline, welcome
+from pyclaw.tools import worktree as worktree_tools
 from pyclaw.session import Session
 from pyclaw.spinner_verbs import SPINNER_VERBS
 from pyclaw.tui import history
@@ -302,7 +303,7 @@ class PyClawApp(
         self._session.attach_approval(self._ask_permission)
         self._session.attach_question(self._ask_questions)
         if self._worktree is not None:
-            started = await self._team.enter_worktree(self._worktree)
+            started = await worktree_tools.enter(self._team, self._worktree)
             if started.startswith("Error"):
                 self._startup_error = started
                 self.exit()

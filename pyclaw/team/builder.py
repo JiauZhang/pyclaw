@@ -9,8 +9,10 @@ from pathlib import Path
 from typing import Optional
 
 from chatchat.team.team import Team
-from chatchat.team.worktrees import repository_root, sweep_worktrees
-from chatchat.tasks.cron_schedule import CronStore
+from pyclaw.team.worktrees import repository_root, sweep_worktrees
+from pyclaw.cron_schedule import CronStore
+from pyclaw.tools import cron as cron_tools
+from pyclaw.tools import worktree as worktree_tools
 from chatchat.runtime.thinking import Thinking
 from chatchat.tool import ToolContext
 
@@ -175,6 +177,8 @@ def build_team(
         state_root = str(pyclaw_home())
         mailbox_root = str(pyclaw_home() / "teams")
         cron_root = pyclaw_home()
+    cron_store = CronStore(cron_root)
+    cron_tools.set_store(cron_store)
     team = Team(
         f"pyclaw-{next(_name_counter)}",
         model=model,
@@ -189,12 +193,14 @@ def build_team(
         skills=registry,
         team_store=str(pyclaw_home() / "teams"),
         agent_memory=_agent_memory(state_root),
-        cron=CronStore(cron_root),
         rules=agent_memory.rule_set(state_root),
         file_history_dir=(str(pyclaw_home() / "file-history" / conversation_id) if checkpoints_enabled() else None),
         multi_agent=use_team,
         context_window=configured_context_window(),
     )
+    team.tool_context.team = team
+    team.isolation_start = worktree_tools.isolate
+    team.isolation_end = worktree_tools.release
     gate.agent_memory = team.agent_memory
     team._pyclaw_gate = gate
 

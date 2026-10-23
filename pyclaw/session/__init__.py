@@ -4,6 +4,8 @@ import logging
 import subprocess
 import time
 import uuid
+
+from pyclaw.tools import worktree as worktree_tools
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
@@ -53,7 +55,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._gate = getattr(entity, "_pyclaw_gate", None)
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
-        if entity.worktree is not None:
+        if getattr(entity, "worktree", None) is not None:
             save_worktree(self.conv_session_id, entity.worktree)
 
     def _watch_worktree(self, team) -> None:
@@ -64,7 +66,7 @@ class Session(HistoryMixin, ReadoutMixin):
         def _note(cwd):
             if moved is not None:
                 moved(cwd)
-            save_worktree(self.conv_session_id, team.worktree)
+            save_worktree(self.conv_session_id, getattr(team, "worktree", None))
 
         team._cwd_changed = _note
 
@@ -282,12 +284,12 @@ class Session(HistoryMixin, ReadoutMixin):
         with the directory and the rules that go with that directory. A worktree
         asked for by name for this run wins over the one it left behind."""
         saved = load_worktree(source_id)
-        if saved and self._team.worktree is None:
+        if saved and getattr(self._team, "worktree", None) is None:
             self._team.worktree = saved
             self._team.set_cwd(saved["path"])
 
     async def leave_worktree(self, keep: bool) -> str:
-        return await self._team.exit_worktree(keep=keep, discard=not keep)
+        return await worktree_tools.leave(self._team, keep=keep, discard=not keep)
 
     def add_dir(self, path) -> Path:
         """Widen what this session may reach, and tell the tools that work

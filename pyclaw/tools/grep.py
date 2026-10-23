@@ -15,22 +15,27 @@ _GREP_MAX = 200
 
 @tool(
     name=GREP,
-    description="Searches file contents by regex, reporting each match as "
-    "path:line: text. Patterns are Python re applied one line at a "
-    'time, so . never spans a newline. A trailing "[exceeded N '
-    'hits]" means the search stopped early, not that nothing else '
-    "matched. node_modules, dist and VCS dirs are never searched.",
+    description="""Searches file contents by regex, reporting each match as path:line: text.
+Patterns are Python re applied one line at a time, so . never spans a newline.
+A trailing "[exceeded N hits]" means the search stopped early, not that nothing else matched.
+node_modules, dist and VCS dirs are never searched.""",
     read_only=True,
     get_path=lambda args: args.get("path"),
     parameters={
         "type": "object",
         "properties": {
-            "pattern": {"type": "string", "description": "Regex to match."},
-            "path": {"type": "string", "description": "Subdirectory to search instead of the whole workspace."},
+            "pattern": {"type": "string", "description": "Python regex to match, one line at a time."},
+            "path": {"type": "string", "description": "Directory to search in; defaults to the whole workspace."},
             "glob": {"type": "string", "description": "Only search files whose path matches this glob."},
-            "max_hits": {"type": "integer", "description": "Stop after this many matches.", "default": _GREP_MAX},
+            "max_hits": {
+                "type": "integer",
+                "minimum": 0,
+                "default": _GREP_MAX,
+                "description": "Stop after this many matches; 0 means no limit.",
+            },
         },
         "required": ["pattern"],
+        "additionalProperties": False,
     },
 )
 async def Grep(context, pattern: str, path: str | None = None, glob: str | None = None, max_hits: int = _GREP_MAX) -> str:

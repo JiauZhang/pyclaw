@@ -3,7 +3,7 @@ from __future__ import annotations
 from pyclaw.team.builder import configured_context_window
 from pyclaw.tools import background
 
-from chatchat.team.worktrees import changes
+from pyclaw.team.worktrees import changes
 
 from pyclaw import task_registry as tasks
 
@@ -51,7 +51,7 @@ class ReadoutMixin:
 
     @property
     def worktree(self) -> dict | None:
-        worktree = self._team.worktree
+        worktree = getattr(self._team, "worktree", None)
         return None if worktree is None else dict(worktree)
 
     @property

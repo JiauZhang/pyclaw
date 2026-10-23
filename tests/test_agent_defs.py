@@ -286,6 +286,7 @@ def test_tools_are_grouped_by_their_kind():
         ("Reading and search", ["Read", "Glob", "Grep", "TaskOutput", "TaskStop"]),
         ("Editing files", ["Write", "Edit"]),
         ("Running commands", ["Bash"]),
+        ("Other tools", ["CronCreate", "CronList", "CronDelete", "EnterWorktree", "ExitWorktree"]),
     ]
     assert tool_buckets([]) == []
 

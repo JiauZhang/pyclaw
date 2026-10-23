@@ -6,7 +6,7 @@ from datetime import datetime
 from pyclaw.tui.formatting import duration
 from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.theme import ASTERISK
-from chatchat.tasks.cron_schedule import find_missed, missed_notification, SchedulerLock
+from pyclaw.cron_schedule import find_missed, missed_notification, SchedulerLock
 from pyclaw.cron import run
 
 

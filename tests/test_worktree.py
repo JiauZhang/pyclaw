@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from pyclaw import __main__
+from pyclaw.tools import worktree as worktree_tools
 from pyclaw.session import Session
 from pyclaw.session import store
 from pyclaw.team.builder import build_team
@@ -48,9 +49,9 @@ def test_moving_into_a_worktree_moves_the_process_and_reads_it_from_there(tmp_pa
     async def main():
         team = _team(root, "conv-roots")
         Session(team, session_id="conv-roots")
-        await team.enter_worktree("aside")
+        await worktree_tools.enter(team, "aside")
         (team.tool_context.cwd / "AGENTS.md").write_text("worktree rules\n", encoding="utf-8")
-        return await team.exit_worktree(keep=True)
+        return await worktree_tools.leave(team, keep=True)
 
     asyncio.run(main())
     inside = root / ".pyclaw" / "worktrees" / "aside"
@@ -59,7 +60,7 @@ def test_moving_into_a_worktree_moves_the_process_and_reads_it_from_there(tmp_pa
     async def again():
         team = _team(root, "conv-roots-2")
         Session(team, session_id="conv-roots-2")
-        await team.enter_worktree("aside")
+        await worktree_tools.enter(team, "aside")
         return team
 
     team = asyncio.run(again())
@@ -76,7 +77,7 @@ def test_a_resumed_conversation_is_back_in_the_worktree_it_was_in(tmp_path):
         session = Session(team, session_id="conv-first")
         team.lead.messages.append({"role": "user", "content": "start"})
         session.save_transcript()
-        await team.enter_worktree("kept-alive")
+        await worktree_tools.enter(team, "kept-alive")
         return team.worktree["path"]
 
     path = asyncio.run(first())
@@ -210,7 +211,7 @@ def _start_in(root, worktree, conversation="conv-start"):
             app = pilot.app
             for _ in range(20):
                 await pilot.pause(0.05)
-            return (app, app._team.worktree, app._startup_error, Path(app._team.tool_context.cwd))
+            return (app, getattr(app._team, "worktree", None), app._startup_error, Path(app._team.tool_context.cwd))
 
     return asyncio.run(scenario())
 

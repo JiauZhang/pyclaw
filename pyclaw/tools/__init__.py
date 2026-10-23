@@ -1,9 +1,25 @@
 from . import display as display
 from .background import TaskOutput, TaskStop
 from .bash import Bash
+from .cron import CronCreate, CronDelete, CronList
 from .edit import Edit, Write
 from .glob import Glob
 from .grep import Grep
 from .read import Read
+from .worktree import EnterWorktree, ExitWorktree
 
-BUILTIN_TOOLS = (Read, Glob, Grep, Write, Edit, Bash, TaskOutput, TaskStop)
+BUILTIN_TOOLS = (
+    Read,
+    Glob,
+    Grep,
+    Write,
+    Edit,
+    Bash,
+    TaskOutput,
+    TaskStop,
+    CronCreate,
+    CronList,
+    CronDelete,
+    EnterWorktree,
+    ExitWorktree,
+)

@@ -19,12 +19,10 @@ _IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 @tool(
     name=READ,
-    description="Reads a workspace file and returns its lines as text, each "
-    "preceded by its 1-based line number and a tab. That prefix is "
-    "not file content: never carry it into an Edit old_string. "
-    f"Files longer than {_READ_LIMIT} lines return the first page "
-    "with a note; image files (png, jpeg, gif, webp) return the "
-    "picture itself; binary files return an encoding error.",
+    description=f"""Reads a workspace file and returns its lines as text, each preceded by its 1-based line number and a tab.
+That prefix is not file content: never carry it into an Edit old_string.
+Files longer than {_READ_LIMIT} lines return the first page with a note; image files (png, jpeg, gif, webp) return the picture
+itself; binary files return an encoding error.""",
     read_only=True,
     get_path=lambda args: args.get("file_path"),
     parameters={
@@ -36,15 +34,18 @@ _IMAGE_MAX_BYTES = 10 * 1024 * 1024
             },
             "offset": {
                 "type": "integer",
-                "description": "Line number to start from, counting the numbers the output prints.",
+                "minimum": 1,
+                "description": "Line number to start reading from, 1-based. Only needed for a file too large to read at once.",
             },
             "limit": {
                 "type": "integer",
-                "description": "Max lines to return.",
+                "minimum": 1,
                 "default": _READ_LIMIT,
+                "description": "Max lines to return.",
             },
         },
         "required": ["file_path"],
+        "additionalProperties": False,
     },
 )
 def Read(context, file_path: str, offset: int | None = None, limit: int | None = None) -> str:

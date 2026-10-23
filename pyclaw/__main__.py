@@ -23,7 +23,8 @@ from pyclaw.permissions import split_rules
 from chatchat.cli.config import cli_config, is_write_request, parse_config
 
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
-from chatchat.team.worktrees import in_repository
+from pyclaw.team.worktrees import in_repository
+from pyclaw.tools import worktree as worktree_tools
 
 _QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore", "aiohttp", "urllib3", "websockets", "PIL")
 
@@ -206,7 +207,7 @@ async def prompt_once(
             raise ValueError(f"--json-schema: {problem}")
     session = Session(team, session_id=session_id, resume_from=resume_from)
     if worktree is not None:
-        started = await team.enter_worktree(worktree)
+        started = await worktree_tools.enter(team, worktree)
         if started.startswith("Error"):
             raise ValueError(started.removeprefix("Error: "))
 

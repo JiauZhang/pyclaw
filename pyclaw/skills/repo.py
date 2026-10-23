@@ -215,7 +215,7 @@ def _doctor_prompt(team, args: str) -> str:
         f"- Hooks configured: {len(team.hooks.configured())}",
         f"- Skills read: {len(team.skills.all())}  problems: {'; '.join(team.skills.problems) or 'none'}",
         f"- Git repository: {in_git}  Branch: {branch}",
-        f"- Worktree: {team.worktree['path'] if team.worktree else 'none'}",
+        f"- Worktree: {team.worktree['path'] if getattr(team, 'worktree', None) else 'none'}",
         f"- Log of this conversation: {session_store.conversation_log(team.lead_session_id)}",
     ]
     if args.strip():

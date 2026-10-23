@@ -114,7 +114,21 @@ def test_a_tool_declares_its_name_once():
     """The schema and the display card read the same constant, so renaming a
     tool cannot leave one of the two behind."""
 
-    built_in = {names.READ, names.GLOB, names.GREP, names.WRITE, names.EDIT, names.BASH, names.TASK_OUTPUT, names.TASK_STOP}
+    built_in = {
+        names.READ,
+        names.GLOB,
+        names.GREP,
+        names.WRITE,
+        names.EDIT,
+        names.BASH,
+        names.TASK_OUTPUT,
+        names.TASK_STOP,
+        names.CRON_CREATE,
+        names.CRON_LIST,
+        names.CRON_DELETE,
+        names.ENTER_WORKTREE,
+        names.EXIT_WORKTREE,
+    }
     assert built_in == {tool.name for tool in BUILTIN_TOOLS}
     assert {names.READ, names.GLOB, names.GREP, names.WRITE, names.EDIT, names.BASH} <= set(TOOL_UIS)
     assert names.AGENT in TOOL_UIS and names.SEND_MESSAGE in TOOL_UIS

@@ -37,18 +37,17 @@ def _diff(rel: str, before: str, after: str) -> str:
 
 @tool(
     name=WRITE,
-    description="Creates a file or rewrites an existing one, returning the "
-    "path and, for an update, the unified diff. content becomes "
-    "the whole file: anything left out of it is lost, so read the "
-    "file first and write it back complete.",
+    description="""Creates a file or rewrites an existing one, returning the path and, for an update, the unified diff.
+content becomes the whole file: anything left out of it is lost, so read the file first and write it back complete.""",
     get_path=lambda args: args.get("file_path"),
     parameters={
         "type": "object",
         "properties": {
             "file_path": {"type": "string", "description": "Path relative to the workspace."},
-            "content": {"type": "string", "description": "File content."},
+            "content": {"type": "string", "description": "The complete file content to write."},
         },
         "required": ["file_path", "content"],
+        "additionalProperties": False,
     },
 )
 def Write(context, file_path: str, content: str) -> str:
@@ -79,20 +78,23 @@ def Write(context, file_path: str, content: str) -> str:
 
 @tool(
     name=EDIT,
-    description="Replaces an exact string in one file and returns the unified "
-    "diff of the change. old_string must match the file byte for "
-    "byte, indentation included, and must occur exactly once "
-    "unless replace_all is set.",
+    description="""Replaces an exact string in one file and returns the unified diff of the change.
+old_string must match the file byte for byte, indentation included, and must occur exactly once unless replace_all is set.""",
     get_path=lambda args: args.get("file_path"),
     parameters={
         "type": "object",
         "properties": {
             "file_path": {"type": "string", "description": "Path relative to the workspace."},
-            "old_string": {"type": "string", "description": "Text to replace."},
-            "new_string": {"type": "string", "description": "Replacement text."},
-            "replace_all": {"type": "boolean", "default": False, "description": "Replace every occurrence of old_string."},
+            "old_string": {"type": "string", "description": "The exact text to replace."},
+            "new_string": {"type": "string", "description": "The replacement text."},
+            "replace_all": {
+                "type": "boolean",
+                "default": False,
+                "description": "Replace every occurrence of old_string instead of requiring it to be unique.",
+            },
         },
         "required": ["file_path", "old_string", "new_string"],
+        "additionalProperties": False,
     },
 )
 def Edit(context, file_path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:

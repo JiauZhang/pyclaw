@@ -3,8 +3,9 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from chatchat.tasks import cron_schedule
-from chatchat.tasks.cron_schedule import CronStore, SchedulerLock
+from pyclaw import cron_schedule
+from pyclaw.tools import cron as cron_tools
+from pyclaw.cron_schedule import CronStore, SchedulerLock
 
 from pyclaw.cron import run, tick
 from pyclaw.team.builder import build_team
@@ -116,8 +117,8 @@ def test_a_built_team_schedules_into_its_own_project(tmp_path):
     async def main():
         return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
 
-    team = asyncio.run(main())
-    assert team.cron.directory == tmp_path / ".pyclaw"
+    asyncio.run(main())
+    assert cron_tools.store().directory == tmp_path / ".pyclaw"
 
 
 def test_a_fired_prompt_becomes_a_turn_of_the_conversation(tmp_path):

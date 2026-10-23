@@ -15,6 +15,7 @@ from chatchat.tool import ToolContext, ToolResult
 
 from pyclaw import session as session_mod
 from pyclaw.session import Session
+from pyclaw.tools import worktree as worktree_tools
 from pyclaw.home import pyclaw_home
 from pyclaw.permissions import PermissionController, next_mode, parse_mode
 from pyclaw.permissions import gate as perm
@@ -1570,7 +1571,7 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         session = session_mod.Session(team, session_id="wtree")
         before = Path(team._pyclaw_gate.cwd)
-        await team.enter_worktree("side")
+        await worktree_tools.enter(team, "side")
         return team, session, before
 
     team, session, before = asyncio.run(main())
@@ -1580,7 +1581,7 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
     assert team._pyclaw_gate.decide("Edit", {"file_path": "../a.txt"}) == "ask"
 
     async def leave():
-        await team.exit_worktree()
+        await worktree_tools.leave(team)
         return team._pyclaw_gate.cwd, session.worktree
 
     back, worktree = asyncio.run(leave())

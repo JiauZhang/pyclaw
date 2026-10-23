@@ -10,11 +10,9 @@ from .names import GLOB
 
 @tool(
     name=GLOB,
-    description="Returns the workspace-relative paths of matching files, one "
-    "per line, sorted; directories are never listed. A bare "
-    'pattern matches one level only, so "*.py" finds the search '
-    'root and "**/*.py" reaches nested files. Vendored and VCS '
-    "dirs are skipped.",
+    description="""Returns the workspace-relative paths of matching files, one per line, sorted; directories are never listed.
+A bare pattern matches one level only, so "*.py" finds the search root and "**/*.py" reaches nested files.
+Vendored and VCS dirs are skipped.""",
     read_only=True,
     get_path=lambda args: args.get("path"),
     parameters={
@@ -22,14 +20,15 @@ from .names import GLOB
         "properties": {
             "pattern": {
                 "type": "string",
-                "description": "Glob pattern.",
+                "description": 'Glob pattern to match files against, e.g. "**/*.py".',
             },
             "path": {
                 "type": "string",
-                "description": "Subdirectory to search instead of the whole workspace.",
+                "description": "Directory to search in; defaults to the whole workspace.",
             },
         },
         "required": ["pattern"],
+        "additionalProperties": False,
     },
 )
 def Glob(context, pattern: str, path: str | None = None) -> str:
