@@ -109,8 +109,7 @@ class _FakeTeam:
     model = "p/m"
     thinking = Thinking("off")
     name = "t"
-    compact_threshold = 0
-    auto_compact = False
+    compactor = SimpleNamespace(threshold=0, automatic=False)
     worktree = None
     product = None
     skills = SkillRegistry()
@@ -1073,23 +1072,21 @@ def test_context_note_is_blank_without_a_context_budget():
 
 def test_context_note_stays_hidden_while_there_is_room():
     class _RoomyTeam(_meter_team(150_000)):
-        compact_threshold = 200_000
-        auto_compact = True
+        compactor = SimpleNamespace(threshold=200_000, automatic=True)
 
     assert _status_right(lambda: _RoomyTeam()) == ""
 
 
 def test_context_note_counts_the_room_left_down_to_auto_compact():
     class _NearlyFullTeam(_meter_team(180_000)):
-        compact_threshold = 200_000
-        auto_compact = True
+        compactor = SimpleNamespace(threshold=200_000, automatic=True)
 
     assert _status_right(lambda: _NearlyFullTeam()) == "[dim]10% left before auto-compact[/]"
 
 
 def test_context_note_asks_for_a_manual_compact_without_auto_compact():
     class _NoStrategyTeam(_meter_team(190_000)):
-        compact_threshold = 200_000
+        compactor = SimpleNamespace(threshold=200_000, automatic=False)
 
     assert _status_right(lambda: _NoStrategyTeam()) == (
         "[error]Nearly out of context (5% left) \u00b7 run /compact to carry on[/]"
@@ -1118,7 +1115,7 @@ def test_the_note_stays_on_the_footer_while_its_own_row():
     API number, so the percentages they print add up to the whole window."""
 
     class _TightTeam(_meter_team(190_000)):
-        compact_threshold = 200_000
+        compactor = SimpleNamespace(threshold=200_000, automatic=False)
 
     assert _plain(_status_right(lambda: _TightTeam(), window=200_000)) == (
         "Nearly out of context (5% left) \u00b7 run /compact to carry on"

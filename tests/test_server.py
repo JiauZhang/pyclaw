@@ -4,6 +4,7 @@ from pyclaw.gateway import server as gateway_server
 from pyclaw.gateway.server import GatewayConfig, GatewayServer
 from pyclaw.gateway.server import _clean_conversation_id
 import asyncio
+from types import SimpleNamespace
 import argparse
 from pyclaw.__main__ import _apply_overrides
 from pyclaw.session import store as session_store
@@ -140,11 +141,18 @@ def test_a_status_snapshot_carries_the_tui_hud_numbers(tmp_path, monkeypatch):
         usage = _Usage()
         context_window = 128000
         used_context = 54000
-        compact_threshold = 90000
-        auto_compact = True
+        compactor = SimpleNamespace(threshold=90000, automatic=True)
 
         def __init__(self):
             self._gate = None
+
+        @property
+        def compact_threshold(self):
+            return self.compactor.threshold
+
+        @property
+        def auto_compact(self):
+            return self.compactor.automatic
 
         @property
         def permission_mode(self):

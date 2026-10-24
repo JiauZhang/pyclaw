@@ -177,7 +177,7 @@ class ReadoutMixin:
 
     @property
     def compact_threshold(self) -> int:
-        return int(self._team.compact_threshold)
+        return int(self._team.compactor.threshold)
 
     @property
     def context_window(self) -> int:
@@ -194,7 +194,7 @@ class ReadoutMixin:
 
     @property
     def auto_compact(self) -> bool:
-        return bool(self._team.auto_compact)
+        return bool(self._team.compactor.automatic)
 
     @property
     def snapshot_updates(self) -> list:

@@ -69,7 +69,7 @@ def test_a_built_team_compacts_at_the_configured_window(monkeypatch):
 
     team = asyncio.run(main())
     assert team.context_window == 128_000
-    assert team.auto_compact
+    assert team.compactor.automatic
 
 
 def test_context_window_defaults_to_two_hundred_thousand(isolated_config):
