@@ -10,10 +10,10 @@ import threading
 import time
 from pathlib import Path
 
-from chatchat.tool import ToolResult, tool
+from chatchat.team.host_tasks import HostTasks
+from chatchat.tool import ToolResult
 
 from pyclaw import task_registry as tasks
-from .names import TASK_OUTPUT, TASK_STOP
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
@@ -185,79 +185,50 @@ def cleanup_background_tasks():
 atexit.register(cleanup_background_tasks)
 
 
-@tool(
-    name=TASK_OUTPUT,
-    description="""Reads a background task, returning a status header, the tail of its combined stdout and stderr,
-and the exit code once it has exited.
-Waits for the task by default, so a timeout report means it is still running rather than that it failed.""",
-    parameters={
-        "type": "object",
-        "properties": {
-            "task_id": {"type": "string", "description": "Background task ID (starts with b)."},
-            "block": {"type": "boolean", "default": True, "description": "Wait for the task to finish before returning."},
-            "timeout": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": TASK_MAX_TIMEOUT_MS,
-                "default": TASK_DEFAULT_TIMEOUT_MS,
-                "description": f"Milliseconds to wait when block is true (max {TASK_MAX_TIMEOUT_MS}).",
-            },
-        },
-        "required": ["task_id"],
-        "additionalProperties": False,
-    },
-)
-def TaskRead(context, task_id: str, block: bool = True, timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
-    record = task(task_id)
-    if record is None:
-        return f"Error: no such background task: {task_id}"
-    ms = TASK_DEFAULT_TIMEOUT_MS if timeout is None else timeout
-    limit = max(1, min(int(ms), TASK_MAX_TIMEOUT_MS)) / 1000
-    deadline = time.monotonic() + (limit if block else 0)
-    while True:
-        if record.payload["process"].poll() is not None:
-            break
-        if time.monotonic() >= deadline:
-            break
-        time.sleep(TASK_BLOCK_POLL_S)
-    code = record.payload["process"].poll()
-    if code is not None:
-        retrieval, status = "success", "completed"
-    elif block:
-        retrieval, status = "timeout", "running"
-    else:
-        retrieval, status = "not_ready", "running"
-    lines = [
-        f"<fetch_result>{retrieval}</fetch_result>",
-        f"<task_ref>{task_id}</task_ref>",
-        "<task_kind>shell</task_kind>",
-        f"<run_state>{status}</run_state>",
-    ]
-    if code is not None:
-        lines.append(f"<return_code>{code}</return_code>")
-    body = _tail(Path(record.output)).rstrip("\n")
-    lines.append(body if body.strip() else "(no output yet)")
-    meta = {"status": status}
-    if code is not None:
-        meta["exit_code"] = code
-    return ToolResult(text="\n".join(lines), meta=meta)
+class ShellTasks(HostTasks):
+    """The shell commands pyclaw started in the background, offered to the
+    runtime's task tools so one TaskOutput and one TaskStop cover them and the
+    sub-agents alike - which is what the tool's description has always promised."""
 
+    def has(self, task_id: str) -> bool:
+        return task(task_id) is not None
 
-@tool(
-    name=TASK_STOP,
-    description="""Stops a background task, killing its whole process tree, and reports what was stopped.
-The output collected so far stays readable with TaskRead afterwards.""",
-    parameters={
-        "type": "object",
-        "properties": {
-            "task_id": {"type": "string", "description": "Background task ID (starts with b)."},
-        },
-        "required": ["task_id"],
-        "additionalProperties": False,
-    },
-)
-def TaskCancel(context, task_id: str) -> str:
-    row = stop(task_id)
-    if row is None:
-        return f"Error: no such background task: {task_id}"
-    return ToolResult(text=f"Stopped {task_id} ({row['command']})", meta={"stopped": True})
+    def read(self, task_id: str, *, block: bool = True, timeout_ms: int = TASK_DEFAULT_TIMEOUT_MS):
+        record = task(task_id)
+        if record is None:
+            return None
+        limit = max(1, min(int(timeout_ms), TASK_MAX_TIMEOUT_MS)) / 1000
+        deadline = time.monotonic() + (limit if block else 0)
+        while True:
+            if record.payload["process"].poll() is not None:
+                break
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(TASK_BLOCK_POLL_S)
+        code = record.payload["process"].poll()
+        if code is not None:
+            retrieval, status = "success", "completed"
+        elif block:
+            retrieval, status = "timeout", "running"
+        else:
+            retrieval, status = "not_ready", "running"
+        lines = [
+            f"<fetch_result>{retrieval}</fetch_result>",
+            f"<task_ref>{task_id}</task_ref>",
+            "<task_kind>shell</task_kind>",
+            f"<run_state>{status}</run_state>",
+        ]
+        if code is not None:
+            lines.append(f"<return_code>{code}</return_code>")
+        body = _tail(Path(record.output)).rstrip("\n")
+        lines.append(body if body.strip() else "(no output yet)")
+        meta = {"status": status}
+        if code is not None:
+            meta["exit_code"] = code
+        return ToolResult(text="\n".join(lines), meta=meta)
+
+    def stop(self, task_id: str) -> str:
+        row = stop(task_id)
+        if row is None:
+            return f"Error: no such background task: {task_id}"
+        return ToolResult(text=f"Stopped {task_id} ({row['command']})", meta={"stopped": True})

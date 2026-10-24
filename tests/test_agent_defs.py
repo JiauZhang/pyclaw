@@ -283,7 +283,7 @@ def test_the_detail_view_shows_a_display_path_per_scope(tmp_path):
 def test_tools_are_grouped_by_their_kind():
     names = [t.name for t in ALL_TOOLS]
     assert tool_buckets(names) == [
-        ("Reading and search", ["Read", "Glob", "Grep", "TaskRead", "TaskCancel"]),
+        ("Reading and search", ["Read", "Glob", "Grep"]),
         ("Editing files", ["Write", "Edit"]),
         ("Running commands", ["Bash"]),
         ("Other tools", ["CronCreate", "CronList", "CronDelete", "EnterWorktree", "ExitWorktree"]),

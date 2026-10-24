@@ -121,8 +121,6 @@ def test_a_tool_declares_its_name_once():
         names.WRITE,
         names.EDIT,
         names.BASH,
-        names.TASK_OUTPUT,
-        names.TASK_STOP,
         names.CRON_CREATE,
         names.CRON_LIST,
         names.CRON_DELETE,

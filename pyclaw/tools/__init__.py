@@ -1,4 +1,4 @@
-from .background import TaskRead, TaskCancel
+from .background import ShellTasks
 from .bash import Bash
 from .cron import CronCreate, CronDelete, CronList
 from .edit import Edit, Write
@@ -14,11 +14,11 @@ BUILTIN_TOOLS = (
     Write,
     Edit,
     Bash,
-    TaskRead,
-    TaskCancel,
     CronCreate,
     CronList,
     CronDelete,
     EnterWorktree,
     ExitWorktree,
 )
+
+__all__ = ["BUILTIN_TOOLS", "ShellTasks"]

@@ -6,8 +6,8 @@ import tempfile
 from chatchat.tools import builtin_tools
 
 from pyclaw.team.builder import build_team
+from chatchat.tools.builtin.subagents import task_output
 from pyclaw.tools import BUILTIN_TOOLS
-from pyclaw.tools import names
 
 
 def _schema_problems(schema, where, problems):
@@ -81,7 +81,7 @@ def test_the_schemas_pyclaw_owns_are_fillable_in_both_modes():
 def test_a_name_shared_by_a_team_tool_and_a_builtin_is_offered_once():
     _owned, names = _team_schemas(use_team=True)
     assert len(names) == len(set(names))
-    for name in ("TaskOutput", "TaskStop"):
+    for name in ("TaskOutput", "TaskStop", "SendMessage"):
         assert names.count(name) == 1
 
 
@@ -92,8 +92,9 @@ def test_a_file_path_is_the_first_thing_a_reading_tool_asks_for():
 
 
 def test_a_background_read_says_how_long_it_waits():
-    output = next(tool for tool in BUILTIN_TOOLS if tool.name == names.TASK_OUTPUT)
-    properties = output.parameters["properties"]
+    """The task tools are the runtime's, and they say the same thing for a
+    shell command and a sub-agent."""
+    properties = task_output.parameters["properties"]
     assert properties["block"]["default"] is True
     assert properties["timeout"]["default"] == 30_000
     assert properties["timeout"]["maximum"] == 600_000

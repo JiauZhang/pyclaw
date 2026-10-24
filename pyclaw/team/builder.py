@@ -27,7 +27,7 @@ from pyclaw.tools import background
 from pyclaw.plugins import discover_agent_dirs, discover_tools
 from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
-from pyclaw.tools import BUILTIN_TOOLS
+from pyclaw.tools import BUILTIN_TOOLS, ShellTasks
 from pyclaw.permissions import PermissionController, PermissionMode
 from chatchat.team.agent_memory import AgentMemory
 from chatchat.runtime.skills import SkillRegistry
@@ -196,6 +196,7 @@ def build_team(
         )
     )
     team.tool_context.team = team
+    team.host_tasks = ShellTasks()
     team.isolation.start = worktree_tools.isolate
     team.isolation.end = worktree_tools.release
     gate.agent_memory = team.agent_memory

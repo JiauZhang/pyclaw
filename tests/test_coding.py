@@ -40,7 +40,7 @@ from pyclaw.permissions.gate import (
 )
 from pyclaw.team.builder import build_team
 from pyclaw import task_registry
-from pyclaw.tools import BUILTIN_TOOLS, background
+from pyclaw.tools import BUILTIN_TOOLS, ShellTasks, background
 from pyclaw.tools import bash as shell
 from pyclaw.tools import read as read_mod
 from chatchat.tool import DEFAULT_MAX_RESULT_CHARS
@@ -625,7 +625,7 @@ def test_bash_timeout_moves_running_command_to_background():
         out = _text(t["Bash"](command="echo start; sleep 2; echo done", timeout=300))
         assert "background" in out
         task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
-        final = _text(t["TaskRead"](task_id=task_id, timeout=8000))
+        final = _text(ShellTasks().read(task_id, timeout_ms=8000))
         assert "done" in final
 
 
@@ -941,21 +941,23 @@ def test_build_team_tools_differ_by_mode():
     single = asyncio.run(names())
     multi = asyncio.run(names(use_team=True))
     assert "Agent" in single and "Agent" in multi
-    assert "TaskCancel" in single and "TaskCancel" in multi
-    assert "TaskRead" in single and "TaskRead" in multi
+    assert "TaskOutput" in single and "TaskOutput" in multi
+    assert "TaskStop" in single and "TaskStop" in multi
     assert "SendMessage" not in single
     assert {"SendMessage", "TeamCreate", "TeamDelete"} <= multi
 
 
 def test_a_team_tool_is_offered_once_even_when_the_pool_has_the_same_name():
+    """The runtime's tool wins when a host injects one with the same name, so
+    the model is never offered the same tool twice."""
+
     async def main():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
-            names = [t["name"] for t in team.tool_schemas(team.tool_context)]
-            return names
+            return [t["name"] for t in team.tool_schemas(team.tool_context)]
 
     names = asyncio.run(main())
-    for name in ("TaskRead", "TaskCancel"):
+    for name in ("TaskOutput", "TaskStop", "SendMessage"):
         assert names.count(name) == 1, name
 
 
@@ -1155,7 +1157,7 @@ def test_task_output_blocks_until_completion():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 0.4 && echo finished-data", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
-    text = _text(_tools("/tmp")["TaskRead"](task_id=task_id, block=True, timeout=5000))
+    text = _text(ShellTasks().read(task_id, block=True, timeout_ms=5000))
     assert "finished-data" in text
     assert "<return_code>0</return_code>" in text
     assert "<fetch_result>success</fetch_result>" in text
@@ -1166,7 +1168,7 @@ def test_task_output_timeout_reports_still_running():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 5", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
-    text = _text(_tools("/tmp")["TaskRead"](task_id=task_id, block=True, timeout=300))
+    text = _text(ShellTasks().read(task_id, block=True, timeout_ms=300))
     assert "<fetch_result>timeout</fetch_result>" in text
     assert "<run_state>running</run_state>" in text
     assert "exit_code" not in text
@@ -1177,7 +1179,7 @@ def test_task_output_non_blocking_reports_not_ready():
     bash = _tools("/tmp")["Bash"]
     out = bash(command="sleep 5", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
-    text = _text(_tools("/tmp")["TaskRead"](task_id=task_id, block=False))
+    text = _text(ShellTasks().read(task_id, block=False))
     assert "<fetch_result>not_ready</fetch_result>" in text
     background.cleanup_background_tasks()
 
@@ -1187,7 +1189,7 @@ def test_task_stop_kills_process_group():
     out = bash(command="sleep 30", run_in_background=True)
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
     task = background.task(task_id)
-    text = _text(_tools("/tmp")["TaskCancel"](task_id=task_id))
+    text = _text(ShellTasks().stop(task_id))
     assert f"Stopped {task_id}" in text
     assert "sleep 30" in text
     for _ in range(30):
@@ -1204,12 +1206,12 @@ def test_a_stopped_task_stays_readable():
     task_id = re.search(r"as (b[0-9a-z]{8})", out).group(1)
 
     def read():
-        return _text(t["TaskRead"](task_id=task_id, block=False))
+        return _text(ShellTasks().read(task_id, block=False))
 
     deadline = time.monotonic() + 5
     while "kept-output" not in read() and time.monotonic() < deadline:
         time.sleep(0.1)
-    t["TaskCancel"](task_id=task_id)
+    ShellTasks().stop(task_id)
     assert "kept-output" in read()
 
 
@@ -1224,15 +1226,18 @@ def test_background_tasks_cleanup_kills_all():
 
 
 def test_task_output_unknown_task():
-    text = _text(_tools("/tmp")["TaskRead"](task_id="bdeadbeef"))
-    assert "no such background task" in text
-    text = _text(_tools("/tmp")["TaskCancel"](task_id="bdeadbeef"))
-    assert "no such background task" in text
+    assert ShellTasks().has("bdeadbeef") is False
+    assert ShellTasks().read("bdeadbeef") is None
+    assert "no such background task" in _text(ShellTasks().stop("bdeadbeef"))
 
 
-def test_background_tools_registered_as_coding_tools():
+def test_the_task_tools_come_from_the_runtime_not_from_here():
+    """One TaskOutput and one TaskStop, both the runtime's: they read a
+    background shell command and a sub-agent alike, which is why pyclaw offers
+    its own tasks to the runtime instead of offering tools of its own."""
     names = {t.name for t in BUILTIN_TOOLS}
-    assert {"TaskRead", "TaskCancel"} <= names
+    assert not {"TaskOutput", "TaskStop"} & names
+    assert ShellTasks().has("bdeadbeef") is False
 
 
 def test_background_completion_fires_notifier():
