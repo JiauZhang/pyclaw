@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import re
-import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Callable, Any, List
@@ -22,7 +21,6 @@ from pyclaw import cost
 from ..session import Session
 from ..session.store import (
     append_conv,
-    follow_conversation,
     record_meta,
     resolve_session_id,
     list_sessions,
@@ -43,7 +41,8 @@ from ..channels import IMChannelAdapter, OutboundMessage
 from ..channels.web import WebChannelAdapter
 from ..slash import handle_slash, skill_rows, suggest
 from ..channels.im_formatter import split_long_message
-from .im import _friendly_channel_error, _im_progress_text, run_im_interaction
+from .bridge import IMBridge
+from .im import _im_progress_text, run_im_interaction
 from .runtime import GatewayRuntimeState
 from .handlers import register_handlers
 
@@ -103,7 +102,6 @@ class GatewayServer:
         self.channels: Dict[str, IMChannelAdapter] = {}
         self._sessions: Dict[str, Session] = {}
         self._shutdown_event = asyncio.Event()
-        self._recent_im: Dict[tuple, float] = {}
         self._cron_task: Optional[asyncio.Task] = None
         self._cron_lock: Optional[SchedulerLock] = None
         self._cron_busy = asyncio.Lock()
@@ -622,78 +620,18 @@ class GatewayServer:
             if "greeting_text" not in adapter.config and "greeting_text" in self._app_config:
                 adapter.config["greeting_text"] = self._app_config["greeting_text"]
 
-            async def _on_message(
-                msg,
-                _channel_id,
-                _adapter=adapter,
-                _platform=platform,
-            ):
-                await _adapter.save_known_contact(msg.sender_id)
-                session_id = resolve_session_id([_platform, str(msg.sender_id)])
-                follow_conversation(session_id)
-                logger.info("IM '%s' received from %s: %s", _platform, msg.sender_id, msg.text)
-                record_meta(
-                    session_id,
-                    {
-                        "channel": "im",
-                        "platform": _platform,
-                        "sender_id": str(msg.sender_id),
-                    },
-                )
+            bridge = IMBridge(
+                platform=platform,
+                adapter=adapter,
+                runtime=self.runtime,
+                get_session=self._get_session,
+                run_interaction=run_im_interaction,
+                handle_command=handle_slash,
+                extra=IM_EXTRA,
+                progress_text=_im_progress_text,
+            )
 
-                key = (_platform, msg.sender_id, msg.text)
-                now = time.time()
-                if key in self._recent_im and now - self._recent_im[key] < 30:
-                    logger.debug("Dropped duplicate IM message from %s", msg.sender_id)
-                    return
-                self._recent_im[key] = now
-
-                if not _adapter._greeting_sent:
-                    await _adapter.send_greeting_on_startup()
-
-                self.runtime.get_or_create_session(session_id)
-                session = await self._get_session(session_id)
-                slash_reply = await handle_slash(msg.text, session, session_id)
-                if slash_reply is not None:
-                    if isinstance(slash_reply, tuple):
-                        info, follow = slash_reply
-                        if info:
-                            await _adapter.send_message(msg.sender_id, OutboundMessage(text=info, reply_to=msg.id))
-                        await run_im_interaction(
-                            session, _adapter, msg.sender_id, follow, msg.id, im_extra=IM_EXTRA, progress_fn=_im_progress_text
-                        )
-                        logger.info("IM '%s' ran /init via model", _platform)
-                        self.runtime.increment_requests()
-                        return
-                    await _adapter.send_message(
-                        msg.sender_id,
-                        OutboundMessage(text=slash_reply, reply_to=msg.id),
-                    )
-                    logger.info("IM '%s' sent slash reply to %s", _platform, msg.sender_id)
-                    self.runtime.increment_requests()
-                    return
-
-                try:
-                    await run_im_interaction(
-                        session,
-                        _adapter,
-                        msg.sender_id,
-                        msg.text,
-                        msg.id,
-                        im_extra=IM_EXTRA,
-                        progress_fn=_im_progress_text,
-                    )
-                    logger.info("IM '%s' replied to %s", _platform, msg.sender_id)
-                    self.runtime.increment_channel_messages(_adapter.channel_id)
-                    self.runtime.increment_requests()
-                except Exception as exc:
-                    logger.error("Channel '%s' handler error: %s", _platform, exc)
-                    self.runtime.increment_errors()
-                    friendly = _friendly_channel_error(exc)
-                    err_out = OutboundMessage(text=friendly, reply_to=msg.id)
-                    await _adapter.send_message(msg.sender_id, err_out)
-
-            adapter.set_message_handler(_on_message)
+            adapter.set_message_handler(bridge.on_message)
             self.runtime.register_channel(adapter.channel_id, enabled=True)
 
             ok = await adapter.connect()
