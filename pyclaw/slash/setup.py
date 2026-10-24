@@ -25,7 +25,7 @@ def _handle_statusline(session, arg: str) -> tuple:
     """The setup agent reads shell config anywhere under home and writes one
     settings file, so those are let through for the rest of this session."""
     prompt = arg or STATUSLINE_PROMPT
-    session.grant_tools(("Read(~/**)", f"Edit({config_module.__config_file__})"))
+    session.grant_tools(("Read(~/**)", f"Edit({config_module.config_file()})"))
     return (
         "Setting up the status line…",
         f'Create an agent with the Agent tool, subagent_type "statusline-setup" and the prompt "{prompt}"',

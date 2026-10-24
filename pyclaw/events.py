@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import asyncio
 import json
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -177,3 +179,11 @@ def open_stream(*, at: datetime | None = None, session: str = "") -> Stream:
     directory = _directory()
     _forget(directory, moment.date() - timedelta(days=KEEP_DAYS))
     return Stream(directory, moment, session)
+
+
+def dispatch(on_event, event) -> None:
+    """Hand an event to a listener that may be sync or async."""
+    if asyncio.iscoroutinefunction(on_event):
+        asyncio.create_task(on_event(event))
+    else:
+        on_event(event)

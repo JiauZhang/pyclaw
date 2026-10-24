@@ -34,7 +34,8 @@ from .store import (
     save_transcript,
     save_worktree,
 )
-from pyclaw.team.builder import _dispatch_event, checkpoints_enabled
+from pyclaw.config import checkpoints_enabled
+from pyclaw.events import dispatch as _dispatch_event
 
 
 class Session(HistoryMixin, ReadoutMixin):

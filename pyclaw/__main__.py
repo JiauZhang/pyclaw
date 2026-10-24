@@ -568,7 +568,7 @@ def _show_pyclaw_config():
     http = (cfg.get("gateway") or {}).get("http") or {}
     permissions = cfg.get("permissions") or {}
     print()
-    print(f"pyclaw config: {pyclaw_config.__config_file__}")
+    print(f"pyclaw config: {pyclaw_config.config_file()}")
     print(f"  model          {cfg.get('model') or '-'}")
     print(f"  contextWindow  {cfg.get('contextWindow') or '-'}")
     print(f"  gateway        http://{http.get('host', '-')}:{http.get('port', '-')}")

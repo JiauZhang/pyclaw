@@ -7,7 +7,6 @@ from pyclaw.tui import PyClawApp
 import json
 import os
 import tempfile
-from pyclaw import home
 
 
 @pytest.fixture(autouse=True)
@@ -47,7 +46,7 @@ def _one_completion_verb(monkeypatch):
 @pytest.fixture
 def isolated_config(tmp_path, monkeypatch):
 
-    monkeypatch.setattr(config, "__config_file__", tmp_path / "config.json")
+    monkeypatch.setattr(config, "config_file", lambda: tmp_path / "config.json")
     config.reload()
     yield config
     config.reload()
@@ -71,7 +70,6 @@ def _home_dir_is_a_temp_folder(tmp_path, monkeypatch):
             )
         )
     monkeypatch.setenv("CHATCHAT_SECRET_FILE", secret_path)
-    monkeypatch.setattr(home, "__pyclaw_home__", str(folder))
     yield folder
     try:
         os.unlink(secret_path)

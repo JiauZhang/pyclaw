@@ -4,8 +4,6 @@ import base64
 
 from chatchat.tool import ToolResult, tool
 
-from pyclaw.tui.formatting import _plural
-from pyclaw.tui.toolui import build_tool_ui, is_memory_path, path_args, register
 
 from .paths import relative, resolve
 from .names import READ
@@ -90,25 +88,3 @@ def _read_image(context, path, file_path: str, media: str):
         ],
         meta={"path": rel},
     )
-
-
-def _input_path(tool_input) -> str:
-    data = tool_input if isinstance(tool_input, dict) else {}
-    return data.get("file_path") or data.get("path") or ""
-
-
-def _read_args(name, tool_input, cwd):
-    return path_args(tool_input, cwd)
-
-
-def _read_summary(name, output, width):
-    rows = str(output if output is not None else "").split("\n")
-    body = rows[1:] if rows and rows[0].endswith(":") else rows
-    return f"Read {_plural(len([r for r in body if r.strip()]), 'line')}"
-
-
-def _read_kinds(name, tool_input):
-    return {"memory_read" if is_memory_path(_input_path(tool_input)) else "read"}
-
-
-register(READ, build_tool_ui(args=_read_args, summary=_read_summary, kinds=_read_kinds))

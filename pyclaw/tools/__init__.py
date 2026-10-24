@@ -1,4 +1,3 @@
-from . import display as display
 from .background import TaskOutput, TaskStop
 from .bash import Bash
 from .cron import CronCreate, CronDelete, CronList

@@ -10,7 +10,7 @@ from pathlib import Path
 from chatchat.runtime.markdown import parse_frontmatter
 from chatchat.team.agents import AgentDefinition
 
-from pyclaw.config import __config_file__
+from pyclaw.config import config_file
 from pyclaw.home import pyclaw_home
 from pyclaw.tools.names import AGENT, BASH, EDIT, EXIT_PLAN_MODE, GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP, WRITE
 
@@ -346,9 +346,9 @@ def validate(defn: AgentDefinition, known_tools: list[str], taken: list[tuple]) 
 
 
 def _statusline_prompt() -> str:
-    home = __config_file__.parent
+    home = config_file().parent
     return STATUSLINE_SYSTEM_PROMPT.format(
-        config_file=__config_file__,
+        config_file=config_file(),
         script=home / "statusline.sh",
     )
 

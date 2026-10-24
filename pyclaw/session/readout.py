@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pyclaw.team.builder import configured_context_window
+from pyclaw.config import configured_context_window
 from pyclaw.tools import background
 
 from pyclaw.team.worktrees import changes

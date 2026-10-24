@@ -329,7 +329,7 @@ class TestConfigCommand:
             monkeypatch,
             {"agnes": {"type": "openai", "base_url": "https://x.example/v1", "api_key": "sk-1234567890abcd", "rpm": 60}},
         )
-        monkeypatch.setattr(config_module, "__config_file__", tmp_path / "config.json")
+        monkeypatch.setattr(config_module, "config_file", lambda: tmp_path / "config.json")
         monkeypatch.setattr(
             __main__,
             "load_config",

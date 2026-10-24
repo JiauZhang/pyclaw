@@ -125,11 +125,11 @@ def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path, monkeyp
 
     session, team, _reply = _opened(tmp_path, monkeypatch, "conv-statusline")
     gate = team.product.gate
-    config = os.path.expanduser("~/.pyclaw/config.json")
+    config_path = str(config.config_file())
     assert gate.decide("Read", {"file_path": os.path.expanduser("~/.zshrc")}) == "ask"
     asyncio.run(handle_slash("/statusline make it show the branch", session))
     assert gate.decide("Read", {"file_path": os.path.expanduser("~/.zshrc")}) == "allow"
-    assert gate.decide("Edit", {"file_path": config}) == "allow"
+    assert gate.decide("Edit", {"file_path": config_path}) == "allow"
     assert gate.decide("Edit", {"file_path": os.path.expanduser("~/.bashrc")}) == "ask"
 
 
@@ -210,7 +210,7 @@ def test_the_doctor_names_the_files_it_checked(tmp_path, monkeypatch):
     note, prompt = asyncio.run(main())
     assert "Running /doctor…" == note
     assert "Provider:" in prompt and "agnes" in prompt
-    assert str(config.__config_file__) in prompt
+    assert str(config.config_file()) in prompt
     assert "the model looks wrong" in prompt
 
 

@@ -6,8 +6,3 @@ from pathlib import Path
 
 def pyclaw_home() -> Path:
     return Path(os.environ.get("PYCLAW_HOME", "~/.pyclaw")).expanduser()
-
-
-__pyclaw_home__ = str(pyclaw_home())
-
-os.environ["PYCLAW_HOME"] = __pyclaw_home__

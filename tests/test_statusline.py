@@ -37,7 +37,7 @@ class _StatusSession:
 def _home(tmp_path, monkeypatch):
 
     monkeypatch.setenv("PYCLAW_HOME", str(tmp_path))
-    monkeypatch.setattr(config_module, "__config_file__", tmp_path / "config.json")
+    monkeypatch.setattr(config_module, "config_file", lambda: tmp_path / "config.json")
     monkeypatch.setattr(statusline, "_CONFIG_MTIME", None)
 
 
@@ -45,7 +45,7 @@ _TICK = itertools.count(1)
 
 
 def _write_config(data: dict):
-    path = config_module.__config_file__
+    path = config_module.config_file()
     path.write_text(json.dumps(data), encoding="utf-8")
     stamp = path.stat().st_mtime + next(_TICK)
     os.utime(path, (stamp, stamp))

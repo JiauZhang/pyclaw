@@ -4,9 +4,19 @@ from functools import lru_cache
 from pathlib import Path
 
 from conippets import json
-from pyclaw.home import __pyclaw_home__
+from pyclaw.home import pyclaw_home
 
-__config_file__ = Path(__pyclaw_home__) / "config.json"
+
+def config_file() -> Path:
+    return pyclaw_home() / "config.json"
+
+
+def configured_context_window() -> int:
+    return int(load().get("contextWindow") or 0)
+
+
+def checkpoints_enabled() -> bool:
+    return bool(load().get("checkpoints", True))
 
 
 def debug_on() -> bool:
@@ -31,9 +41,9 @@ def load() -> dict:
         "notifications": {"backend": "auto", "idleSeconds": 60},
         "pricing": {},
     }
-    if __config_file__.exists():
+    if config_file().exists():
         try:
-            saved = json.read(__config_file__)
+            saved = json.read(config_file())
             config = _deep_merge(defaults, saved)
         except Exception:
             config = defaults
@@ -67,9 +77,9 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def save(config: dict) -> None:
-    __config_file__.parent.mkdir(parents=True, exist_ok=True)
+    config_file().parent.mkdir(parents=True, exist_ok=True)
     try:
-        json.write(__config_file__, config)
+        json.write(config_file(), config)
     except OSError:
         pass
 

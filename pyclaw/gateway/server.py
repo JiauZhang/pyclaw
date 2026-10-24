@@ -35,7 +35,8 @@ from ..session.store import (
 from ..cron import run as run_cron_loop
 from pyclaw.cron_schedule import SchedulerLock
 from pyclaw.tools import cron as cron_tools
-from pyclaw.team.builder import IM_EXTRA, build_team, configured_context_window
+from pyclaw.config import configured_context_window
+from pyclaw.team.builder import IM_EXTRA, build_team
 from pyclaw.tui.readout import git_label, git_status
 from pyclaw.tui.formatting import _display_cwd
 from ..channels import IMChannelAdapter, OutboundMessage

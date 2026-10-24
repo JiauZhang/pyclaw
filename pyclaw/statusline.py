@@ -21,7 +21,7 @@ _CONFIG_MTIME: float | None = None
 def _sync_config() -> None:
     global _CONFIG_MTIME
     try:
-        mtime = config.__config_file__.stat().st_mtime
+        mtime = config.config_file().stat().st_mtime
     except OSError:
         mtime = None
     if mtime is not None and mtime == _CONFIG_MTIME:

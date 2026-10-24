@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 from chatchat.tool import ToolResult, tool
-from pyclaw.tui.formatting import _plural
-from pyclaw.tui.toolui import build_tool_ui, register, search_args
 
 from .paths import relative, resolve, skipped, workspace
 from .names import GLOB
@@ -41,19 +39,3 @@ def Glob(context, pattern: str, path: str | None = None) -> str:
     if not matches:
         return f'No files match "{pattern}".'
     return ToolResult(text="\n".join(matches), meta={"num_files": len(matches)})
-
-
-def _search_args(name, tool_input, cwd):
-    return search_args(tool_input, cwd)
-
-
-def _search_kinds(name, tool_input):
-    return {"search"}
-
-
-def _glob_summary(name, output, width):
-    hits = [r for r in str(output if output is not None else "").split("\n") if r.strip()]
-    return f"Found {_plural(len(hits), 'file')}"
-
-
-register(GLOB, build_tool_ui(args=_search_args, summary=_glob_summary, kinds=_search_kinds))

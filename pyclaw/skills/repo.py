@@ -209,7 +209,7 @@ def _doctor_prompt(team, args: str) -> str:
         "",
         f"- pyclaw {__version__} on Python {platform.python_version()}, {platform.system()} {platform.machine()}",
         f"- Provider: {team.provider}  Model: {team.model}",
-        f"- Config: {config.__config_file__} ({'read' if config.load() else 'empty or unreadable'})",
+        f"- Config: {config.config_file()} ({'read' if config.load() else 'empty or unreadable'})",
         f"- Home: {home}  Logs writable: {writable}",
         f"- Permission settings: {rules}",
         f"- Hooks configured: {len(team.hooks.configured())}",

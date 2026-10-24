@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import itertools
 import logging
 import os
@@ -18,8 +17,10 @@ from chatchat.tool import ToolContext
 
 from pyclaw import task_registry
 from pyclaw import config
+from pyclaw.config import checkpoints_enabled, configured_context_window
 from pyclaw.team import defs as agent_defs
 from pyclaw.team import memory as agent_memory
+from pyclaw.bootstrap import take_over_output
 from pyclaw.team.product import PyclawProduct
 from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
@@ -34,14 +35,6 @@ from chatchat.runtime.skills import SkillRegistry
 _name_counter = itertools.count()
 
 logger = logging.getLogger(__name__)
-
-
-def configured_context_window() -> int:
-    return int(config.load().get("contextWindow") or 0)
-
-
-def checkpoints_enabled() -> bool:
-    return bool(config.load().get("checkpoints", True))
 
 
 def _resolve_tools(tools):
@@ -98,13 +91,6 @@ Rules:
 5. If you use tools, briefly summarize the result without technical details."""
 
 
-def _dispatch_event(on_event, ev):
-    if asyncio.iscoroutinefunction(on_event):
-        asyncio.create_task(on_event(ev))
-    else:
-        on_event(ev)
-
-
 def thinking_from_config() -> Thinking:
     setting = config.load().get("thinking")
     if isinstance(setting, dict):
@@ -142,6 +128,7 @@ def build_team(
     conversation_id: Optional[str] = None,
     allow_all_unlocked: bool = False,
 ) -> Team:
+    take_over_output()
     conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
     registry = _resolve_skills(skills, cwd)

@@ -8,11 +8,8 @@ from pathlib import Path
 
 from chatchat.tool import ToolResult, tool
 
-from pyclaw.tui.formatting import _clip_lines
-from pyclaw.tui.theme import MAX_COMMAND_CHARS, MAX_COMMAND_LINES
-from pyclaw.tui.toolui import build_tool_ui, register
 
-from pyclaw.permissions.bash_rules import base_command, split_commands
+from pyclaw.permissions.bash_rules import split_commands
 from pyclaw.tools.background import _output_path, adopt, kill_process, scratch_path, spawn
 from .names import BASH
 
@@ -210,50 +207,3 @@ def Bash(
         task_id = spawn(context.cwd, command)
         return f"Started in the background as {task_id}; output goes to {_output_path(task_id)}. Read it with TaskOutput."
     return run_command(context.cwd, command, timeout)
-
-
-BASH_SEARCH_COMMANDS = frozenset({"find", "grep", "rg", "ag", "ack", "locate", "which", "whereis"})
-BASH_READ_COMMANDS = frozenset(
-    {"cat", "head", "tail", "less", "more", "wc", "stat", "file", "strings", "jq", "awk", "cut", "sort", "uniq", "tr"}
-)
-BASH_LIST_COMMANDS = frozenset({"ls", "tree", "du"})
-BASH_NEUTRAL_COMMANDS = frozenset({"echo", "printf", "true", "false", ":"})
-
-
-def bash_kinds(command) -> set:
-    try:
-        parts = [p for p in split_commands(str(command or "")) if base_command(p) not in BASH_NEUTRAL_COMMANDS]
-    except Exception:
-        return set()
-    if not parts:
-        return set()
-    kinds = set()
-    for part in parts:
-        base = base_command(part)
-        if base in BASH_SEARCH_COMMANDS:
-            kinds.add("search")
-        elif base in BASH_READ_COMMANDS:
-            kinds.add("read")
-        elif base in BASH_LIST_COMMANDS:
-            kinds.add("list")
-        else:
-            return {"bash"}
-    # One command is one entry in the group: listing outranks searching, which
-    # outranks reading, however many stages the pipeline has.
-    for kind in ("list", "search", "read"):
-        if kind in kinds:
-            return {kind}
-    return kinds
-
-
-def _bash_args(name, tool_input, cwd):
-    data = tool_input if isinstance(tool_input, dict) else {}
-    return _clip_lines(data.get("command", ""), MAX_COMMAND_LINES, MAX_COMMAND_CHARS)
-
-
-def _bash_kinds(name, tool_input):
-    data = tool_input if isinstance(tool_input, dict) else {}
-    return bash_kinds(data.get("command"))
-
-
-register(BASH, build_tool_ui(args=_bash_args, kinds=_bash_kinds))

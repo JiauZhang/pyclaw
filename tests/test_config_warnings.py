@@ -7,7 +7,7 @@ import pyclaw.config as config_module
 def test_a_leftover_rate_limit_is_flagged(monkeypatch, tmp_path):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"rate_limit": {"agnes": 10}}))
-    monkeypatch.setattr(config_module, "__config_file__", path)
+    monkeypatch.setattr(config_module, "config_file", lambda: path)
     config_module.load.cache_clear()
     try:
         with warnings.catch_warnings(record=True) as caught:
@@ -21,7 +21,7 @@ def test_a_leftover_rate_limit_is_flagged(monkeypatch, tmp_path):
 def test_a_config_without_rate_limit_is_quiet(monkeypatch, tmp_path):
     path = tmp_path / "config.json"
     path.write_text(json.dumps({"model": "p/m"}))
-    monkeypatch.setattr(config_module, "__config_file__", path)
+    monkeypatch.setattr(config_module, "config_file", lambda: path)
     config_module.load.cache_clear()
     try:
         with warnings.catch_warnings(record=True) as caught:
