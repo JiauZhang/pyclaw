@@ -11,7 +11,7 @@ from pyclaw.slash import handle_slash
 from pyclaw.team.builder import build_team
 from chatchat.runtime.skills import Skill, listing_budget
 import logging
-from chatchat.tools import team_tools as team_tools
+from chatchat.tools.builtin import skills as skill_tools
 import subprocess
 from pyclaw.slash import skill_rows, suggest
 
@@ -116,7 +116,7 @@ def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(tmp_p
     gate = team._pyclaw_gate
     assert gate.decide("Bash", {"command": "git log -3"}) == "allow"
     assert gate.decide("Bash", {"command": "git rebase -i HEAD~3"}) == "ask"
-    asyncio.run(team_tools.use_skill(None, team=team, agent=team.lead, input={"skill": "changelog"}))
+    asyncio.run(skill_tools.use_skill(None, team=team, agent=team.lead, input={"skill": "changelog"}))
     assert ("allow", "Bash(git log:*)", "session") in gate.rule_listing()
     assert gate.decide("Bash", {"command": "git rebase -i HEAD~3"}) == "ask"
 

@@ -46,7 +46,7 @@ from chatchat.runtime.metrics import Metrics
 from pyclaw.permissions import PermissionController
 from pyclaw.tools import BUILTIN_TOOLS
 from chatchat.hooks.manager import HookManager
-from chatchat.tools.team_tools import ask_user
+from chatchat.tools.builtin.questions import ask_user
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
 from pyclaw.session import store as session_store

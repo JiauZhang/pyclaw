@@ -3,7 +3,7 @@
 import asyncio
 import tempfile
 
-from chatchat.tools.team_tools import team_tools
+from chatchat.tools import builtin_tools
 
 from pyclaw.team.builder import build_team
 from pyclaw.tools import BUILTIN_TOOLS
@@ -59,7 +59,7 @@ def _team_schemas(**kw):
     async def main():
         with tempfile.TemporaryDirectory() as directory:
             team = build_team("agnes/agnes-2.5-flash", cwd=directory, **kw)
-            owned = [schema for tool in team_tools(team) for schema in _schema_of(tool, team.tool_context)]
+            owned = [schema for tool in builtin_tools(team) for schema in _schema_of(tool, team.tool_context)]
             return owned, [schema["name"] for schema in team.tool_schemas(team.tool_context)]
 
     return asyncio.run(main())
