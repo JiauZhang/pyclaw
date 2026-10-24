@@ -299,7 +299,7 @@ class Session(HistoryMixin, ReadoutMixin):
         return target
 
     def _member_names(self) -> set:
-        return {agent.name for agent in self._team.agents.values()}
+        return {agent.name for agent in self._team.roster.agents.values()}
 
     def _in_scope(self, ev) -> bool:
         return str(getattr(ev, "team", "")) == str(self._team.name)

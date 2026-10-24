@@ -29,7 +29,7 @@ def agent_tree(team, states: dict, colors: dict) -> list[str]:
     lines = ["[bold]Agents[/bold]"]
 
     def walk(agent_id, prefix, last):
-        agent = team.agents.get(agent_id)
+        agent = team.roster.agents.get(agent_id)
         if agent is None:
             return
         state = states.get(agent.name, {})
@@ -41,7 +41,7 @@ def agent_tree(team, states: dict, colors: dict) -> list[str]:
         lines.append(
             f"{prefix}{BRANCH_LAST if last else BRANCH_MIDDLE} {name} · {_tool_uses(state.get('tools', 0))} ({status})"
         )
-        kids = sorted(team.children.get(agent_id, ()))
+        kids = sorted(team.roster.children.get(agent_id, ()))
         branch = PIPE_LAST if last else PIPE_MIDDLE
         for index, kid in enumerate(kids):
             walk(kid, prefix + branch, index == len(kids) - 1)

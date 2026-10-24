@@ -185,11 +185,12 @@ class _FakeTeam:
             async def idle(self):
                 return not owner._running
 
-        self.agents = {"lead@t": _A()}
+        self.roster = SimpleNamespace(agents={}, children={}, parents={}, background={})
+        self.roster.agents = {"lead@t": _A()}
         self.tasks = None
-        self.children = {}
-        self.background = {}
-        self.lead = self.agents["lead@t"]
+        self.roster.children = {}
+        self.roster.background = {}
+        self.lead = self.roster.agents["lead@t"]
         self._messages = []
         self.lead.messages = self._messages
         self.tool_context = ToolContext(cwd=Path.cwd())
@@ -663,7 +664,7 @@ def test_a_stopped_teammate_view_only_says_idle_while_others_run():
     def prepare(app):
         app._turn_verb = "Thinking"
         app._viewing = "worker"
-        app._team.agents["other@t"] = SimpleNamespace(name="other", agent_id="other@t", is_running=True, busy=True)
+        app._team.roster.agents["other@t"] = SimpleNamespace(name="other", agent_id="other@t", is_running=True, busy=True)
 
     team = _SwarmTeam()
     text = _rendered_spinner(lambda: team, prepare)
@@ -1862,7 +1863,7 @@ def test_subagent_agent_square_brackets_do_not_crash():
 
     def builder():
         t = _FakeTeam()
-        t.agents["teammate@t"] = type("A", (), {"name": "teammate", "agent_id": "teammate@t"})()
+        t.roster.agents["teammate@t"] = type("A", (), {"name": "teammate", "agent_id": "teammate@t"})()
         return t
 
     async def scenario():
@@ -2142,7 +2143,7 @@ class _TeammateTeam(_FakeTeam):
             async def idle(self):
                 return not owner.worker_busy
 
-        self.agents["worker@t"] = _W()
+        self.roster.agents["worker@t"] = _W()
 
     async def query(self, prompt, timeout=60):
         self.worker_busy = True
@@ -2252,13 +2253,13 @@ class _SwarmTeam(_FakeTeam):
                 return not owner.worker_busy
 
         self.worker = _W()
-        self.agents["worker@t"] = self.worker
-        self.children = {"lead@t": {"worker@t"}}
-        self.parents = {"worker@t": "lead@t"}
+        self.roster.agents["worker@t"] = self.worker
+        self.roster.children = {"lead@t": {"worker@t"}}
+        self.roster.parents = {"worker@t": "lead@t"}
 
     async def stop_agent(self, agent):
         self.stopped.append(agent.name)
-        self.agents.pop(agent.agent_id, None)
+        self.roster.agents.pop(agent.agent_id, None)
 
     async def query(self, prompt, timeout=60):
         self.worker_busy = True
@@ -4040,7 +4041,7 @@ def test_the_tree_stops_viewing_an_agent_that_is_gone():
             await _run_turn(pilot)
             await app._enter_agent_view(team.worker)
             assert app._viewing == "worker"
-            team.agents.pop("worker@t")
+            team.roster.agents.pop("worker@t")
             await app._refresh_agents()
             return app._viewing, app.query_one("#view").display, team.stopped
 
@@ -4312,7 +4313,7 @@ def test_a_teammate_row_closes_once_that_teammate_is_gone():
             app._sync_tool_states()
             await pilot.pause()
             live = _plain(app._agent_group.content)
-            app._team.agents.pop("worker@t")
+            app._team.roster.agents.pop("worker@t")
             await app._refresh_agents()
             await pilot.pause()
             return live, _plain(app._agent_group.content)
@@ -5700,7 +5701,7 @@ def test_a_teammate_that_left_the_roster_keeps_its_row_for_a_while():
             await app._refresh_agents()
             team = app._team
             team.worker.is_running = False
-            team.agents.pop("worker@t")
+            team.roster.agents.pop("worker@t")
             await app._refresh_agents()
             return ([str(a.name) for a in app._teammates()], _plain(app._tree_markup(True, False)))
 
@@ -5718,7 +5719,7 @@ def test_a_lingering_row_leaves_when_the_grace_window_ends(monkeypatch):
             await pilot.pause()
             team = app._team
             team.worker.is_running = False
-            team.agents.pop("worker@t")
+            team.roster.agents.pop("worker@t")
             await app._refresh_agents()
             await app._refresh_agents()
             return [str(a.name) for a in app._teammates()]

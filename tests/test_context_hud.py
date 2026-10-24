@@ -337,7 +337,7 @@ def test_a_background_sub_agent_is_a_stoppable_row():
         rows = session.task_rows()
         text = await session.stop_task(rows[0])
         await asyncio.sleep(0)
-        return rows, text, team.background
+        return rows, text, team.roster.background
 
     rows, text, left = asyncio.run(main())
     assert rows[0]["kind"] == "sub-agent"

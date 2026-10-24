@@ -34,7 +34,7 @@ class RosterMixin:
             return []
         lead = getattr(team, "lead", None)
         found = []
-        for agent in getattr(team, "agents", {}).values():
+        for agent in team.roster.agents.values():
             if agent is lead or getattr(agent, "_internal", False):
                 continue
             if _agent_alive(agent):
@@ -52,7 +52,7 @@ class RosterMixin:
         return found
 
     def _agent_by_name(self, name):
-        for agent in getattr(self._team, "agents", {}).values():
+        for agent in self._team.roster.agents.values():
             if getattr(agent, "name", "") == name:
                 return agent
         return None
@@ -165,7 +165,7 @@ class RosterMixin:
     async def _refresh_agents(self):
         self._note_lingering()
         self._schedule_linger()
-        known = {str(getattr(a, "name", "")) for a in getattr(self._team, "agents", {}).values()}
+        known = {str(getattr(a, "name", "")) for a in self._team.roster.agents.values()}
         for name in list(self._agent_state):
             if name not in known and name not in self._lingering:
                 self._agent_state.pop(name, None)

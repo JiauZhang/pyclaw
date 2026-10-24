@@ -69,7 +69,7 @@ class TurnFlowMixin:
             await asyncio.sleep(0.05)
 
     def _teammates_running(self) -> bool:
-        return any(a is not self._team.lead and getattr(a, "busy", False) for a in self._team.agents.values())
+        return any(a is not self._team.lead and getattr(a, "busy", False) for a in self._team.roster.agents.values())
 
     async def _finish_work_when_settled(self):
         while self._teammates_running():

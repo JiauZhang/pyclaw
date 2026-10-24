@@ -3,6 +3,8 @@ data and joins the others with a single blank line."""
 
 from pyclaw.tui.task_panel import agent_tree, panel_text, shell_rows, subagent_rows, task_detail_lines, tool_rows
 
+from types import SimpleNamespace
+
 from markup import plain
 from textual.content import Content
 
@@ -17,8 +19,9 @@ class _Agent:
 class _Team:
     def __init__(self, lead, *teammates):
         self.lead = lead
-        self.agents = {agent.agent_id: agent for agent in (lead, *teammates)}
-        self.children = {lead.agent_id: [agent.agent_id for agent in teammates]}
+        self.roster = SimpleNamespace(agents={}, children={}, parents={}, background={})
+        self.roster.agents = {agent.agent_id: agent for agent in (lead, *teammates)}
+        self.roster.children = {lead.agent_id: [agent.agent_id for agent in teammates]}
 
 
 def _sub(**kw):

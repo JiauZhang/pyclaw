@@ -80,10 +80,10 @@ class ReadoutMixin:
         registry = tasks.registry()
         lead = self._team.lead
         seen = {}
-        for agent in self._team.agents.values():
+        for agent in self._team.roster.agents.values():
             if agent is lead:
                 continue
-            if agent.agent_id in self._team.background:
+            if agent.agent_id in self._team.roster.background:
                 kind, detail = "sub-agent", "in the background"
             else:
                 if getattr(agent, "_internal", False):
@@ -138,7 +138,8 @@ class ReadoutMixin:
             record.detail = "stopped"
             record.finish(tasks.KILLED)
         agent = next(
-            (candidate for candidate in self._team.agents.values() if str(getattr(candidate, "name", "")) == row["id"]), None
+            (candidate for candidate in self._team.roster.agents.values() if str(getattr(candidate, "name", "")) == row["id"]),
+            None,
         )
         if agent is None:
             return f"{row['label']} is already gone."
@@ -147,7 +148,7 @@ class ReadoutMixin:
 
     @property
     def active_agents(self) -> int:
-        return len(self._team.agents) - 1
+        return len(self._team.roster.agents) - 1
 
     @property
     def cli_agent_defs(self) -> list:
@@ -161,7 +162,7 @@ class ReadoutMixin:
         return sorted(
             (
                 (str(agent.name), str(getattr(agent.client, "model", "") or ""), agent.total_usage)
-                for agent in self._team.agents.values()
+                for agent in self._team.roster.agents.values()
                 if not agent._internal
             ),
             key=lambda row: str(row[0]),

@@ -57,7 +57,7 @@ class EventRouterMixin:
         self._queue.put_nowait(ev)
 
     def _member_names(self) -> set:
-        return {a.name for a in self._team.agents.values()}
+        return {a.name for a in self._team.roster.agents.values()}
 
     def _thinking_shut(self) -> bool:
         return self._session is not None and not self._session.thinking.enabled
