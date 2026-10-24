@@ -13,6 +13,7 @@ from pyclaw.gateway.im import _im_progress_text
 from fastapi.testclient import TestClient
 from pyclaw.gateway.handlers.chat import handle_chat_history
 from pyclaw.channels.web import WebChannelAdapter
+from pyclaw.tools import cron as cron_tools
 
 
 def test_a_channel_failure_is_reworded_for_the_user():
@@ -527,17 +528,10 @@ def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
     class _Store:
         directory = "unused"
 
-    class _FakeSession:
-        conv_session_id = "cronconv"
-        team = type("T", (), {"cron": _Store()})()
-
-        def restore_transcript(self):
-            pass
+    store = _Store()
+    cron_tools.set_store(store)
 
     server = GatewayServer(GatewayConfig())
-
-    async def fake_get_session(key, provider=None, model=None):
-        return _FakeSession()
 
     def fake_run(store, lock, deliver, **kw):
         started.append(store)
@@ -548,11 +542,13 @@ def test_the_gateway_starts_and_stops_the_cron_loop(monkeypatch):
 
         return wait()
 
-    monkeypatch.setattr(server, "_get_session", fake_get_session)
     monkeypatch.setattr(gateway_server, "run_cron_loop", fake_run)
-    asyncio.run(server._start_cron())
-    assert len(started) == 1
-    asyncio.run(server._stop_cron())
+    try:
+        asyncio.run(server._start_cron())
+        assert started == [store]
+        asyncio.run(server._stop_cron())
+    finally:
+        cron_tools.set_store(None)
 
 
 def test_chat_history_returns_the_real_transcript():

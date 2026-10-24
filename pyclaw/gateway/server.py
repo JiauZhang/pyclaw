@@ -34,6 +34,7 @@ from ..session.store import (
 )
 from ..cron import run as run_cron_loop
 from pyclaw.cron_schedule import SchedulerLock
+from pyclaw.tools import cron as cron_tools
 from pyclaw.team.builder import IM_EXTRA, build_team, configured_context_window
 from pyclaw.tui.readout import git_label, git_status
 from pyclaw.tui.formatting import _display_cwd
@@ -178,8 +179,9 @@ class GatewayServer:
         return resolve_session_id([self.CRON_KEY])
 
     async def _start_cron(self):
-        session = await self._get_session(self._cron_conversation())
-        store = session.team.cron
+        store = cron_tools.store_or_none()
+        if store is None:
+            return
         self._cron_lock = SchedulerLock(store.directory, f"gateway-{os.getpid()}")
         self._cron_task = asyncio.create_task(run_cron_loop(store, self._cron_lock, self._deliver_cron))
 

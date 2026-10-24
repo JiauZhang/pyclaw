@@ -8,6 +8,7 @@ from pyclaw.tui.queued import QueuedPrompt
 from pyclaw.tui.theme import ASTERISK
 from pyclaw.cron_schedule import find_missed, missed_notification, SchedulerLock
 from pyclaw.cron import run
+from pyclaw.tools import cron as cron_tools
 
 
 class DeliveryMixin:
@@ -26,7 +27,7 @@ class DeliveryMixin:
 
     def _missed_prompts(self, now=None) -> list:
 
-        store = getattr(self._team, "cron", None)
+        store = cron_tools.store_or_none()
         if store is None:
             return []
         overdue = find_missed(store.durable(), now or datetime.now())
@@ -34,7 +35,7 @@ class DeliveryMixin:
 
     async def _note_missed_prompts(self):
         missed = self._missed_prompts()
-        store = getattr(self._team, "cron", None)
+        store = cron_tools.store_or_none()
         if not missed or store is None:
             return
         for task in missed:
@@ -43,7 +44,7 @@ class DeliveryMixin:
 
     def _start_cron(self):
 
-        store = getattr(self._team, "cron", None)
+        store = cron_tools.store_or_none()
         if store is None:
             return
         self._cron_lock = SchedulerLock(store.directory, str(self._session.conv_session_id))
@@ -60,7 +61,7 @@ class DeliveryMixin:
             if agent is not None:
                 agent.submit(prompt)
                 return
-            store = getattr(self._team, "cron", None)
+            store = cron_tools.store_or_none()
             if store is not None:
                 store.remove(task.get("id"))
             return

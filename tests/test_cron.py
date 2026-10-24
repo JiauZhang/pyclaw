@@ -3,6 +3,8 @@
 import asyncio
 from datetime import datetime, timedelta
 
+import pytest
+
 from pyclaw import cron_schedule
 from pyclaw.tools import cron as cron_tools
 from pyclaw.cron_schedule import CronStore, SchedulerLock
@@ -10,12 +12,20 @@ from pyclaw.cron_schedule import CronStore, SchedulerLock
 from pyclaw.cron import run, tick
 from pyclaw.team.builder import build_team
 from pyclaw.tui import PyClawApp
+from pyclaw.tui.delivery import DeliveryMixin
+from types import SimpleNamespace
 from test_tui import _FakeTeam
 import json
 import subprocess
 
 
 CREATED = datetime(2026, 5, 4, 8, 0)
+
+
+@pytest.fixture(autouse=True)
+def _no_store_leaks():
+    yield
+    cron_tools.set_store(None)
 
 
 def _setup(tmp_path, monkeypatch, created_at=CREATED):
@@ -121,11 +131,30 @@ def test_a_built_team_schedules_into_its_own_project(tmp_path):
     assert cron_tools.store().directory == tmp_path / ".pyclaw"
 
 
+def test_the_tui_finds_the_store_the_builder_wired(tmp_path, monkeypatch):
+    """Builder and consumer have to agree on one store. A hand-rolled team with a
+    `.cron` attribute is exactly what hid the regression where chatchat dropped
+    that attribute and nothing downstream noticed."""
+
+    monkeypatch.setattr(cron_schedule, "_now", lambda: CREATED)
+
+    async def main():
+        return build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
+
+    team = asyncio.run(main())
+    store = cron_tools.store_or_none()
+    assert store is not None
+    store.add("0 9 * * *", "water the plant", recurring=False, durable=True)
+
+    found = DeliveryMixin._missed_prompts(SimpleNamespace(_team=team), now=CREATED + timedelta(days=2))
+    assert [task["prompt"] for task in found] == ["water the plant"]
+
+
 def test_a_fired_prompt_becomes_a_turn_of_the_conversation(tmp_path):
 
     async def scenario():
         team = _FakeTeam()
-        team.cron = CronStore(tmp_path / ".pyclaw")
+        cron_tools.set_store(CronStore(tmp_path / ".pyclaw"))
         async with PyClawApp(builder=lambda: team).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
@@ -142,7 +171,7 @@ def test_the_owning_session_runs_the_durable_prompts(tmp_path):
 
     async def scenario():
         team = _FakeTeam()
-        team.cron = CronStore(tmp_path / ".pyclaw")
+        cron_tools.set_store(CronStore(tmp_path / ".pyclaw"))
         async with PyClawApp(builder=lambda: team).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
@@ -170,7 +199,7 @@ def test_a_missed_one_shot_is_removed_and_left_to_the_model_to_confirm(tmp_path)
         body = json.loads(store.path.read_text(encoding="utf-8"))
         body["tasks"][0]["created_at"] = "2026-05-01T08:00:00"
         store.path.write_text(json.dumps(body), encoding="utf-8")
-        team.cron = store
+        cron_tools.set_store(store)
         async with PyClawApp(builder=lambda: team).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             for _ in range(6):
@@ -194,7 +223,7 @@ def test_a_missed_recurring_prompt_is_not_surfaced_as_missed(tmp_path):
         body["tasks"][0]["created_at"] = "2026-05-01T08:00:00"
         body["tasks"][0]["recurring"] = True
         store.path.write_text(json.dumps(body), encoding="utf-8")
-        team.cron = store
+        cron_tools.set_store(store)
         async with PyClawApp(builder=lambda: team).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             for _ in range(4):
@@ -210,7 +239,7 @@ def test_a_cron_for_a_gone_teammate_is_removed_not_routed_to_the_lead(tmp_path):
         team = _FakeTeam()
         store = CronStore(tmp_path / ".pyclaw")
         store.add("0 9 * * *", "ghost work", durable=True, agent="ghost")
-        team.cron = store
+        cron_tools.set_store(store)
         async with PyClawApp(builder=lambda: team).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             await app._deliver_cron(store.durable()[0])

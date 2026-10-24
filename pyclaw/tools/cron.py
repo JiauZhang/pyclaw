@@ -15,6 +15,10 @@ def set_store(store: CronStore | None) -> None:
     _store = store
 
 
+def store_or_none() -> CronStore | None:
+    return _store
+
+
 def store() -> CronStore:
     global _store
     if _store is None:
