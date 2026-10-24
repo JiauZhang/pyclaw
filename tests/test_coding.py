@@ -1539,8 +1539,8 @@ def test_the_team_has_a_store_the_lead_can_name(tmp_path):
             return build_team("agnes/agnes-2.5-flash", cwd=d)
 
     team = asyncio.run(main())
-    assert team.team_store is not None
-    assert team.team_store.directory.name == "teams"
+    assert team.courier.team_store is not None
+    assert team.courier.team_store.directory.name == "teams"
     assert team.team_context is None
 
 
