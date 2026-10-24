@@ -105,6 +105,40 @@ class _Product:
         self._after.append(listener)
 
 
+class _FakeConversation:
+    """What the session reads off a team's conversation, answered by the team
+    itself - a fake team that defines turns() or rewind() keeps it."""
+
+    def __init__(self, team):
+        self.team = team
+
+    def query(self, prompt, timeout=60):
+        return self.team.query(prompt, timeout=timeout)
+
+    def transcript(self):
+        return self.team.transcript()
+
+    def restore(self, messages):
+        return self.team.restore(messages)
+
+    def turns(self):
+        return self.team.turns() if hasattr(self.team, "turns") else []
+
+    def rewind(self, mark, **kw):
+        if hasattr(self.team, "rewind"):
+            return self.team.rewind(mark, **kw)
+        return {"files": [], "messages": 0}
+
+    def begin_new_session(self, source="clear"):
+        return None
+
+    def end_session(self, reason):
+        return None
+
+    def use_file_history(self, directory, **kw):
+        return None
+
+
 class _FakeTeam:
     model = "p/m"
     thinking = Thinking("off")
@@ -186,6 +220,7 @@ class _FakeTeam:
                 return not owner._running
 
         self.roster = SimpleNamespace(agents={}, children={}, parents={}, background={})
+        self.conversation = _FakeConversation(self)
         self.roster.agents = {"lead@t": _A()}
         self.tasks = None
         self.roster.children = {}
@@ -1393,7 +1428,7 @@ def test_a_written_for_you_prompt_writes_no_user_bubble():
             app._pending_inputs.put_nowait(QueuedPrompt("Check the state of this installation.", meta=True))
             for _ in range(5):
                 await pilot.pause()
-            return _flatten(app), team.transcript()
+            return _flatten(app), team.conversation.transcript()
 
     painted, messages = asyncio.run(scenario())
     assert "Check the state of this installation." not in painted
@@ -5196,7 +5231,7 @@ def test_the_rewind_picker_can_restore_only_the_files():
             await pilot.press("enter")
             await pilot.pause()
             conversation = "".join(str(widget.content) for widget in app._conv().query(Static) if hasattr(widget, "content"))
-            return app._team.rewound, app._team.transcript(), conversation
+            return app._team.rewound, app._team.conversation.transcript(), conversation
 
     rewound, transcript, conversation = asyncio.run(scenario())
     assert rewound == [(2, True, False)]
@@ -5216,7 +5251,7 @@ def test_the_rewind_picker_can_be_backed_out_of():
             await pilot.press("down")
             await pilot.press("enter")
             await pilot.pause()
-            return app._team.rewound, app._team.transcript()
+            return app._team.rewound, app._team.conversation.transcript()
 
     rewound, transcript = asyncio.run(scenario())
     assert rewound == []

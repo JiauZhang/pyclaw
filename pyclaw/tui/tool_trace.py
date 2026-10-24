@@ -218,7 +218,7 @@ class ToolTraceMixin:
 
     def _sync_tool_states(self):
         results = {}
-        for msg in self._team.transcript():
+        for msg in self._team.conversation.transcript():
             content = msg.get("content")
             if not isinstance(content, list):
                 continue

@@ -90,7 +90,7 @@ def test_reading_a_covered_file_brings_its_rule_into_the_turn(tmp_path):
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         out = await team.execute_tool("Read", {"file_path": "src/a.py"}, team.lead, "t1")
-        await team.end_session("done")
+        await team.conversation.end_session("done")
         return out
 
     out = asyncio.run(main())

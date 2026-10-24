@@ -226,7 +226,7 @@ async def prompt_once(
             "text": text,
             "mode": session.mode,
             "permission_mode": session.permission_mode,
-            "messages": len(team.transcript()),
+            "messages": len(team.conversation.transcript()),
             "usage": session.usage.to_dict(),
         }
         if json_schema is not None:

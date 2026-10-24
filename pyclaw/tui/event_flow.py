@@ -141,7 +141,7 @@ class EventRouterMixin:
     def _log_turn(self):
         if self._session is None:
             return
-        for m in reversed(self._team.transcript()[self._turn_start :]):
+        for m in reversed(self._team.conversation.transcript()[self._turn_start :]):
             if m.get("role") != "assistant":
                 continue
             text = _content_text(m.get("content"))

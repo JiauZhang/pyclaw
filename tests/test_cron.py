@@ -161,7 +161,7 @@ def test_a_fired_prompt_becomes_a_turn_of_the_conversation(tmp_path):
             await app._deliver_cron({"prompt": "the scheduled thing"})
             for _ in range(6):
                 await pilot.pause()
-            return app._team.transcript()
+            return app._team.conversation.transcript()
 
     transcript = asyncio.run(scenario())
     assert any("the scheduled thing" in str(turn.get("content")) for turn in transcript)

@@ -8,7 +8,7 @@ from pyclaw.session.store import adopt_artifacts, rename_session, title_of, crea
 
 class HistoryMixin:
     def turns(self) -> list:
-        return self._team.turns()
+        return self._team.conversation.turns()
 
     def rewind_stats(self, mark: int) -> dict | None:
         history = self._team.file_history
@@ -46,14 +46,14 @@ class HistoryMixin:
         }
 
     def rewind(self, mark: int, *, code: bool = True, conversation: bool = True) -> dict:
-        result = self._team.rewind(mark, code=code, conversation=conversation)
+        result = self._team.conversation.rewind(mark, code=code, conversation=conversation)
         if result["messages"]:
             self.save_transcript()
         return result
 
     def generated_title(self) -> str:
         """A name for a conversation nobody named: what it was asked to do."""
-        for message in self._team.transcript():
+        for message in self._team.conversation.transcript():
             if message.get("role") != "user":
                 continue
             content = str(message.get("content") or "").strip()
@@ -74,9 +74,9 @@ class HistoryMixin:
 
         fork = create_branch(self.conv_session_id, title)
         messages = load_transcript(fork["id"])
-        self._team.restore(messages)
+        self._team.conversation.restore(messages)
         self._team.reset_rules()
-        self._team.begin_new_session("branch")
+        self._team.conversation.begin_new_session("branch")
         self.conv_session_id = fork["id"]
         adopt_artifacts(fork["forked_from"], fork["id"])
         self._adopt_history()

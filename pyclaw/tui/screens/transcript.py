@@ -69,8 +69,8 @@ class TranscriptScreen(Screen):
     def _entries(self) -> list[str]:
         app = self._owner
         entries: list[str] = []
-        thoughts = thinking_map(app._team.transcript())
-        models = model_map(app._team.transcript())
+        thoughts = thinking_map(app._team.conversation.transcript())
+        models = model_map(app._team.conversation.transcript())
         for widget in app._conv().children:
             if isinstance(widget, (_PermissionPrompt, _QuestionPrompt, _JumpToBottom, _LogoBlock)):
                 continue

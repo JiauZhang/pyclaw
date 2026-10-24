@@ -15,10 +15,10 @@ class ReadoutMixin:
 
     @property
     def context_messages(self) -> int:
-        return len(self._team.transcript())
+        return len(self._team.conversation.transcript())
 
     def transcript(self) -> list:
-        return self._team.transcript()
+        return self._team.conversation.transcript()
 
     @property
     def instruction_files(self) -> list:

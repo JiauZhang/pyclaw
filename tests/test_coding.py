@@ -1678,7 +1678,7 @@ def test_the_diff_shows_the_working_tree_of_a_repository(tmp_path):
         _git(tmp_path, "commit", "-qm", "start")
         (tmp_path / "a.py").write_text("one\ntwo\n", encoding="utf-8")
         view = session.diff()
-        await team.end_session("done")
+        await team.conversation.end_session("done")
         return view
 
     view = asyncio.run(main())
@@ -1697,7 +1697,7 @@ def test_outside_a_repository_the_diff_lists_what_this_session_touched(tmp_path)
             "Edit", {"file_path": "notes.md", "old_string": "second", "new_string": "second\nthird"}, team.lead
         )
         view = session.diff()
-        await team.end_session("done")
+        await team.conversation.end_session("done")
         return view
 
     view = asyncio.run(main())

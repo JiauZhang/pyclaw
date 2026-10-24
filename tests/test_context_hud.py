@@ -210,7 +210,7 @@ def test_agent_usage_lists_each_agent_with_its_own_model_and_spend():
     async def main():
         session = _session(usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120})
         session._team.create_agent("researcher", model="cheap-m")
-        await session._team.query("go")
+        await session._team.conversation.query("go")
         return session.agent_usage()
 
     rows = asyncio.run(main())

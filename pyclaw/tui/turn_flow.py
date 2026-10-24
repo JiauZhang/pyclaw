@@ -51,7 +51,7 @@ class TurnFlowMixin:
         self._turn_usage = _agent_tokens(self._team.lead)
         self._wrote_body = False
         self._interrupted_call = False
-        self._turn_start = len(self._team.transcript())
+        self._turn_start = len(self._team.conversation.transcript())
         self._turn_verb = random.choice(SPINNER_VERBS)
         self._turn_past = self._completion_verb()
         self._turn_started_at = time.monotonic()
@@ -91,7 +91,7 @@ class TurnFlowMixin:
             out.strip()
             and not self._wrote_body
             and not self._interrupted_call
-            and len(self._team.transcript()) > self._turn_start
+            and len(self._team.conversation.transcript()) > self._turn_start
         ):
             await self._append_block(escape(out))
         self._render_status()

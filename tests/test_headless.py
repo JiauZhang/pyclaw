@@ -21,6 +21,12 @@ def _fake_team():
         def transcript(self):
             return [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "ok"}]
 
+        class _Conversation:
+            def transcript(self):
+                return T.transcript(T())
+
+        conversation = _Conversation()
+
     return T()
 
 
@@ -100,6 +106,15 @@ class _ShapeTeam:
                 return ""
 
         self.tools = _Surface(self)
+
+        class _Conversation:
+            def transcript(self):
+                return []
+
+            def query(self, prompt, timeout=None):
+                return ""
+
+        self.conversation = _Conversation()
 
     def tool_schemas(self):
         return []

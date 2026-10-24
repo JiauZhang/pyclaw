@@ -95,7 +95,7 @@ class Session(HistoryMixin, ReadoutMixin):
         """Start the snapshot store of this conversation, which after a clear,
         a resume or a branch is a different one from before."""
         if checkpoints_enabled():
-            self._team.use_file_history(history_dir(self.conv_session_id))
+            self._team.conversation.use_file_history(history_dir(self.conv_session_id))
 
     @property
     def plan_path(self) -> Path:
@@ -126,13 +126,13 @@ class Session(HistoryMixin, ReadoutMixin):
 
     def save_transcript(self):
         if self.conv_session_id:
-            save_transcript(self.conv_session_id, self._team.transcript())
+            save_transcript(self.conv_session_id, self._team.conversation.transcript())
 
     def restore_transcript(self) -> int:
         source = self.resume_from or self.conv_session_id
         messages = load_transcript(source)
         if messages:
-            self._team.restore(messages)
+            self._team.conversation.restore(messages)
             self._carry_totals(source)
             self._restore_worktree(source)
         return len(messages)
@@ -220,7 +220,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.lead.interrupt_and_submit(text, cancelable_tools=cancelable_tools)
 
     async def end_session(self, reason: str):
-        await self._team.end_session(reason)
+        await self._team.conversation.end_session(reason)
 
     def _seen_zero(self) -> dict:
         return {"input": 0, "output": 0, "cached": 0, "seconds": 0, **{name: 0 for name in Metrics().as_dict()}}
@@ -239,7 +239,7 @@ class Session(HistoryMixin, ReadoutMixin):
             input_tokens=usage.prompt_tokens - seen["input"],
             output_tokens=usage.completion_tokens - seen["output"],
             cached=(int(details.get("cached_tokens") or 0) - seen["cached"]),
-            turns=sum(1 for message in self._team.transcript() if message.get("role") == "assistant"),
+            turns=sum(1 for message in self._team.conversation.transcript() if message.get("role") == "assistant"),
             seconds=int(time.monotonic() - self._started) - seen["seconds"],
             metrics={name: value - seen[name] for name, value in metrics.items()},
         )
@@ -260,16 +260,16 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team.lead.messages = []
         self._team.ledger.reset()
         self._team.reset_rules()
-        self._team.begin_new_session("clear")
+        self._team.conversation.begin_new_session("clear")
         self._adopt_history()
 
     def resume_session(self, session_id: str) -> int:
         messages = load_transcript(session_id)
         if not messages:
             return 0
-        self._team.restore(messages)
+        self._team.conversation.restore(messages)
         self._team.reset_rules()
-        self._team.begin_new_session("resume")
+        self._team.conversation.begin_new_session("resume")
         self._carry_totals(session_id)
         resumed = uuid.uuid4().hex
         adopt_artifacts(session_id, resumed)
@@ -348,7 +348,7 @@ class Session(HistoryMixin, ReadoutMixin):
         if on_event is not None:
             out = await self._run(message, on_event)
         else:
-            out = await self._team.query(message)
+            out = await self._team.conversation.query(message)
         self.save_transcript()
         return out
 
@@ -370,7 +370,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._bind(on_ev)
         gen = self._bind_gen
         try:
-            out = await self._team.query(message)
+            out = await self._team.conversation.query(message)
             self._flush_conv()
             return out
         finally:
@@ -392,7 +392,7 @@ class Session(HistoryMixin, ReadoutMixin):
                 _dispatch_event(on_event, ev)
 
         self._bind(on_ev)
-        task = asyncio.create_task(self._team.query(message))
+        task = asyncio.create_task(self._team.conversation.query(message))
         try:
             while not task.done():
                 try:
