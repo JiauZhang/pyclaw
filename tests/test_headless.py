@@ -86,14 +86,20 @@ class _ShapeTeam:
     provided_tools = []
 
     def __init__(self):
-        self.structured_output = None
         self.installed = []
 
-    def set_output_schema(self, schema):
-        self.installed.append(schema)
-        if schema.get("type") == "not-a-type":
-            return "'not-a-type' is not recognized"
-        return ""
+        class _Surface:
+            def __init__(self, team):
+                self.team = team
+                self.structured_output = None
+
+            def set_output_schema(self, schema):
+                self.team.installed.append(schema)
+                if schema.get("type") == "not-a-type":
+                    return "'not-a-type' is not recognized"
+                return ""
+
+        self.tools = _Surface(self)
 
     def tool_schemas(self):
         return []
@@ -125,7 +131,7 @@ def test_a_shape_that_is_not_a_shape_stops_the_run(monkeypatch):
 def test_the_payload_is_what_print_mode_hands_over(capsys, monkeypatch):
     class _AnsweringSession(_FakeSession):
         async def chat(self, message, on_event=None):
-            self.team.structured_output = {"name": "round"}
+            self.team.tools.structured_output = {"name": "round"}
             return "\n\nprose\n"
 
     team = _ShapeTeam()

@@ -202,7 +202,7 @@ async def prompt_once(
         conversation_id=session_id,
     )
     if json_schema is not None:
-        problem = team.set_output_schema(json_schema)
+        problem = team.tools.set_output_schema(json_schema)
         if problem:
             raise ValueError(f"--json-schema: {problem}")
     session = Session(team, session_id=session_id, resume_from=resume_from)
@@ -230,7 +230,7 @@ async def prompt_once(
             "usage": session.usage.to_dict(),
         }
         if json_schema is not None:
-            out["structured_output"] = team.structured_output
+            out["structured_output"] = team.tools.structured_output
         return out
     finally:
         unregister()
