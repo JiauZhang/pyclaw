@@ -110,6 +110,116 @@ def _agent_memory(cwd: str):
     )
 
 
+def _permissions(
+    *,
+    permission_mode,
+    cwd,
+    tools,
+    allowed_tools,
+    ask,
+    disallowed_tools,
+    base_tools,
+    allow_all_unlocked,
+):
+    """The gate, and the tools it lets through."""
+    coding_tools = list(BUILTIN_TOOLS)
+    coding_names = {t.name for t in coding_tools}
+    candidates = coding_tools + [t for t in _resolve_tools(tools) if t.name not in coding_names]
+    refused = list(disallowed_tools or [])
+    if base_tools is not None:
+        refused += [t.name for t in candidates if t.name not in base_tools]
+    gate = PermissionController(
+        mode=permission_mode,
+        cwd=cwd,
+        allow=allowed_tools or (),
+        ask=ask or (),
+        deny=refused,
+        allow_all_unlocked=allow_all_unlocked,
+        tools=candidates,
+        extra_dirs=config.load().get("additionalDirectories") or (),
+    )
+    return gate, [t for t in candidates if gate.allowed_tool(t.name)]
+
+
+def _state_roots(cwd):
+    """Where the session keeps what it owns: teams, cron, memory.
+
+    The data directories hang off the working directory, so a terminal keeps
+    every project separate - but the GUI app is launched by launchd with a
+    read-only root as its directory, and creating directories there fails, so
+    that case falls back to pyclaw's home.
+    """
+    if os.access(cwd, os.W_OK):
+        state_root = cwd
+        mailbox_root = os.path.join(state_root, ".pyclaw", "teams")
+        cron_root = Path(state_root) / ".pyclaw"
+    else:
+        state_root = str(pyclaw_home())
+        mailbox_root = str(pyclaw_home() / "teams")
+        cron_root = pyclaw_home()
+    return state_root, mailbox_root, cron_root
+
+
+def _agent_definitions(team, agents_json, resolved, cwd) -> tuple[list, list]:
+    """Every agent definition this session offers, and the ones the command
+    line added, which are listed but cannot be edited."""
+    for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
+        team.register_agent_definition(defn)
+    cli_defs = agent_defs.parse_agents_json(agents_json, resolved) if agents_json else []
+    definitions = agent_defs.load_agent_defs(cwd, all_tools=resolved, cli=cli_defs, package_dirs=discover_agent_dirs())
+    for defn in definitions:
+        team.register_agent_definition(defn)
+    return cli_defs, definitions
+
+
+def _notify_task_finished(team, task_id, command, code, killed):
+    """A background command that finished says so in the conversation."""
+    record = background.task(task_id)
+    if record is None:
+        return
+    team.lead.enqueue_attachment(task_registry.notification(record, record.output_delta()))
+
+
+async def _permission_gate(team, gate, hook_input):
+    """The runtime's permission gate, answered by the product's own gate."""
+    agent_type = hook_input.get("agent_type") or ""
+    mode = None
+    if agent_type and gate.mode not in (PermissionMode.allow_all, PermissionMode.accept_edits):
+        defn = team.agent_defs.find(agent_type)
+        mode = (defn.permission_mode if defn is not None else None) or "acceptEdits"
+    asker = str(hook_input.get("agent_id") or "")
+    who = (team.get_by_name(asker) if asker else None) or team.lead
+    tool_name = hook_input.get("tool_name", "")
+    tool_input = hook_input.get("tool_input") or {}
+    outcome = await gate.authorize(
+        tool_name,
+        tool_input,
+        mode=mode,
+        tool_use_id=str(hook_input.get("tool_use_id") or ""),
+        agent="" if asker == team.lead.name else asker,
+        hook_allowed=bool(hook_input.get("hook_allowed")),
+    )
+    specific = outcome.get("hookSpecificOutput") or {} if isinstance(outcome, dict) else {}
+    if specific.get("permissionDecision") == "deny":
+        await team.hooks.execute_permission_denied_hooks(who, tool_name, tool_input)
+    return outcome
+
+
+async def _permission_request(team, tool_name, tool_input, tool_use_id, agent):
+    """The product asks the person, through the runtime's hooks."""
+    asker = (team.get_by_name(agent) if agent else None) or team.lead
+    agg = await team.hooks.execute_permission_request_hooks(asker, tool_name, tool_input or {}, tool_use_id=tool_use_id)
+    if agg.decision == "allow":
+        return {"behavior": "allow", "updated_input": agg.updated_input, "message": ""}
+    if agg.decision == "deny" or agg.blocking_error is not None:
+        return {
+            "behavior": "deny",
+            "updated_input": None,
+            "message": (agg.blocking_error.blocking_error if agg.blocking_error else ""),
+        }
+    return None
+
+
 def build_team(
     model: str,
     instruction: Optional[str] = None,
@@ -132,41 +242,23 @@ def build_team(
     conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
     registry = _resolve_skills(skills, cwd)
-    coding_tools = list(BUILTIN_TOOLS)
-    coding_names = {t.name for t in coding_tools}
-    candidates = coding_tools + [t for t in _resolve_tools(tools) if t.name not in coding_names]
-    refused = list(disallowed_tools or [])
-    if base_tools is not None:
-        refused += [t.name for t in candidates if t.name not in base_tools]
-    gate = PermissionController(
-        mode=permission_mode,
+    gate, resolved = _permissions(
+        permission_mode=permission_mode,
         cwd=cwd,
-        allow=allowed_tools or (),
-        ask=ask or (),
-        deny=refused,
+        tools=tools,
+        allowed_tools=allowed_tools,
+        ask=ask,
+        disallowed_tools=disallowed_tools,
+        base_tools=base_tools,
         allow_all_unlocked=allow_all_unlocked,
-        tools=candidates,
-        extra_dirs=config.load().get("additionalDirectories") or (),
     )
-    resolved = [t for t in candidates if gate.allowed_tool(t.name)]
     names = [t.name for t in resolved]
     model_timeout = (http_options or {}).get("timeout", 120)
     inst = instruction or (team_instruction(names) if use_team else agent_instruction(names))
     if gate.mode is PermissionMode.plan:
         inst = inst + PLAN_NOTE
-    # cwd 相对的数据目录（.pyclaw/teams、cron、项目记忆）依赖可写的工作目录：
-    # 终端里 cwd 是用户项目，保持每项目隔离；但 launchd 拉起的 GUI App 的
-    # cwd 是只读根目录 /，在这些位置建目录会直接崩——回落到 pyclaw_home()。
-    if os.access(cwd, os.W_OK):
-        state_root = cwd
-        mailbox_root = os.path.join(state_root, ".pyclaw", "teams")
-        cron_root = Path(state_root) / ".pyclaw"
-    else:
-        state_root = str(pyclaw_home())
-        mailbox_root = str(pyclaw_home() / "teams")
-        cron_root = pyclaw_home()
-    cron_store = CronStore(cron_root)
-    cron_tools.set_store(cron_store)
+    state_root, mailbox_root, cron_root = _state_roots(cwd)
+    cron_tools.set_store(CronStore(cron_root))
     team = Team(
         f"pyclaw-{next(_name_counter)}",
         model=model,
@@ -211,12 +303,7 @@ def build_team(
     if stale:
         logger.info("swept %d stale worktree(s): %s", len(stale), ", ".join(path.name for path in stale))
 
-    for defn in agent_defs.builtin_agent_defs(all_tools=resolved):
-        team.register_agent_definition(defn)
-    cli_defs = agent_defs.parse_agents_json(agents_json, resolved) if agents_json else []
-    definitions = agent_defs.load_agent_defs(cwd, all_tools=resolved, cli=cli_defs, package_dirs=discover_agent_dirs())
-    for defn in definitions:
-        team.register_agent_definition(defn)
+    cli_defs, definitions = _agent_definitions(team, agents_json, resolved, cwd)
     product.cli_agent_defs = cli_defs
     product.snapshot_updates = [
         defn.agent_type
@@ -224,56 +311,16 @@ def build_team(
         if defn.memory and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory) != "none"
     ]
 
-    def _notify_task_finished(task_id, command, code, killed):
-        record = background.task(task_id)
-        if record is None:
-            return
-        team.lead.enqueue_attachment(task_registry.notification(record, record.output_delta()))
-
-    background.set_notifier(_notify_task_finished)
-
-    async def _permission_gate(hook_input):
-        agent_type = hook_input.get("agent_type") or ""
-        mode = None
-        if agent_type and gate.mode not in (PermissionMode.allow_all, PermissionMode.accept_edits):
-            defn = team.agent_defs.find(agent_type)
-            mode = (defn.permission_mode if defn is not None else None) or "acceptEdits"
-        asker = str(hook_input.get("agent_id") or "")
-        who = (team.get_by_name(asker) if asker else None) or team.lead
-        tool_name = hook_input.get("tool_name", "")
-        tool_input = hook_input.get("tool_input") or {}
-        outcome = await gate.authorize(
-            tool_name,
-            tool_input,
-            mode=mode,
-            tool_use_id=str(hook_input.get("tool_use_id") or ""),
-            agent="" if asker == team.lead.name else asker,
-            hook_allowed=bool(hook_input.get("hook_allowed")),
-        )
-        specific = outcome.get("hookSpecificOutput") or {} if isinstance(outcome, dict) else {}
-        if specific.get("permissionDecision") == "deny":
-            await team.hooks.execute_permission_denied_hooks(who, tool_name, tool_input)
-        return outcome
+    background.set_notifier(lambda *args: _notify_task_finished(team, *args))
 
     team.hooks.permission_mode = gate.mode.value
-    team.permission_gate = _permission_gate
-
-    async def _permission_request(tool_name, tool_input, tool_use_id, agent):
-        asker = (team.get_by_name(agent) if agent else None) or team.lead
-        agg = await team.hooks.execute_permission_request_hooks(asker, tool_name, tool_input or {}, tool_use_id=tool_use_id)
-        if agg.decision == "allow":
-            return {"behavior": "allow", "updated_input": agg.updated_input, "message": ""}
-        if agg.decision == "deny" or agg.blocking_error is not None:
-            return {
-                "behavior": "deny",
-                "updated_input": None,
-                "message": (agg.blocking_error.blocking_error if agg.blocking_error else ""),
-            }
-        return None
+    team.permission_gate = lambda hook_input: _permission_gate(team, gate, hook_input)
+    gate.permission_hooks = lambda tool_name, tool_input, tool_use_id, agent: _permission_request(
+        team, tool_name, tool_input, tool_use_id, agent
+    )
 
     async def _config_changed(source: str):
         await team.hooks.execute_config_change_hooks(team.lead, source)
 
-    gate.permission_hooks = _permission_request
     gate.config_changed = _config_changed
     return team
