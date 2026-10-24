@@ -182,7 +182,7 @@ class AgentFormMixin:
     def _apply_notes_copy(self):
         defn = self._target.defn
         self._session.apply_snapshot_update(defn.agent_type, defn.memory)
-        self._team._pyclaw_snapshot_updates = [name for name in self._session.snapshot_updates if name != defn.agent_type]
+        self._team.product.snapshot_updates = [name for name in self._session.snapshot_updates if name != defn.agent_type]
         self._changes.append(f"{defn.agent_type} now works from the notes saved in this project.")
         self._mode = "list"
 

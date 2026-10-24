@@ -37,7 +37,7 @@ def _team(tmp_path, **kw):
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), **kw)
         await team.end_session("done")
-        return team._pyclaw_gate
+        return team.product.gate
 
     return asyncio.run(main())
 

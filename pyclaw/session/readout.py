@@ -151,7 +151,7 @@ class ReadoutMixin:
 
     @property
     def cli_agent_defs(self) -> list:
-        return list(getattr(self._team, "cli_agent_defs", []))
+        return list(self._team.product.cli_agent_defs) if self._team.product is not None else []
 
     @property
     def agent_types(self) -> list:
@@ -198,7 +198,7 @@ class ReadoutMixin:
 
     @property
     def snapshot_updates(self) -> list:
-        return list(getattr(self._team, "_pyclaw_snapshot_updates", []))
+        return list(self._team.product.snapshot_updates) if self._team.product is not None else []
 
     @property
     def usage(self):

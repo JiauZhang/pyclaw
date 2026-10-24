@@ -91,6 +91,20 @@ class _NullHooks:
         return None
 
 
+class _Product:
+    """Only what the session reads off a product; pyclaw's own is PyclawProduct."""
+
+    def __init__(self, gate=None):
+        self.gate = gate
+        self.mode = "agent"
+        self.cli_agent_defs = []
+        self.snapshot_updates = []
+        self._after = []
+
+    def after_cwd_change(self, listener):
+        self._after.append(listener)
+
+
 class _FakeTeam:
     model = "p/m"
     thinking = Thinking("off")
@@ -98,7 +112,7 @@ class _FakeTeam:
     compact_threshold = 0
     auto_compact = False
     worktree = None
-    _cwd_changed = None
+    product = None
     skills = SkillRegistry()
 
     def total_metrics(self):
@@ -296,7 +310,7 @@ class _GateTeam(_FakeTeam):
 
         self._tmp = tempfile.TemporaryDirectory()
 
-        self._pyclaw_gate = PermissionController(mode="default", cwd=self._tmp.name, tools=BUILTIN_TOOLS)
+        self.product = _Product(PermissionController(mode="default", cwd=self._tmp.name, tools=BUILTIN_TOOLS))
 
         self.hooks = HookManager(self)
 

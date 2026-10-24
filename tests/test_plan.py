@@ -179,7 +179,7 @@ def _built(tmp_path):
 
 def test_plan_mode_lets_the_model_write_only_the_plan_file(tmp_path):
     team = _built(tmp_path)
-    gate = team._pyclaw_gate
+    gate = team.product.gate
     plan = tmp_path / "plan.md"
     team.plan_path = plan
     gate.plan_file = plan
@@ -195,7 +195,7 @@ def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
 
     team = _built(tmp_path)
     team.ask_user = lambda agent, questions: []
-    gate = team._pyclaw_gate
+    gate = team.product.gate
     assert gate.mode.value == "default"
 
     asyncio.run(team.execute_tool("EnterPlanMode", {}, team.lead))
@@ -229,7 +229,7 @@ def test_the_plan_file_belongs_to_the_conversation_not_the_team(tmp_path):
     assert str(first.plan_path).startswith(str(home / "plans"))
     assert first.plan_path != second.plan_path
     assert first._team.name not in str(first.plan_path)
-    assert first._team._pyclaw_gate.plan_file == first.plan_path
+    assert first._team.product.gate.plan_file == first.plan_path
 
 
 def test_clearing_gives_the_next_conversation_its_own_plan(tmp_path):

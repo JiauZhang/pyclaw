@@ -42,7 +42,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._team: Team = entity
         self._model = entity.model
         self._tools = entity.provided_tools
-        self.mode = getattr(entity, "_pyclaw_mode", "agent")
+        self.mode = entity.product.mode if entity.product is not None else "agent"
         self.name = entity.name
         self.resume_from = resume_from
         self._conv_reply = ""
@@ -52,7 +52,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._seen = self._seen_zero()
         self._unreg = None
         self._bind_gen = 0
-        self._gate = getattr(entity, "_pyclaw_gate", None)
+        self._gate = entity.product.gate if entity.product is not None else None
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
         if getattr(entity, "worktree", None) is not None:
@@ -61,14 +61,13 @@ class Session(HistoryMixin, ReadoutMixin):
     def _watch_worktree(self, team) -> None:
         """Every move of the session directory is the worktree changing under
         it, and that is what a later resuming conversation reads back."""
-        moved = team._cwd_changed
+        if team.product is None:
+            return
 
         def _note(cwd):
-            if moved is not None:
-                moved(cwd)
             save_worktree(self.conv_session_id, getattr(team, "worktree", None))
 
-        team._cwd_changed = _note
+        team.product.after_cwd_change(_note)
 
     @property
     def team(self) -> Team:

@@ -20,13 +20,14 @@ from pyclaw import task_registry
 from pyclaw import config
 from pyclaw.team import defs as agent_defs
 from pyclaw.team import memory as agent_memory
+from pyclaw.team.product import PyclawProduct
 from pyclaw.home import pyclaw_home
 from pyclaw.tools import background
 from pyclaw.plugins import discover_agent_dirs, discover_tools
 from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import BUILTIN_TOOLS
-from pyclaw.permissions import PermissionController, PermissionMode, parse_mode
+from pyclaw.permissions import PermissionController, PermissionMode
 from chatchat.team.agent_memory import AgentMemory
 from chatchat.runtime.skills import SkillRegistry
 
@@ -198,37 +199,22 @@ def build_team(
         multi_agent=use_team,
         context_window=configured_context_window(),
     )
+    product = team.attach(
+        PyclawProduct(
+            team,
+            gate=gate,
+            mode="team" if use_team else "agent",
+            agent_memory=agent_memory,
+            instruction=inst,
+        )
+    )
     team.tool_context.team = team
     team.isolation_start = worktree_tools.isolate
     team.isolation_end = worktree_tools.release
     gate.agent_memory = team.agent_memory
-    team._pyclaw_gate = gate
-
-    def _roots_of(cwd):
-        """What the session reads about the directory it works in: the
-        instruction files, the project memory and the rules beside them."""
-        team.set_instruction_files(agent_memory.load_instruction_files(cwd))
-        memory = agent_memory.load_project_memory(cwd)
-        team.set_lead_instruction(inst + (f"\n\n{memory}" if memory else ""))
-        team.rules = agent_memory.rule_set(cwd)
-
-    def _follow_worktree(cwd):
-        gate.move_to(cwd)
-        os.chdir(cwd)
-        _roots_of(cwd)
-
-    team._cwd_changed = _follow_worktree
-    team._skills_granted = gate.grant_rules
-
-    def _plan_mode(mode):
-        gate.mode = parse_mode(mode)
-        team.hooks.permission_mode = gate.mode.value
-
-    team._plan_mode_changed = _plan_mode
     team.lead_session_id = conversation_id
-    team._pyclaw_mode = "team" if use_team else "agent"
 
-    _roots_of(cwd)
+    product.reload_roots(cwd)
     register_builtin_skills(team.skills, team)
 
     # Only a worktree directory that someone left behind makes this cost
@@ -243,8 +229,8 @@ def build_team(
     definitions = agent_defs.load_agent_defs(cwd, all_tools=resolved, cli=cli_defs, package_dirs=discover_agent_dirs())
     for defn in definitions:
         team.register_agent_definition(defn)
-    team.cli_agent_defs = cli_defs
-    team._pyclaw_snapshot_updates = [
+    product.cli_agent_defs = cli_defs
+    product.snapshot_updates = [
         defn.agent_type
         for defn in definitions
         if defn.memory and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory) != "none"

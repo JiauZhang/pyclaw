@@ -58,7 +58,7 @@ def _debug_prompt(team, args: str = "") -> str:
     conversation = str(getattr(team, "lead_session_id", "") or "")
     was_logging = _start_logging(conversation)
     path = session_store.conversation_log(conversation or "default")
-    gate = getattr(team, "_pyclaw_gate", None)
+    gate = team.product.gate if team.product is not None else None
     parts = ["Find out what went wrong in this running session from what it recorded, not from what it is remembered."]
     if not was_logging:
         parts.append(

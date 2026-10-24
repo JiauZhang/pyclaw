@@ -8,7 +8,7 @@ from pyclaw.tui.agent_form import AGENT_STEPS, _CHECKED, _UNCHECKED
 from pyclaw.tui.theme import POINTER
 from pyclaw.tui.agents_panel import AgentsScreen
 
-from test_tui import _FakeTeam, _flatten
+from test_tui import _FakeTeam, _Product, _flatten
 from markup import plain as _plain
 from pyclaw.tools import BUILTIN_TOOLS
 from pyclaw.team import defs as mod
@@ -37,7 +37,7 @@ class _AgentsTeam(_FakeTeam):
 
         self.agent_defs = AgentRegistry()
         self.agent_defs.define("general-purpose", system_prompt="p", default=True)
-        self._pyclaw_gate = SimpleNamespace(cwd=cwd, mode=SimpleNamespace(value="default"), allow_all_available=False)
+        self.product = _Product(SimpleNamespace(cwd=cwd, mode=SimpleNamespace(value="default"), allow_all_available=False))
         self.provided_tools = list(tools)
         self.cli_agent_defs = []
 
@@ -468,7 +468,7 @@ def test_editing_the_model_rewrites_just_the_model(monkeypatch, tmp_path):
 
 def test_an_agent_from_the_command_line_is_listed_and_read_only(tmp_path):
     team = _AgentsTeam(tmp_path, _tools())
-    team.cli_agent_defs = [AgentDefinition("auditor", description="from --agents", system_prompt="check every claim")]
+    team.product.cli_agent_defs = [AgentDefinition("auditor", description="from --agents", system_prompt="check every claim")]
 
     async def scenario():
         async with PyClawApp(builder=lambda: team).run_test() as pilot:
@@ -499,7 +499,7 @@ def _noted(monkeypatch, tmp_path, pending=False):
         },
         snapshots=workspace / "agent-memory-snapshots",
     )
-    team._pyclaw_snapshot_updates = ["reviewer"] if pending else []
+    team.product.snapshot_updates = ["reviewer"] if pending else []
     if pending:
         snapshot = team.agent_memory.directory("reviewer", "project")
         snapshot.mkdir(parents=True, exist_ok=True)

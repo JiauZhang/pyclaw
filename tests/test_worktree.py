@@ -224,7 +224,7 @@ def test_a_run_started_with_a_worktree_is_in_it_before_anything_reads(tmp_path):
     assert error == "" and worktree["name"] == "aside"
     assert cwd == inside
     assert Path(os.getcwd()) == inside
-    assert app._team._pyclaw_gate.cwd == inside
+    assert app._team.product.gate.cwd == inside
     assert store.load_worktree("conv-started")["path"] == inside
 
 
@@ -241,7 +241,7 @@ def test_a_started_worktree_that_cannot_be_made_says_so_and_leaves(tmp_path):
     assert worktree is None
     assert "not usable" in error or "must not" in error
     assert cwd == root
-    assert app._team._pyclaw_gate.cwd == root.resolve()
+    assert app._team.product.gate.cwd == root.resolve()
 
 
 def test_the_worktree_flag_is_refused_where_there_is_no_git(tmp_path, monkeypatch, capsys):

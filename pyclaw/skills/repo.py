@@ -195,7 +195,7 @@ def _commit_prompt(team, args: str) -> str:
 def _doctor_prompt(team, args: str) -> str:
     cwd = team.tool_context.cwd
     home = pyclaw_home()
-    settings = team._pyclaw_gate.settings_files() if getattr(team, "_pyclaw_gate", None) else {}
+    settings = team.product.gate.settings_files() if team.product is not None else {}
     in_git = _git(cwd, "rev-parse", "--is-inside-work-tree") == "true"
     branch = _git(cwd, "branch", "--show-current") or "?"
     rules = ", ".join(f"{name}={path}" for name, path in settings.items()) or "unknown"

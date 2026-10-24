@@ -12,19 +12,29 @@ class _Lead:
         self.messages = []
 
 
+class _Product:
+    mode = "agent"
+    cli_agent_defs = []
+    snapshot_updates = []
+
+    def __init__(self, gate):
+        self.gate = gate
+
+    def after_cwd_change(self, listener):
+        pass
+
+
 class _Team:
     provider = "p"
     model = "m"
     name = "bash-session"
     thinking = Thinking("off")
     provided_tools = []
-    _pyclaw_mode = "agent"
-    _cwd_changed = None
     worktree = None
 
     def __init__(self, cwd):
         self.lead = _Lead()
-        self._pyclaw_gate = ToolContext(cwd=cwd)
+        self.product = _Product(ToolContext(cwd=cwd))
 
     def use_file_history(self, directory):
         self.file_history_dir = directory

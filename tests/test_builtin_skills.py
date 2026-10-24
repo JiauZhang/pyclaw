@@ -113,7 +113,7 @@ def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(tmp_p
             name="changelog", description="write notes", body_text="summarise the commits", allowed_tools=("Bash(git log:*)",)
         )
     )
-    gate = team._pyclaw_gate
+    gate = team.product.gate
     assert gate.decide("Bash", {"command": "git log -3"}) == "allow"
     assert gate.decide("Bash", {"command": "git rebase -i HEAD~3"}) == "ask"
     asyncio.run(skill_tools.use_skill(None, team=team, agent=team.lead, input={"skill": "changelog"}))
@@ -124,7 +124,7 @@ def test_a_skill_that_declares_tools_gets_them_for_the_rest_of_the_session(tmp_p
 def test_setting_up_the_status_line_lets_its_own_reads_through(tmp_path, monkeypatch):
 
     session, team, _reply = _opened(tmp_path, monkeypatch, "conv-statusline")
-    gate = team._pyclaw_gate
+    gate = team.product.gate
     config = os.path.expanduser("~/.pyclaw/config.json")
     assert gate.decide("Read", {"file_path": os.path.expanduser("~/.zshrc")}) == "ask"
     asyncio.run(handle_slash("/statusline make it show the branch", session))

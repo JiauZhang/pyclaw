@@ -814,7 +814,7 @@ def test_approval_feedback_lands_beside_the_tool_result():
             async def approve(name, inp, *, tool_use_id="", agent=""):
                 return PermissionChoice("approved", feedback="run the tests first")
 
-            team._pyclaw_gate.request = approve
+            team.product.gate.request = approve
             return await team.execute_tool("Bash", {"command": "touch marker.txt"}, team.lead, "t1")
 
         outcome = asyncio.run(main())
@@ -834,7 +834,7 @@ def test_a_permission_request_hook_answers_before_the_user():
                 await asyncio.sleep(5)
                 return PermissionChoice("denied")
 
-            team._pyclaw_gate.request = ask
+            team.product.gate.request = ask
             team.hooks.register(
                 "PermissionRequest",
                 fn=lambda inp: {
@@ -864,7 +864,7 @@ def test_a_permission_request_hook_denial_reaches_the_model():
                 await asyncio.sleep(5)
                 return PermissionChoice("approved")
 
-            team._pyclaw_gate.request = ask
+            team.product.gate.request = ask
             team.hooks.register(
                 "PermissionRequest",
                 fn=lambda inp: {
@@ -916,9 +916,9 @@ def test_build_team_mode_gating():
             s_single = session_mod.Session(single, session_id="ga")
             s_team = session_mod.Session(teams, session_id="gt")
             return (
-                single._pyclaw_mode,
+                single.product.mode,
                 s_single.mode,
-                teams._pyclaw_mode,
+                teams.product.mode,
                 s_team.mode,
                 single.lead.instruction,
                 teams.lead.instruction,
@@ -1459,7 +1459,7 @@ def test_a_denied_call_is_reported_to_hooks():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("PermissionDenied", "*", fn=lambda inp: seen.append(inp) or True)
-            team._pyclaw_gate.request = None
+            team.product.gate.request = None
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         outcome = asyncio.run(main())
@@ -1477,7 +1477,7 @@ def test_a_remembered_rule_is_reported_as_a_config_change():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
-            team._pyclaw_gate.request = approve
+            team.product.gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         asyncio.run(main())
@@ -1494,7 +1494,7 @@ def test_an_ordinary_approval_changes_no_configuration():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
-            team._pyclaw_gate.request = approve
+            team.product.gate.request = approve
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         asyncio.run(main())
@@ -1526,7 +1526,7 @@ def test_a_denied_rule_only_change_is_reported_once():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
             team.hooks.register("ConfigChange", "*", fn=lambda inp: seen.append(inp["source"]) or True)
-            team._pyclaw_gate.request = refuse
+            team.product.gate.request = refuse
             return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
 
         asyncio.run(main())
@@ -1570,19 +1570,19 @@ def test_a_worktree_moves_the_whole_session_with_it(tmp_path):
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         session = session_mod.Session(team, session_id="wtree")
-        before = Path(team._pyclaw_gate.cwd)
+        before = Path(team.product.gate.cwd)
         await worktree_tools.enter(team, "side")
         return team, session, before
 
     team, session, before = asyncio.run(main())
     assert team.tool_context.cwd != before
-    assert team._pyclaw_gate.cwd == team.tool_context.cwd
+    assert team.product.gate.cwd == team.tool_context.cwd
     assert session.worktree["name"] == "side"
-    assert team._pyclaw_gate.decide("Edit", {"file_path": "../a.txt"}) == "ask"
+    assert team.product.gate.decide("Edit", {"file_path": "../a.txt"}) == "ask"
 
     async def leave():
         await worktree_tools.leave(team)
-        return team._pyclaw_gate.cwd, session.worktree
+        return team.product.gate.cwd, session.worktree
 
     back, worktree = asyncio.run(leave())
     assert back == before
@@ -1599,7 +1599,7 @@ def test_a_teammate_approval_request_names_that_teammate():
 
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
-            team._pyclaw_gate.request = ask
+            team.product.gate.request = ask
             worker = team.create_agent("worker", instruction="do work")
             return await team.execute_tool("Write", {"file_path": "a.txt", "content": "x"}, worker)
 
@@ -1622,7 +1622,7 @@ def test_an_agent_writing_its_own_notes_needs_no_approval(tmp_path):
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path))
         held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
-        return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
+        return team.product.gate.decide("Write", {"file_path": str(held)})
 
     assert asyncio.run(main()) == "allow"
 
@@ -1631,7 +1631,7 @@ def test_an_explicit_rule_still_asks_about_a_notes_file(tmp_path):
     async def main():
         team = build_team("agnes/agnes-2.5-flash", cwd=str(tmp_path), ask=["Write(*)"])
         held = team.agent_memory.directory("reviewer", "user") / "MEMORY.md"
-        return team._pyclaw_gate.decide("Write", {"file_path": str(held)})
+        return team.product.gate.decide("Write", {"file_path": str(held)})
 
     assert asyncio.run(main()) == "ask"
 

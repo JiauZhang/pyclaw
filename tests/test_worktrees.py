@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from chatchat.client import MockClient
 from chatchat.team.team import Team
+from chatchat.team.product import TeamProduct
 from chatchat.tool import ToolContext
 from pyclaw.team.worktrees import create, worktree_path
 from pyclaw.team.worktrees import sweep_worktrees
@@ -270,13 +271,18 @@ def test_a_hook_can_isolate_the_work_where_there_is_no_git(tmp_path):
     assert "Back at" in gone
 
 
+class _Chdir(TeamProduct):
+    def cwd_changed(self, cwd):
+        os.chdir(cwd)
+
+
 def test_the_process_directory_moves_with_the_session_and_comes_back(tmp_path):
     root = _repo(tmp_path)
     before = Path(os.getcwd())
 
     async def main():
         team = _team(root)
-        team._cwd_changed = os.chdir
+        team.attach(_Chdir())
         await enter(team, "inside")
         inside = Path(os.getcwd())
         await leave(team, keep=True)
