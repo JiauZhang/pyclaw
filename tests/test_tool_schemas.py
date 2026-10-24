@@ -7,6 +7,7 @@ from chatchat.tools import builtin_tools
 
 from pyclaw.team.builder import build_team
 from pyclaw.tools import BUILTIN_TOOLS
+from pyclaw.tools import names
 
 
 def _schema_problems(schema, where, problems):
@@ -91,7 +92,7 @@ def test_a_file_path_is_the_first_thing_a_reading_tool_asks_for():
 
 
 def test_a_background_read_says_how_long_it_waits():
-    output = next(tool for tool in BUILTIN_TOOLS if tool.name == "TaskOutput")
+    output = next(tool for tool in BUILTIN_TOOLS if tool.name == names.TASK_OUTPUT)
     properties = output.parameters["properties"]
     assert properties["block"]["default"] is True
     assert properties["timeout"]["default"] == 30_000

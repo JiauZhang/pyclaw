@@ -1,4 +1,4 @@
-from .background import TaskOutput, TaskStop
+from .background import TaskRead, TaskCancel
 from .bash import Bash
 from .cron import CronCreate, CronDelete, CronList
 from .edit import Edit, Write
@@ -14,8 +14,8 @@ BUILTIN_TOOLS = (
     Write,
     Edit,
     Bash,
-    TaskOutput,
-    TaskStop,
+    TaskRead,
+    TaskCancel,
     CronCreate,
     CronList,
     CronDelete,

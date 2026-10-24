@@ -207,7 +207,7 @@ Waits for the task by default, so a timeout report means it is still running rat
         "additionalProperties": False,
     },
 )
-def TaskOutput(context, task_id: str, block: bool = True, timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
+def TaskRead(context, task_id: str, block: bool = True, timeout: int = TASK_DEFAULT_TIMEOUT_MS) -> str:
     record = task(task_id)
     if record is None:
         return f"Error: no such background task: {task_id}"
@@ -246,7 +246,7 @@ def TaskOutput(context, task_id: str, block: bool = True, timeout: int = TASK_DE
 @tool(
     name=TASK_STOP,
     description="""Stops a background task, killing its whole process tree, and reports what was stopped.
-The output collected so far stays readable with TaskOutput afterwards.""",
+The output collected so far stays readable with TaskRead afterwards.""",
     parameters={
         "type": "object",
         "properties": {
@@ -256,7 +256,7 @@ The output collected so far stays readable with TaskOutput afterwards.""",
         "additionalProperties": False,
     },
 )
-def TaskStop(context, task_id: str) -> str:
+def TaskCancel(context, task_id: str) -> str:
     row = stop(task_id)
     if row is None:
         return f"Error: no such background task: {task_id}"

@@ -150,7 +150,7 @@ def run_command(cwd: str, command: str, timeout_ms: int | None = None) -> str:
             return (
                 f"{limit}ms passed with the command still running, so it moved "
                 f"to the background as {task_id}. Read its output with "
-                "TaskOutput."
+                "TaskRead."
             )
         kill_process(process)
         process.wait()
@@ -193,7 +193,7 @@ Ask before destructive git commands like push --force or reset --hard.""",
             "run_in_background": {
                 "type": "boolean",
                 "default": False,
-                "description": 'Run in the background and return a task ID immediately; read what it produced with TaskOutput. Never append "&".',
+                "description": 'Run in the background and return a task ID immediately; read what it produced with TaskRead. Never append "&".',
             },
         },
         "required": ["command"],
@@ -205,5 +205,5 @@ def Bash(
 ) -> str:
     if run_in_background:
         task_id = spawn(context.cwd, command)
-        return f"Started in the background as {task_id}; output goes to {_output_path(task_id)}. Read it with TaskOutput."
+        return f"Started in the background as {task_id}; output goes to {_output_path(task_id)}. Read it with TaskRead."
     return run_command(context.cwd, command, timeout)
