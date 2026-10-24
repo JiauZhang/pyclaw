@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 import logging
 import subprocess
 import time
@@ -10,7 +9,6 @@ from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
 from chatchat.team.team import Team
-from chatchat.runtime.metrics import Metrics
 from chatchat.runtime.thinking import Thinking
 from chatchat.hooks.events import (
     AGENT_TEXT,
@@ -19,9 +17,9 @@ from chatchat.hooks.events import (
 
 from pyclaw import config
 from pyclaw.tools.bash import get_default_timeout_ms
-from pyclaw.usage_history import conversation_totals, record, row
 from .history import HistoryMixin
 from .readout import ReadoutMixin
+from .usage_ledger import UsageLedger
 from .store import (
     _session_path,
     append_conv,
@@ -50,7 +48,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._conv_thinking = ""
         self._started = time.monotonic()
         self.carried_seconds = 0
-        self._seen = self._seen_zero()
+        self.usage_ledger = UsageLedger()
         self._unreg = None
         self._bind_gen = 0
         self._gate = entity.product.gate if entity.product is not None else None
@@ -142,26 +140,7 @@ class Session(HistoryMixin, ReadoutMixin):
         got to, so /cost and the status row do not fall back to zero the
         moment it is resumed. The same sums become the baseline for the next
         turn's own numbers."""
-        seen = conversation_totals(str(source_id))
-        spent = seen["input"] or seen["output"] or seen["seconds"] or any(seen["metrics"].values())
-        if not spent:
-            return
-        self._team.ledger.restore(
-            {
-                "prompt_tokens": seen["input"],
-                "completion_tokens": seen["output"],
-                "total_tokens": seen["total"],
-                "prompt_tokens_details": {"cached_tokens": seen["cached"]},
-            },
-            seen["metrics"],
-        )
-        self._seen = {
-            "input": seen["input"],
-            "output": seen["output"],
-            "cached": seen["cached"],
-            "seconds": seen["seconds"],
-            **seen["metrics"],
-        }
+        seen = self.usage_ledger.carry(source_id, ledger=self._team.ledger)
         self.carried_seconds = seen["seconds"]
 
     async def note_config_change(self, source: str):
@@ -222,39 +201,21 @@ class Session(HistoryMixin, ReadoutMixin):
     async def end_session(self, reason: str):
         await self._team.conversation.end_session(reason)
 
-    def _seen_zero(self) -> dict:
-        return {"input": 0, "output": 0, "cached": 0, "seconds": 0, **{name: 0 for name in Metrics().as_dict()}}
-
     def record_turn(self) -> dict:
         usage = self._team.ledger.usage()
-        details = getattr(usage, "prompt_tokens_details", None) or {}
         metrics = self._team.ledger.total_metrics().as_dict()
-        seen = self._seen
-        turn = datetime.datetime.now().astimezone()
-        entry = row(
-            turn,
-            str(self.conv_session_id or self.name),
-            self.provider,
-            self._model,
-            input_tokens=usage.prompt_tokens - seen["input"],
-            output_tokens=usage.completion_tokens - seen["output"],
-            cached=(int(details.get("cached_tokens") or 0) - seen["cached"]),
+        return self.usage_ledger.record_turn(
+            session=self.conv_session_id or self.name,
+            provider=self.provider,
+            model=self._model,
+            usage=usage,
+            metrics=metrics,
             turns=sum(1 for message in self._team.conversation.transcript() if message.get("role") == "assistant"),
-            seconds=int(time.monotonic() - self._started) - seen["seconds"],
-            metrics={name: value - seen[name] for name, value in metrics.items()},
+            started=self._started,
         )
-        self._seen = {
-            "input": usage.prompt_tokens,
-            "output": usage.completion_tokens,
-            "cached": int(details.get("cached_tokens") or 0),
-            "seconds": int(time.monotonic() - self._started),
-            **metrics,
-        }
-        record(entry)
-        return entry
 
     def reset(self):
-        self._seen = self._seen_zero()
+        self.usage_ledger = UsageLedger()
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None
         self._team.lead.messages = []
