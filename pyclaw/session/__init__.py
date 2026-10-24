@@ -146,7 +146,7 @@ class Session(HistoryMixin, ReadoutMixin):
         spent = seen["input"] or seen["output"] or seen["seconds"] or any(seen["metrics"].values())
         if not spent:
             return
-        self._team.restore_totals(
+        self._team.ledger.restore(
             {
                 "prompt_tokens": seen["input"],
                 "completion_tokens": seen["output"],
@@ -226,9 +226,9 @@ class Session(HistoryMixin, ReadoutMixin):
         return {"input": 0, "output": 0, "cached": 0, "seconds": 0, **{name: 0 for name in Metrics().as_dict()}}
 
     def record_turn(self) -> dict:
-        usage = self._team.usage()
+        usage = self._team.ledger.usage()
         details = getattr(usage, "prompt_tokens_details", None) or {}
-        metrics = self._team.total_metrics().as_dict()
+        metrics = self._team.ledger.total_metrics().as_dict()
         seen = self._seen
         turn = datetime.datetime.now().astimezone()
         entry = row(
@@ -258,7 +258,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self.conv_session_id = uuid.uuid4().hex
         self.resume_from = None
         self._team.lead.messages = []
-        self._team.reset_usage()
+        self._team.ledger.reset()
         self._team.reset_rules()
         self._team.begin_new_session("clear")
         self._adopt_history()

@@ -138,6 +138,37 @@ class _FakeTeam:
 
         return _U()
 
+    @property
+    def ledger(self):
+        """What the session reads the numbers through. The team keeps its own
+        usage and metrics; this only answers the rest of the ledger's questions."""
+
+        team = self
+
+        class _Ledger:
+            def usage(self):
+                return team.usage()
+
+            def last_usage(self):
+                return team.last_usage()
+
+            def total_metrics(self):
+                return team.total_metrics()
+
+            def turn_metrics(self):
+                return team.total_metrics()
+
+            def context_tokens(self):
+                return 0
+
+            def restore(self, usage, metrics):
+                team.restored = (usage, metrics)
+
+            def reset(self):
+                pass
+
+        return _Ledger()
+
     def __init__(self):
         self._running = False
         self.hooks = _NullHooks()

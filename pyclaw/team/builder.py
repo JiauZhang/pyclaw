@@ -196,8 +196,8 @@ def build_team(
         )
     )
     team.tool_context.team = team
-    team.isolation_start = worktree_tools.isolate
-    team.isolation_end = worktree_tools.release
+    team.isolation.start = worktree_tools.isolate
+    team.isolation.end = worktree_tools.release
     gate.agent_memory = team.agent_memory
     team.lead_session_id = conversation_id
 

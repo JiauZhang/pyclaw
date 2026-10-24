@@ -185,12 +185,12 @@ class ReadoutMixin:
 
     @property
     def used_context(self) -> int:
-        last = self._team.last_usage()
+        last = self._team.ledger.last_usage()
         return 0 if last is None else int(last.prompt_tokens + last.completion_tokens)
 
     @property
     def last_usage(self):
-        return self._team.last_usage()
+        return self._team.ledger.last_usage()
 
     @property
     def auto_compact(self) -> bool:
@@ -202,10 +202,10 @@ class ReadoutMixin:
 
     @property
     def usage(self):
-        return self._team.usage()
+        return self._team.ledger.usage()
 
     def metrics(self) -> dict:
-        return self._team.total_metrics().as_dict()
+        return self._team.ledger.total_metrics().as_dict()
 
     def permission_rules(self):
         gate = self._gate
