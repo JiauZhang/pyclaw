@@ -14,6 +14,7 @@ from pyclaw.permissions.bash_rules import (
     suggested_rules,
 )
 from pyclaw.permissions.modes import PermissionMode, parse_mode
+from pyclaw.permissions.updates import MODES, SOURCES, rule_string
 from pyclaw.permissions.rules import (
     BASH,
     _command_of,
@@ -256,6 +257,85 @@ class PermissionController:
             bucket.remove(rule)
         return True
 
+    def apply_permission_updates(self, updates) -> None:
+        for update in updates or ():
+            self._apply_update(update)
+
+    def _apply_update(self, update) -> None:
+        source = SOURCES.get(str(update.get("destination") or ""))
+        if source is None:
+            logger.warning("Ignoring a permission update: %r is not a destination", update.get("destination"))
+            return
+        kind = str(update.get("type") or "")
+        if kind == "setMode":
+            try:
+                self.mode = self.check_switch(MODES.get(str(update.get("mode")), ""))
+            except ValueError:
+                logger.warning("Ignoring a permission update to mode %r: this session cannot switch to it", update.get("mode"))
+            return
+        if kind == "addDirectories":
+            for directory in update.get("directories") or ():
+                self._add_updated_dir(directory)
+            return
+        if kind == "removeDirectories":
+            gone = {self._updated_dir(directory) for directory in update.get("directories") or ()}
+            self.extra_dirs = [path for path in self.extra_dirs if path not in gone]
+            return
+        behavior = str(update.get("behavior") or "")
+        if behavior not in ("allow", "ask", "deny"):
+            logger.warning("Ignoring a permission update: %r is not a behavior", behavior)
+            return
+        rules = [rule_string(rule) for rule in update.get("rules") or ()]
+        self._shape_rules(kind, behavior, source, rules)
+
+    def _updated_dir(self, directory):
+        path = Path(os.path.expanduser(str(directory)))
+        return (path if path.is_absolute() else self.cwd / path).resolve()
+
+    def _add_updated_dir(self, directory) -> None:
+        path = self._updated_dir(directory)
+        if path.is_dir() and not any(path.is_relative_to(working) for working in self.working_dirs()):
+            self.extra_dirs.append(path)
+
+    def _shape_rules(self, kind: str, behavior: str, source: str, rules: list[str]) -> None:
+        held = [rule for one, rule, origin in self._layers if one == behavior and origin == source]
+        if kind == "addRules":
+            kept = held + [rule for rule in rules if rule not in held]
+        elif kind == "replaceRules":
+            kept = list(rules)
+        else:
+            kept = [rule for rule in held if rule not in rules]
+        self._set_layer(behavior, source, kept)
+
+    def _set_layer(self, behavior: str, source: str, rules: list[str]) -> None:
+        self._layers = [entry for entry in self._layers if not (entry[0] == behavior and entry[2] == source)]
+        seen = {rule for one, rule, _origin in self._layers if one == behavior}
+        for rule in rules:
+            if rule in seen:
+                continue
+            self._layers.append((behavior, rule, source))
+            seen.add(rule)
+        self._reindex()
+        path = self._layer_files.get(source)
+        if path is not None:
+            self._write_rules(path, behavior, rules)
+
+    def _reindex(self) -> None:
+        self._allow = [rule for behavior, rule, _source in self._layers if behavior == "allow"]
+        self._ask = [rule for behavior, rule, _source in self._layers if behavior == "ask"]
+        self._deny = [rule for behavior, rule, _source in self._layers if behavior == "deny"]
+
+    def _write_rules(self, path, behavior: str, rules: list[str]) -> None:
+        try:
+            data = json.read(path) if Path(path).exists() else {}
+            perms = data.get("permissions") or {}
+            perms[behavior] = list(rules)
+            data["permissions"] = perms
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            json.write(path, data)
+        except OSError as exc:
+            logger.warning("Could not write %s: %s", path, exc)
+
     def _save_local_rule(self, rule: str):
         path = _local_settings_file(self.cwd)
         try:
@@ -387,6 +467,7 @@ class PermissionController:
         if decision is None:
             return None
         if decision["behavior"] == "allow":
+            self.apply_permission_updates(decision.get("updated_permissions") or ())
             return _pre_tool_decision("allow", updated_input=decision["updated_input"])
         return _pre_tool_decision("deny", reason=decision["message"] or "Permission denied by hook")
 

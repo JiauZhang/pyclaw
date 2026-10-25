@@ -1542,6 +1542,105 @@ def test_a_permission_denied_hook_that_says_nothing_leaves_the_denial_plain():
         assert "additionalContext" not in _decision(outcome)
 
 
+def test_a_permission_request_hook_is_told_the_rule_the_app_would_remember():
+    with tempfile.TemporaryDirectory() as d:
+        seen = []
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.product.gate.request = None
+            team.hooks.register("PermissionRequest", "*", fn=lambda inp: seen.append(inp) or None)
+            await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        asyncio.run(main())
+        assert seen[0]["permission_suggestions"] == [
+            {
+                "type": "addRules",
+                "rules": [{"toolName": "Edit", "ruleContent": "./a.txt"}],
+                "behavior": "allow",
+                "destination": "localSettings",
+            }
+        ]
+
+
+def test_a_permission_request_hook_may_keep_the_rule_it_was_offered():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.product.gate.request = None
+            team.hooks.register(
+                "PermissionRequest",
+                "*",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {"behavior": "allow", "updatedPermissions": inp["permission_suggestions"]},
+                    }
+                },
+            )
+            outcome = await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+            return team, outcome
+
+        team, outcome = asyncio.run(main())
+        assert _decision(outcome)["permissionDecision"] == "allow"
+        assert team.product.gate.decide("Edit", {"file_path": "a.txt"}) == "allow"
+        saved = json.read(Path(d) / ".pyclaw" / "settings.local.json")
+        assert saved["permissions"]["allow"] == ["Edit(./a.txt)"]
+
+
+def test_a_permission_request_hook_may_change_the_mode_through_an_update():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.product.gate.request = None
+            team.hooks.register(
+                "PermissionRequest",
+                "*",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {
+                            "behavior": "allow",
+                            "updatedPermissions": [{"type": "setMode", "mode": "acceptEdits", "destination": "session"}],
+                        },
+                    }
+                },
+            )
+            await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+            return team.product.gate.mode
+
+        assert asyncio.run(main()) is parse_mode("acceptEdits")
+
+
+def test_an_update_the_session_cannot_honour_leaves_the_call_alone():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.product.gate.request = None
+            team.hooks.register(
+                "PermissionRequest",
+                "*",
+                fn=lambda inp: {
+                    "hookSpecificOutput": {
+                        "hookEventName": "PermissionRequest",
+                        "decision": {
+                            "behavior": "allow",
+                            "updatedPermissions": [{"type": "setMode", "mode": "dontAsk", "destination": "session"}],
+                        },
+                    }
+                },
+            )
+            outcome = await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+            return team.product.gate.mode, outcome
+
+        mode, outcome = asyncio.run(main())
+        assert mode is parse_mode("default")
+        assert _decision(outcome)["permissionDecision"] == "allow"
+
+
 def test_a_remembered_rule_is_reported_as_a_config_change():
     with tempfile.TemporaryDirectory() as d:
         seen = []

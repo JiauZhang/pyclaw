@@ -29,6 +29,7 @@ from pyclaw.skills import discover_registry
 from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import BUILTIN_TOOLS, ShellTasks
 from pyclaw.permissions import PermissionController, PermissionMode
+from pyclaw.permissions.updates import suggested_updates
 from chatchat.team.agent_memory import AgentMemory
 from chatchat.runtime.skills import SkillRegistry
 
@@ -219,12 +220,23 @@ async def _permission_gate(team, gate, hook_input):
     return outcome
 
 
-async def _permission_request(team, tool_name, tool_input, tool_use_id, agent):
+async def _permission_request(team, gate, tool_name, tool_input, tool_use_id, agent):
     """The product asks the person, through the runtime's hooks."""
     asker = (team.get_by_name(agent) if agent else None) or team.lead
-    agg = await team.hooks.execute_permission_request_hooks(asker, tool_name, tool_input or {}, tool_use_id=tool_use_id)
+    agg = await team.hooks.execute_permission_request_hooks(
+        asker,
+        tool_name,
+        tool_input or {},
+        tool_use_id=tool_use_id,
+        permission_suggestions=suggested_updates(gate, tool_name, tool_input or {}),
+    )
     if agg.decision == "allow":
-        return {"behavior": "allow", "updated_input": agg.updated_input, "message": ""}
+        return {
+            "behavior": "allow",
+            "updated_input": agg.updated_input,
+            "message": "",
+            "updated_permissions": agg.updated_permissions,
+        }
     if agg.decision == "deny" or agg.blocking_error is not None:
         return {
             "behavior": "deny",
@@ -330,7 +342,7 @@ def build_team(
     team.hooks.permission_mode = gate.mode.value
     team.permission_gate = lambda hook_input: _permission_gate(team, gate, hook_input)
     gate.permission_hooks = lambda tool_name, tool_input, tool_use_id, agent: _permission_request(
-        team, tool_name, tool_input, tool_use_id, agent
+        team, gate, tool_name, tool_input, tool_use_id, agent
     )
 
     async def _config_changed(source: str):
