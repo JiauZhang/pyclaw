@@ -10,6 +10,8 @@ _MODE_NAMES = {
     "plan": "plan",
     "allowAll": "allowAll",
     "allow_all": "allowAll",
+    "dontAsk": "dontAsk",
+    "dont_ask": "dontAsk",
 }
 
 
@@ -18,12 +20,13 @@ class PermissionMode(str, Enum):
     accept_edits = "acceptEdits"
     plan = "plan"
     allow_all = "allowAll"
+    dont_ask = "dontAsk"
 
 
 def parse_mode(value) -> PermissionMode:
     key = str(value).strip()
     if key not in _MODE_NAMES:
-        raise ValueError(f"Unknown permission mode: {value}. Use one of: default, acceptEdits, plan, allowAll.")
+        raise ValueError(f"Unknown permission mode: {value}. Use one of: default, acceptEdits, plan, allowAll, dontAsk.")
     return PermissionMode(_MODE_NAMES[key])
 
 

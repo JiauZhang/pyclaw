@@ -460,7 +460,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "--permission-mode",
         type=str,
         default=None,
-        choices=["default", "acceptEdits", "plan", "allowAll"],
+        choices=["default", "acceptEdits", "plan", "allowAll", "dontAsk"],
         help="Session permission mode",
     )
     parser.add_argument(

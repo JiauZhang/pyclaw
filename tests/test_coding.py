@@ -247,13 +247,14 @@ def test_write_and_edit():
 
 
 def test_mode_parse_and_cycle():
-    for m in ("default", "acceptEdits", "plan", "allowAll"):
+    for m in ("default", "acceptEdits", "plan", "allowAll", "dontAsk"):
         assert parse_mode(m).value == m
     assert next_mode("default").value == "acceptEdits"
     assert next_mode("acceptEdits").value == "plan"
     assert next_mode("plan").value == "default"
     assert next_mode("plan", allow_all_available=True).value == "allowAll"
     assert next_mode("allowAll").value == "default"
+    assert next_mode("dontAsk").value == "default"
 
 
 def test_decide_matrix():
@@ -2247,8 +2248,50 @@ def test_a_settings_file_cannot_unlock_allow_all(tmp_path, monkeypatch, caplog):
 
 def test_a_settings_mode_pyclaw_does_not_know_is_passed_over(tmp_path, monkeypatch, caplog):
     monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
-    _pinned_mode(tmp_path, "dontAsk")
+    _pinned_mode(tmp_path, "auto")
     with caplog.at_level(logging.WARNING, logger="pyclaw.permissions.gate"):
         gate = PermissionController(cwd=str(tmp_path))
     assert gate.mode is parse_mode("default")
-    assert any("dontAsk" in record.message for record in caplog.records)
+    assert any("auto" in record.message for record in caplog.records)
+
+
+def test_dont_ask_mode_refuses_instead_of_asking():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
+            asked.append(name)
+            return PermissionChoice("approved")
+
+        gate = PermissionController(mode="dontAsk", cwd=d, request=approve, tools=BUILTIN_TOOLS)
+        result = asyncio.run(gate.authorize("Edit", {"file_path": "a.txt"}))
+        assert _decision(result)["permissionDecision"] == "deny"
+        assert "don't ask mode" in _decision(result)["permissionDecisionReason"]
+        assert asked == []
+
+
+def test_dont_ask_mode_still_runs_what_a_rule_allows():
+    with tempfile.TemporaryDirectory() as d:
+        gate = PermissionController(mode="dontAsk", cwd=d, tools=BUILTIN_TOOLS, allow=["Edit(./a.txt)"])
+        assert asyncio.run(gate.authorize("Edit", {"file_path": "a.txt"})) is True
+
+
+def test_dont_ask_mode_refuses_what_a_hook_wants_to_ask():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
+            asked.append(name)
+            return PermissionChoice("approved")
+
+        gate = PermissionController(mode="dontAsk", cwd=d, request=approve, tools=BUILTIN_TOOLS)
+        result = asyncio.run(gate.authorize("Read", {"file_path": "a.txt"}, hook_ask=True, hook_reason="look"))
+        assert _decision(result)["permissionDecision"] == "deny"
+        assert asked == []
+
+
+def test_a_settings_file_may_pin_the_dont_ask_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "dontAsk")
+    gate = PermissionController(cwd=str(tmp_path))
+    assert gate.mode is parse_mode("dontAsk")

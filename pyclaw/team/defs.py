@@ -440,7 +440,7 @@ How the statusLine command works:
      "session_id": "string",       // one session, one id
      "transcript_path": "string",  // where the conversation is stored
      "cwd": "string",              // directory PyClaw runs in
-     "permission_mode": "string",  // default | acceptEdits | plan | allowAll
+     "permission_mode": "string",  // default | acceptEdits | plan | allowAll | dontAsk
      "model": {{
        "id": "string",             // model id
        "display_name": "string"    // model name as shown to the user

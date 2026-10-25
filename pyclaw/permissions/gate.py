@@ -101,6 +101,21 @@ SUBAGENT_REJECT_MESSAGE = (
 SUBAGENT_REJECT_MESSAGE_WITH_REASON_PREFIX = (
     "This tool call was refused, so nothing ran; a refused edit left the file exactly as it was. What they added:\n"
 )
+DENIAL_WORKAROUND_GUIDANCE = (
+    "IMPORTANT: You *may* attempt to accomplish this action using other tools that might naturally be used to accomplish this goal, "
+    "e.g. using head instead of cat. But you *should not* attempt to work around this denial in malicious ways, "
+    "e.g. do not use your ability to run tests to execute non-test actions. "
+    "You should only try to work around this restriction in reasonable ways that do not attempt to bypass the intent behind this denial. "
+    "If you believe this capability is essential to complete the user's request, STOP and explain to the user "
+    "what you were trying to do and why you need this permission. Let the user decide how to proceed."
+)
+
+
+def dont_ask_message(tool_name: str) -> str:
+    return (
+        f"Permission to use {tool_name} has been denied because PyClaw is running in don't ask mode. "
+        + DENIAL_WORKAROUND_GUIDANCE
+    )
 
 
 def reject_message(feedback: str = "", teammate: bool = False) -> str:
@@ -566,6 +581,8 @@ class PermissionController:
             return True
         if decision == "allow":
             return True
+        if mode is PermissionMode.dont_ask:
+            return _pre_tool_decision("deny", reason=dont_ask_message(tool_name))
         if self.request is None:
             decided = await self._hook_decision(tool_name, tool_input, tool_use_id, agent)
             if decided is not None:
