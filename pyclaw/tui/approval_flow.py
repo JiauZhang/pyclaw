@@ -16,7 +16,14 @@ logger = logging.getLogger(__name__)
 
 class ApprovalFlowMixin:
     async def _ask_permission(
-        self, tool_name: str, tool_input, *, tool_use_id: str = "", agent: str | None = None
+        self,
+        tool_name: str,
+        tool_input,
+        *,
+        tool_use_id: str = "",
+        agent: str | None = None,
+        hook: str = "",
+        reason: str = "",
     ) -> PermissionChoice:
         inp = tool_input if isinstance(tool_input, dict) else {}
         rules = self._session.suggested_rules(tool_name, inp)
@@ -28,6 +35,8 @@ class ApprovalFlowMixin:
             rules=rules,
             agent=self._badge(agent),
             destructive=is_destructive(tool_name, inp),
+            hook=hook,
+            reason=reason,
         )
         block = self._tools.get(tool_use_id) if tool_use_id else None
         approval = _Approval(tool_use_id, tool_name, prompt, block, asyncio.get_running_loop().create_future())

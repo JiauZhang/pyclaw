@@ -271,6 +271,27 @@ def test_a_hook_can_isolate_the_work_where_there_is_no_git(tmp_path):
     assert "Back at" in gone
 
 
+def test_a_worktree_create_hook_may_name_the_directory_in_its_answer(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    elsewhere = tmp_path / "named-by-hook"
+
+    async def main():
+        team = _team(plain)
+        team.hooks.register(
+            "WorktreeCreate",
+            "*",
+            fn=lambda inp: {"hookSpecificOutput": {"hookEventName": "WorktreeCreate", "worktreePath": str(elsewhere)}},
+        )
+        message = await enter(team, "named")
+        return message, team
+
+    message, team = _run(main())
+    assert str(elsewhere) in message
+    assert team.worktree["path"] == elsewhere
+    assert team.tool_context.cwd == elsewhere
+
+
 class _Chdir(TeamProduct):
     def cwd_changed(self, cwd):
         os.chdir(cwd)

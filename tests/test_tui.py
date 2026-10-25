@@ -2706,6 +2706,35 @@ def test_permission_card_shows_why_the_model_wants_to_run_it():
     asyncio.run(scenario())
 
 
+def test_permission_card_shows_the_hook_that_asked_for_confirmation():
+
+    async def scenario():
+        async with PyClawApp(builder=_builder).run_test() as pilot:
+            app = pilot.app
+            await pilot.pause()
+            asking = _PermissionPrompt(
+                "Bash",
+                {"command": "npm ci"},
+                rememberable=True,
+                hook="PreToolUse:Bash",
+                reason="this reinstalls the lockfile",
+            )
+            await app._conv().mount(asking)
+            await pilot.pause()
+            text = str(asking.query_one("#perm-body", Static).content)
+            assert "Hook PreToolUse:Bash requires confirmation for this call" in text
+            assert "this reinstalls the lockfile" in text
+            assert "/hooks to update" in text
+
+            silent = _PermissionPrompt("Bash", {"command": "npm ci"}, rememberable=True, hook="PreToolUse:Bash")
+            await app._conv().mount(silent)
+            await pilot.pause()
+            plain = str(silent.query_one("#perm-body", Static).content)
+            assert "Hook PreToolUse:Bash requires confirmation for this call." in plain
+
+    asyncio.run(scenario())
+
+
 def test_permission_card_drops_remember_option_for_dangerous_command():
 
     async def scenario():

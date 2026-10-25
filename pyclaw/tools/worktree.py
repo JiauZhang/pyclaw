@@ -34,7 +34,11 @@ def _worktree_name(team) -> str:
 async def _hooked_path(team, name: str) -> str:
     result = await team.hooks.execute_worktree_create_hooks(team.lead, name=name)
     for hook in result.results:
-        if hook.outcome == "success" and hook.stdout.strip():
+        if hook.outcome != "success":
+            continue
+        if hook.worktree_path.strip():
+            return hook.worktree_path.strip()
+        if hook.stdout.strip():
             return hook.stdout.strip()
     failed = "; ".join((hook.message or "no output") for hook in result.results if hook.outcome != "success")
     raise ValueError("the WorktreeCreate hook gave no directory" + (f": {failed}" if failed else ""))

@@ -390,8 +390,10 @@ class PermissionController:
             return _pre_tool_decision("allow", updated_input=decision["updated_input"])
         return _pre_tool_decision("deny", reason=decision["message"] or "Permission denied by hook")
 
-    async def _ask_with_hooks(self, tool_name: str, tool_input, tool_use_id: str, agent: str):
-        prompt = asyncio.create_task(self.request(tool_name, tool_input, tool_use_id=tool_use_id, agent=agent))
+    async def _ask_with_hooks(self, tool_name: str, tool_input, tool_use_id: str, agent: str, hook: str = "", reason: str = ""):
+        prompt = asyncio.create_task(
+            self.request(tool_name, tool_input, tool_use_id=tool_use_id, agent=agent, hook=hook, reason=reason)
+        )
         if self.permission_hooks is None:
             return await prompt
         hooks = asyncio.create_task(self._hook_decision(tool_name, tool_input, tool_use_id, agent))
@@ -410,7 +412,15 @@ class PermissionController:
                     task.cancel()
 
     async def authorize(
-        self, tool_name: str, tool_input, mode=None, tool_use_id: str = "", agent: str = "", hook_allowed: bool = False
+        self,
+        tool_name: str,
+        tool_input,
+        mode=None,
+        tool_use_id: str = "",
+        agent: str = "",
+        hook_allowed: bool = False,
+        hook_ask: bool = False,
+        hook_reason: str = "",
     ) -> bool | dict:
         mode = self._effective_mode(mode)
         decision = self.decide(tool_name, tool_input, mode)
@@ -429,12 +439,18 @@ class PermissionController:
             )
             or "-",
         )
-        if decision == "allow":
-            return True
         if decision == "deny":
             return _pre_tool_decision(
                 "deny", reason=f"{tool_name} is not allowed in {mode.value} mode / by your permission rules."
             )
+        hook_name = ""
+        ask_reason = ""
+        if hook_ask:
+            decision = "ask"
+            hook_name = f"PreToolUse:{tool_name}"
+            ask_reason = hook_reason
+        if decision == "allow":
+            return True
         if decision == "ask" and hook_allowed:
             return True
         if self.request is None:
@@ -442,7 +458,7 @@ class PermissionController:
             if decided is not None:
                 return decided
             return _pre_tool_decision("deny", reason=f"{tool_name} needs approval but no app is present to ask.")
-        answer = await self._ask_with_hooks(tool_name, tool_input, tool_use_id, agent)
+        answer = await self._ask_with_hooks(tool_name, tool_input, tool_use_id, agent, hook_name, ask_reason)
         if isinstance(answer, dict):
             return answer
         choice = answer

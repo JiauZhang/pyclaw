@@ -67,6 +67,7 @@ ACCEPT_FEEDBACK_HINT = "and tell PyClaw what to do next"
 REJECT_FEEDBACK_HINT = "and tell PyClaw what to do differently"
 RULE_FEEDBACK_HINT = "a command prefix, like npm run:*"
 DESTRUCTIVE_NOTE = "This cannot be undone. Allow it anyway?"
+HOOK_NOTE = "/hooks to update"
 ANSWER_HINT = "answer in your own words"
 
 

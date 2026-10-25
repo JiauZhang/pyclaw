@@ -405,13 +405,13 @@ def test_non_bash_tool_rules_match_their_path_argument():
 def test_ask_flow_authorize():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp, *, tool_use_id="", agent=""):
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("approved")
 
         g = PermissionController(mode="default", cwd=d, request=approve)
         assert asyncio.run(g.authorize("Edit", {"file_path": "a.txt"})) is True
 
-        async def denied(name, inp, *, tool_use_id="", agent=""):
+        async def denied(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("denied")
 
         g2 = PermissionController(mode="default", cwd=d, request=denied)
@@ -427,7 +427,7 @@ def test_the_asking_agent_reaches_the_prompt():
     with tempfile.TemporaryDirectory() as d:
         seen = {}
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             seen["agent"] = agent
             return PermissionChoice("approved")
 
@@ -436,11 +436,49 @@ def test_the_asking_agent_reaches_the_prompt():
         assert seen["agent"] == "watcher"
 
 
+def test_a_hook_ask_opens_the_prompt_where_the_rules_would_have_let_it_through():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
+            asked.append((hook, reason))
+            return PermissionChoice("approved")
+
+        g = PermissionController(mode="default", cwd=d, request=approve, tools=BUILTIN_TOOLS)
+        assert g.decide("Read", {"file_path": "notes.md"}) == "allow"
+        assert asyncio.run(g.authorize("Read", {"file_path": "notes.md"})) is True
+        assert asked == []
+        result = asyncio.run(
+            g.authorize(
+                "Read",
+                {"file_path": "notes.md"},
+                hook_ask=True,
+                hook_reason="the notes hold production secrets",
+            )
+        )
+        assert result is True
+        assert asked == [("PreToolUse:Read", "the notes hold production secrets")]
+
+
+def test_a_hook_ask_does_not_override_a_deny_rule():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
+            asked.append(name)
+            return PermissionChoice("approved")
+
+        g = PermissionController(mode="default", cwd=d, request=approve, tools=BUILTIN_TOOLS, deny=["Read(./secret/**)"])
+        result = asyncio.run(g.authorize("Read", {"file_path": "secret/key.txt"}, hook_ask=True, hook_reason="let it through"))
+        assert _decision(result)["permissionDecision"] == "deny"
+        assert asked == []
+
+
 def test_a_permission_request_hook_can_answer_before_the_user():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             asked.append(name)
             await asyncio.sleep(5)
             return PermissionChoice("approved")
@@ -464,7 +502,7 @@ def test_a_permission_request_hook_denial_carries_its_message():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             asked.append(name)
             await asyncio.sleep(5)
             return PermissionChoice("approved")
@@ -483,7 +521,7 @@ def test_a_permission_request_hook_denial_carries_its_message():
 def test_a_permission_request_hook_without_a_decision_leaves_the_user_in_charge():
     with tempfile.TemporaryDirectory() as d:
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("denied", feedback="user said no")
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
@@ -500,7 +538,7 @@ def test_the_user_answer_wins_against_a_slow_permission_request_hook():
     with tempfile.TemporaryDirectory() as d:
         cancelled = []
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("approved")
 
         async def hooks(tool_name, tool_input, tool_use_id, agent):
@@ -521,7 +559,7 @@ def test_a_denial_reports_the_refusal_to_the_agent_that_asked():
     with tempfile.TemporaryDirectory() as d:
 
         def gate(feedback):
-            async def denied(name, inp, *, tool_use_id="", agent=""):
+            async def denied(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
                 return PermissionChoice("denied", feedback=feedback)
 
             return PermissionController(mode="default", cwd=d, request=denied)
@@ -556,7 +594,7 @@ def test_the_denial_copy_says_nothing_ran_and_who_should_act():
 def test_approval_feedback_travels_as_additional_context():
     with tempfile.TemporaryDirectory() as d:
 
-        async def approve(name, inp, *, tool_use_id="", agent=""):
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("approved", feedback="run the tests first")
 
         g = PermissionController(mode="default", cwd=d, request=approve)
@@ -763,7 +801,7 @@ def test_bash_dangerous_removal_asks_even_when_allowed():
 def test_bash_dangerous_removal_is_not_remembered():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id="", agent=""):
+        async def once(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once)
@@ -811,7 +849,7 @@ def test_approval_feedback_lands_beside_the_tool_result():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
-            async def approve(name, inp, *, tool_use_id="", agent=""):
+            async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
                 return PermissionChoice("approved", feedback="run the tests first")
 
             team.product.gate.request = approve
@@ -829,7 +867,7 @@ def test_a_permission_request_hook_answers_before_the_user():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
-            async def ask(name, inp, *, tool_use_id="", agent=""):
+            async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
                 asked.append(name)
                 await asyncio.sleep(5)
                 return PermissionChoice("denied")
@@ -859,7 +897,7 @@ def test_a_permission_request_hook_denial_reaches_the_model():
         async def main():
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
 
-            async def ask(name, inp, *, tool_use_id="", agent=""):
+            async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
                 asked.append(name)
                 await asyncio.sleep(5)
                 return PermissionChoice("approved")
@@ -964,7 +1002,7 @@ def test_a_team_tool_is_offered_once_even_when_the_pool_has_the_same_name():
 def test_dont_ask_persists_allow():
     with tempfile.TemporaryDirectory() as d:
 
-        async def once(name, inp, *, tool_use_id="", agent=""):
+        async def once(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=once, tools=BUILTIN_TOOLS)
@@ -1017,7 +1055,7 @@ def test_suggested_rule_uses_the_addressed_path():
 def test_authorize_accepts_amended_rule():
     with tempfile.TemporaryDirectory() as d:
 
-        async def amend(name, inp, *, tool_use_id="", agent=""):
+        async def amend(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("dont_ask", rule="Bash(git commit --amend:*)")
 
         g = PermissionController(mode="default", cwd=d, request=amend)
@@ -1052,7 +1090,7 @@ def test_suggested_rule_refuses_risky_commands():
 def test_dont_ask_saves_rule_to_local_settings():
     with tempfile.TemporaryDirectory() as d:
 
-        async def always(name, inp, *, tool_use_id="", agent=""):
+        async def always(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("dont_ask")
 
         g = PermissionController(mode="default", cwd=d, request=always)
@@ -1472,11 +1510,43 @@ def test_a_denied_call_is_reported_to_hooks():
         assert seen and seen[0]["tool_name"] == "Edit"
 
 
+def test_a_permission_denied_hook_may_let_the_command_be_tried_again():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.hooks.register(
+                "PermissionDenied",
+                "*",
+                fn=lambda inp: {"hookSpecificOutput": {"hookEventName": "PermissionDenied", "retry": True}},
+            )
+            team.product.gate.request = None
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        outcome = asyncio.run(main())
+        assert _decision(outcome)["permissionDecision"] == "deny"
+        assert "You may retry it if you would like." in _decision(outcome)["additionalContext"]
+
+
+def test_a_permission_denied_hook_that_says_nothing_leaves_the_denial_plain():
+    with tempfile.TemporaryDirectory() as d:
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            team.hooks.register("PermissionDenied", "*", fn=lambda inp: True)
+            team.product.gate.request = None
+            return await _gate_call(team, "Edit", {"file_path": "a.txt"}, "")
+
+        outcome = asyncio.run(main())
+        assert _decision(outcome)["permissionDecision"] == "deny"
+        assert "additionalContext" not in _decision(outcome)
+
+
 def test_a_remembered_rule_is_reported_as_a_config_change():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def approve(name, inp, *, tool_use_id="", agent=""):
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("dont_ask")
 
         async def main():
@@ -1493,7 +1563,7 @@ def test_an_ordinary_approval_changes_no_configuration():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def approve(name, inp, *, tool_use_id="", agent=""):
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("approved")
 
         async def main():
@@ -1525,7 +1595,7 @@ def test_a_denied_rule_only_change_is_reported_once():
     with tempfile.TemporaryDirectory() as d:
         seen = []
 
-        async def refuse(name, inp, *, tool_use_id="", agent=""):
+        async def refuse(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             return PermissionChoice("denied")
 
         async def main():
@@ -1598,7 +1668,7 @@ def test_a_teammate_approval_request_names_that_teammate():
     with tempfile.TemporaryDirectory() as d:
         asked = []
 
-        async def ask(name, inp, *, tool_use_id="", agent=""):
+        async def ask(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
             asked.append((name, agent))
             return PermissionChoice("approved")
 

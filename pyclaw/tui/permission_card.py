@@ -16,6 +16,7 @@ from pyclaw.tui.theme import (
     ACCEPT_FEEDBACK_HINT,
     BULLET,
     DESTRUCTIVE_NOTE,
+    HOOK_NOTE,
     OPTION_PAGE_SIZE,
     POINTER,
     REJECT_FEEDBACK_HINT,
@@ -66,6 +67,8 @@ class _PermissionPrompt(Vertical):
         rules: list[str] | None = None,
         agent: str = "",
         destructive: bool = False,
+        hook: str = "",
+        reason: str = "",
         **kw,
     ):
         super().__init__(classes="permission", **kw)
@@ -77,6 +80,8 @@ class _PermissionPrompt(Vertical):
         self._rule = self._rules[0] if self._rules else ""
         self._agent = agent
         self._destructive = destructive
+        self._hook = hook
+        self._reason = reason
         self._focused = 0
         self._open_accept = False
         self._open_reject = False
@@ -155,6 +160,10 @@ class _PermissionPrompt(Vertical):
             intent = str(self._input.get("description") or "").strip()
         if intent:
             lines.append(f"  [dim]{escape(intent)}[/]")
+        if self._hook:
+            said = f":\n{escape(self._reason).strip()}" if self._reason.strip() else "."
+            lines.append(f"  {escape(f'Hook {self._hook} requires confirmation for this call')}{said}")
+            lines.append(f"  [dim]{escape(HOOK_NOTE)}[/]")
         lines.append(f"  [red]{escape(DESTRUCTIVE_NOTE)}[/]" if self._destructive else "  Allow this call?")
         for index, option in enumerate(options):
             marker = POINTER if index == self._focused else " "

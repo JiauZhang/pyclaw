@@ -34,6 +34,12 @@ from chatchat.runtime.skills import SkillRegistry
 
 _name_counter = itertools.count()
 
+# What a PermissionDenied hook says when it lets the command be tried again
+# (src/services/tools/toolExecution.ts).
+PERMISSION_DENIED_RETRY_MESSAGE = (
+    "The PermissionDenied hook indicated this command is now approved. You may retry it if you would like."
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -198,10 +204,18 @@ async def _permission_gate(team, gate, hook_input):
         tool_use_id=str(hook_input.get("tool_use_id") or ""),
         agent="" if asker == team.lead.name else asker,
         hook_allowed=bool(hook_input.get("hook_allowed")),
+        hook_ask=bool(hook_input.get("hook_ask")),
+        hook_reason=str(hook_input.get("hook_reason") or ""),
     )
     specific = outcome.get("hookSpecificOutput") or {} if isinstance(outcome, dict) else {}
     if specific.get("permissionDecision") == "deny":
-        await team.hooks.execute_permission_denied_hooks(who, tool_name, tool_input)
+        denied = await team.hooks.execute_permission_denied_hooks(who, tool_name, tool_input)
+        if denied.retry:
+            outcome = dict(outcome)
+            specific = dict(specific)
+            feedback = specific.get("additionalContext") or ""
+            specific["additionalContext"] = f"{feedback}\n{PERMISSION_DENIED_RETRY_MESSAGE}".strip()
+            outcome["hookSpecificOutput"] = specific
     return outcome
 
 
