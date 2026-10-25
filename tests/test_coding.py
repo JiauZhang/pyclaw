@@ -474,6 +474,24 @@ def test_a_hook_ask_does_not_override_a_deny_rule():
         assert asked == []
 
 
+def test_a_hook_allow_does_not_skip_a_rule_that_asks():
+    with tempfile.TemporaryDirectory() as d:
+        asked = []
+
+        async def approve(name, inp, *, tool_use_id="", agent="", hook="", reason=""):
+            asked.append(name)
+            return PermissionChoice("approved")
+
+        g = PermissionController(mode="default", cwd=d, request=approve, tools=BUILTIN_TOOLS, ask=["Read(./secret/**)"])
+        assert asyncio.run(g.authorize("Read", {"file_path": "secret/key.txt"})) is True
+        assert asked == ["Read"]
+        asked.clear()
+        assert asyncio.run(g.authorize("Read", {"file_path": "notes.md"}, hook_allowed=True)) is True
+        assert asked == []
+        assert asyncio.run(g.authorize("Read", {"file_path": "secret/key.txt"}, hook_allowed=True)) is True
+        assert asked == ["Read"]
+
+
 def test_a_permission_request_hook_can_answer_before_the_user():
     with tempfile.TemporaryDirectory() as d:
         asked = []

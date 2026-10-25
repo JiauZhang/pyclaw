@@ -524,15 +524,16 @@ class PermissionController:
             return _pre_tool_decision(
                 "deny", reason=f"{tool_name} is not allowed in {mode.value} mode / by your permission rules."
             )
+        asked_by_rule = _rule_matches(self._ask, tool_name, tool_input, self.cwd, self.path_of(tool_name, tool_input))
         hook_name = ""
         ask_reason = ""
         if hook_ask:
             decision = "ask"
             hook_name = f"PreToolUse:{tool_name}"
             ask_reason = hook_reason
-        if decision == "allow":
+        elif hook_allowed and not asked_by_rule:
             return True
-        if decision == "ask" and hook_allowed:
+        if decision == "allow":
             return True
         if self.request is None:
             decided = await self._hook_decision(tool_name, tool_input, tool_use_id, agent)
