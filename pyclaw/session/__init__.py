@@ -31,9 +31,20 @@ from .store import (
     plan_file,
     save_transcript,
     save_worktree,
+    transcript_path,
 )
 from pyclaw.config import checkpoints_enabled
 from pyclaw.events import dispatch as _dispatch_event
+
+
+def _ready_transcript(team) -> str:
+    """A hook about to run wants the conversation as it stands, so the file is
+    brought up to date first and the hook is told where it is."""
+    session_id = team.lead_session_id
+    if not session_id:
+        return ""
+    save_transcript(session_id, team.conversation.transcript())
+    return str(transcript_path(session_id))
 
 
 class Session(HistoryMixin, ReadoutMixin):
@@ -54,6 +65,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._gate = entity.product.gate if entity.product is not None else None
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
+        entity.hooks.prepare_transcript = lambda: _ready_transcript(entity)
         if getattr(entity, "worktree", None) is not None:
             save_worktree(self.conv_session_id, entity.worktree)
 

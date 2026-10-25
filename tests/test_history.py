@@ -337,3 +337,38 @@ def test_a_named_conversation_shows_its_name_in_status():
         return await slash.handle_slash("/status", session)
 
     assert "Name: parser work" in asyncio.run(main())
+
+
+def test_saving_an_unchanged_transcript_does_not_touch_the_file():
+    messages = [{"role": "user", "content": "hi"}]
+    session_store.save_transcript("s1", messages)
+    path = session_store.transcript_path("s1")
+    before = path.stat().st_mtime_ns
+    session_store.save_transcript("s1", messages)
+    assert path.stat().st_mtime_ns == before
+
+
+def test_a_transcript_emptied_underneath_is_written_again():
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}])
+    session_store.transcript_path("s1").write_text("", encoding="utf-8")
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}])
+    assert [entry["content"] for entry in session_store.load_entries("s1")] == ["a"]
+
+
+def test_a_diverged_transcript_is_rewritten_from_the_start():
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}])
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}, {"role": "assistant", "content": "changed"}])
+    assert [entry["content"] for entry in session_store.load_entries("s1")] == ["a", "changed"]
+
+
+def test_a_transcript_that_only_grew_is_appended_without_rereading(monkeypatch):
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}])
+    real = session_store.load_entries
+
+    def refuse(session_id):
+        raise AssertionError("the whole transcript was read again")
+
+    monkeypatch.setattr(session_store, "load_entries", refuse)
+    session_store.save_transcript("s1", [{"role": "user", "content": "a"}, {"role": "assistant", "content": "b"}])
+    monkeypatch.setattr(session_store, "load_entries", real)
+    assert [entry["content"] for entry in session_store.load_entries("s1")] == ["a", "b"]

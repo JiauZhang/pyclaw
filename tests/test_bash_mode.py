@@ -24,6 +24,10 @@ class _Product:
         pass
 
 
+class _Hooks:
+    prepare_transcript = None
+
+
 class _Team:
     provider = "p"
     model = "m"
@@ -35,6 +39,7 @@ class _Team:
     def __init__(self, cwd):
         self.lead = _Lead()
         self.product = _Product(ToolContext(cwd=cwd))
+        self.hooks = _Hooks()
 
     def use_file_history(self, directory):
         self.file_history_dir = directory

@@ -213,6 +213,44 @@ def _content_of(entry) -> dict:
     return {key: value for key, value in entry.items() if key not in _ENTRY_META}
 
 
+def _stamp(path):
+    try:
+        info = os.stat(path)
+    except OSError:
+        return None
+    return (info.st_size, info.st_mtime_ns)
+
+
+_transcript_state: dict[str, tuple] = {}
+
+
+def _remember(key: str, path, payload, records) -> None:
+    """What the file now holds, so the next save can tell at a glance whether
+    it still holds it without reading the whole thing back."""
+    stamp = _stamp(path)
+    if stamp is None:
+        _transcript_state.pop(key, None)
+        return
+    _transcript_state[key] = (
+        stamp[0],
+        stamp[1],
+        len(payload),
+        _content_of(payload[-1]) if payload else None,
+        records[-1]["uuid"] if records else None,
+    )
+
+
+def _tail_seen(path, payload, state):
+    """The count and last uuid to append from, when the file is still the one
+    we last wrote and the conversation has only grown since."""
+    size, mtime, count, last, last_uuid = state
+    if _stamp(path) != (size, mtime) or count > len(payload):
+        return None
+    if count and _content_of(payload[count - 1]) != last:
+        return None
+    return count, last_uuid
+
+
 def _chained(payload, parent):
     records = []
     for message in payload:
@@ -243,16 +281,33 @@ def _write_records(path, records) -> None:
 def save_transcript(session_id, messages) -> None:
     path = transcript_path(session_id)
     payload = [m for m in messages if isinstance(m, dict)]
+    key = str(path)
+    state = _transcript_state.get(key)
+    if state is not None:
+        seen = _tail_seen(path, payload, state)
+        if seen is not None:
+            count, last_uuid = seen
+            if count == len(payload):
+                return
+            records = _chained(payload[count:], last_uuid)
+            _append_records(path, records)
+            _remember(key, path, payload, records)
+            return
     entries = load_entries(session_id)
     written = 0
     while written < len(entries) and written < len(payload) and _content_of(entries[written]) == payload[written]:
         written += 1
     if written == len(payload) == len(entries):
+        _remember(key, path, payload, entries)
         return
     if written and written == len(entries):
-        _append_records(path, _chained(payload[written:], entries[-1].get("uuid")))
+        records = _chained(payload[written:], entries[-1].get("uuid"))
+        _append_records(path, records)
+        _remember(key, path, payload, records)
         return
-    _write_records(path, _chained(payload, None))
+    records = _chained(payload, None)
+    _write_records(path, records)
+    _remember(key, path, payload, records)
 
 
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

@@ -2295,3 +2295,21 @@ def test_a_settings_file_may_pin_the_dont_ask_mode(tmp_path, monkeypatch):
     _pinned_mode(tmp_path, "dontAsk")
     gate = PermissionController(cwd=str(tmp_path))
     assert gate.mode is parse_mode("dontAsk")
+
+
+def test_a_hook_is_told_where_the_conversation_is_written():
+    with tempfile.TemporaryDirectory() as d:
+        seen = {}
+
+        async def main():
+            team = build_team("agnes/agnes-2.5-flash", cwd=d)
+            session_mod.Session(team, session_id="hooked")
+            team.lead.messages.append({"role": "user", "content": "the earlier words"})
+            team.hooks.register("PreToolUse", "*", fn=lambda inp: seen.update(inp) or True)
+            await team.execute_tool("Bash", {"command": "echo hi"}, team.lead, "t1")
+
+        asyncio.run(main())
+        path = Path(seen["transcript_path"])
+        assert path.name == "transcript.jsonl"
+        assert "hooked" in str(path)
+        assert "the earlier words" in path.read_text(encoding="utf-8")
