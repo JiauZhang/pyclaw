@@ -254,7 +254,7 @@ def build_team(
     thinking: Optional[Thinking] = None,
     http_options: Optional[dict] = None,
     cwd: Optional[str] = None,
-    permission_mode: str = "default",
+    permission_mode: Optional[str] = None,
     allowed_tools: Optional[list] = None,
     ask: Optional[list] = None,
     disallowed_tools: Optional[list] = None,

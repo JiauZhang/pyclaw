@@ -13,6 +13,7 @@ from pyclaw.permissions.bash_rules import (
     is_workspace_edit_command,
     suggested_rules,
 )
+from pyclaw import config as app_config
 from pyclaw.permissions.modes import PermissionMode, parse_mode
 from pyclaw.permissions.updates import MODES, SOURCES, rule_string
 from pyclaw.permissions.rules import (
@@ -20,6 +21,8 @@ from pyclaw.permissions.rules import (
     _command_of,
     _local_settings_file,
     _path_rule,
+    _project_settings_file,
+    _read_mode,
     _read_rule_file,
     _rule_matches,
     _user_settings_file,
@@ -117,6 +120,14 @@ def _pre_tool_decision(decision: str, reason: str = "", context: str = "", updat
     return {"hookSpecificOutput": specific}
 
 
+def _mode_from_settings(cwd) -> str:
+    for path in (_local_settings_file(cwd), _project_settings_file(cwd), _user_settings_file()):
+        mode = _read_mode(path)
+        if mode:
+            return mode
+    return ""
+
+
 @dataclass
 class PermissionChoice:
     value: str
@@ -128,7 +139,7 @@ class PermissionController:
     def __init__(
         self,
         *,
-        mode: str = "default",
+        mode: str | None = None,
         cwd,
         allow=(),
         ask=(),
@@ -138,7 +149,6 @@ class PermissionController:
         extra_dirs=(),
         allow_all_unlocked=False,
     ):
-        self.mode: PermissionMode = parse_mode(mode)
         self.cwd = Path(cwd).resolve()
         self.extra_dirs = [Path(path).resolve() for path in (extra_dirs or ())]
         self.plan_file = None
@@ -168,12 +178,33 @@ class PermissionController:
         self._allow = merged["allow"]
         self._ask = merged["ask"]
         self._deny = merged["deny"]
-        self.allow_all_unlocked = bool(allow_all_unlocked) or self.mode is PermissionMode.allow_all
+        self.allow_all_unlocked = bool(allow_all_unlocked)
+        self.mode: PermissionMode = self._initial_mode(mode)
+        if self.mode is PermissionMode.allow_all:
+            self.allow_all_unlocked = True
         self.allow_all_available = self.allow_all_unlocked
         self.request = request
         self.permission_hooks = None
         self.config_changed = None
         self.agent_memory = None
+
+    def _initial_mode(self, mode) -> PermissionMode:
+        """A mode the caller names is the caller's. When nobody names one the
+        settings layers get to say - nearest file first - and a mode this
+        session may not enter is passed over rather than obeyed."""
+        if mode:
+            return parse_mode(mode)
+        for candidate in (_mode_from_settings(self.cwd), self._config_mode()):
+            if not candidate:
+                continue
+            try:
+                return self.check_switch(candidate)
+            except ValueError:
+                logger.warning("Passing over permission mode %r: this session cannot enter it", candidate)
+        return PermissionMode.default
+
+    def _config_mode(self) -> str:
+        return str((app_config.load().get("permissions") or {}).get("defaultMode") or "")
 
     def move_to(self, cwd):
         self.cwd = Path(cwd).resolve()

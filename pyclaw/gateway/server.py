@@ -65,8 +65,9 @@ class GatewayConfig:
     enabled_channels: List[str] = field(default_factory=lambda: ["wechat"])
     use_team: bool = False
     # Permission posture for every session this gateway creates; the
-    # --allow-all flag unlocks allowAll at the process level.
-    permission_mode: str = "default"
+    # --allow-all flag unlocks allowAll at the process level. Left unset, the
+    # settings layers of each session's directory decide.
+    permission_mode: Optional[str] = None
     allow_all_unlocked: bool = False
     # Headless API mode (`pyclaw api`): when set, every /chat/api and /chat/ws
     # request must present this token, and the server binds the configured port

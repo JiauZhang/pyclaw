@@ -175,7 +175,7 @@ async def prompt_once(
     prompt,
     *,
     on_event=None,
-    permission_mode="default",
+    permission_mode=None,
     session_id=None,
     resume=False,
     resume_from=None,
@@ -547,11 +547,10 @@ def _finalize_args(args) -> argparse.Namespace:
         args.allow_all_unlocked = True
         args.permission_mode = cli_mode or "allowAll"
     else:
-        explicit_mode = cli_mode or config_mode
-        if explicit_mode == "allowAll":
+        if cli_mode == "allowAll" or config_mode == "allowAll":
             print("Cannot set permission mode to allowAll because the session was not launched with --allow-all")
             raise SystemExit(1)
-        args.permission_mode = explicit_mode or "default"
+        args.permission_mode = cli_mode
     return args
 
 

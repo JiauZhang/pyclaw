@@ -2204,3 +2204,51 @@ def test_the_permission_gate_sees_the_input_a_hook_rewrote():
 
         text_out = asyncio.run(main())
         assert "needs approval" not in text_out
+
+
+def _pinned_mode(tmp_path, mode, where="project"):
+    folder = tmp_path / ".pyclaw"
+    folder.mkdir(parents=True, exist_ok=True)
+    name = "settings.local.json" if where == "local" else "settings.json"
+    (folder / name).write_text(json.dumps({"permissions": {"defaultMode": mode}}), encoding="utf-8")
+
+
+def test_a_settings_file_may_pin_the_permission_mode(tmp_path, monkeypatch):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "plan")
+    gate = PermissionController(cwd=str(tmp_path))
+    assert gate.mode is parse_mode("plan")
+
+
+def test_the_local_settings_file_outranks_the_project_one(tmp_path, monkeypatch):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "plan")
+    _pinned_mode(tmp_path, "acceptEdits", where="local")
+    gate = PermissionController(cwd=str(tmp_path))
+    assert gate.mode is parse_mode("acceptEdits")
+
+
+def test_a_named_mode_still_wins_over_the_settings(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "plan")
+    gate = PermissionController(mode="default", cwd=str(tmp_path))
+    assert gate.mode is parse_mode("default")
+
+
+def test_a_settings_file_cannot_unlock_allow_all(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "allowAll")
+    with caplog.at_level(logging.WARNING, logger="pyclaw.permissions.gate"):
+        gate = PermissionController(cwd=str(tmp_path))
+    assert gate.mode is parse_mode("default")
+    assert gate.allow_all_unlocked is False
+    assert any("allowAll" in record.message for record in caplog.records)
+
+
+def test_a_settings_mode_pyclaw_does_not_know_is_passed_over(tmp_path, monkeypatch, caplog):
+    monkeypatch.setattr(perm, "_user_settings_file", lambda: tmp_path / "home" / "settings.json")
+    _pinned_mode(tmp_path, "dontAsk")
+    with caplog.at_level(logging.WARNING, logger="pyclaw.permissions.gate"):
+        gate = PermissionController(cwd=str(tmp_path))
+    assert gate.mode is parse_mode("default")
+    assert any("dontAsk" in record.message for record in caplog.records)

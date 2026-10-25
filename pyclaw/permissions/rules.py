@@ -151,3 +151,17 @@ def _read_rule_file(path) -> dict:
     except Exception:
         return {}
     return {k: [str(r) for r in perms.get(k, []) if str(r).strip()] for k in ("allow", "ask", "deny")}
+
+
+def _read_mode(path) -> str:
+    try:
+        if not Path(path).exists():
+            return ""
+        perms = (json.read(path) or {}).get("permissions") or {}
+    except Exception:
+        return ""
+    return str(perms.get("defaultMode") or "")
+
+
+def _project_settings_file(cwd) -> Path:
+    return Path(cwd) / ".pyclaw" / "settings.json"

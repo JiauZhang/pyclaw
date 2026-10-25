@@ -102,3 +102,13 @@ def test_the_flag_beats_a_default_mode_from_settings(monkeypatch):
     args = _finalize(["--allow-all"], config={"permissions": {"defaultMode": "default"}}, monkeypatch=monkeypatch)
     assert args.permission_mode == "allowAll"
     assert args.allow_all_unlocked is True
+
+
+def test_a_mode_nobody_named_is_left_to_the_settings(monkeypatch):
+    args = _finalize([], config={"permissions": {"defaultMode": "default"}}, monkeypatch=monkeypatch)
+    assert args.permission_mode is None
+
+
+def test_an_explicit_mode_is_carried_through(monkeypatch):
+    args = _finalize(["--permission-mode", "plan"], monkeypatch=monkeypatch)
+    assert args.permission_mode == "plan"
