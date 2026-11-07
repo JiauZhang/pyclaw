@@ -307,7 +307,7 @@ def test_the_gate_asks_the_tool_what_it_addresses():
 
 
 async def _gate_call(team, tool_name, tool_input, agent_type):
-    return await team.permission_gate(
+    return await team.tool_policy(
         {
             "hook_event_name": "PreToolUse",
             "tool_name": tool_name,

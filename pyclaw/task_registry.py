@@ -14,6 +14,7 @@ import string
 import time
 from pathlib import Path
 
+from chatchat.enums import ValueStrEnum
 from chatchat.tasks.enums import TaskRunStatus
 
 POLL_SECONDS = 1.0
@@ -21,13 +22,21 @@ STOPPED_DISPLAY_SECONDS = 3
 PANEL_GRACE_SECONDS = 30
 REPORT_DELTA_CHARS = 800
 
-PREFIXES = {"shell": "b", "agent": "a", "teammate": "t"}
+
+class TaskKind(ValueStrEnum):
+    SHELL = "shell"
+    AGENT = "agent"
+    TEAMMATE = "teammate"
+    SUB_AGENT = "sub-agent"
+
+
+PREFIXES = {TaskKind.SHELL: "b", TaskKind.AGENT: "a", TaskKind.TEAMMATE: "t"}
 
 ALPHABET = string.ascii_lowercase + string.digits
 
 
-def new_id(kind: str) -> str:
-    prefix = PREFIXES.get(kind, "x")
+def new_id(kind: TaskKind | str) -> str:
+    prefix = PREFIXES.get(TaskKind(kind), "x")
     return prefix + "".join(secrets.choice(ALPHABET) for _ in range(8))
 
 
@@ -45,7 +54,7 @@ STATUS_TEXT = {
 @dataclasses.dataclass
 class Task:
     id: str
-    kind: str
+    kind: TaskKind
     label: str
     status: TaskRunStatus = TaskRunStatus.PENDING
     started_at: float = dataclasses.field(default_factory=time.monotonic)
@@ -100,7 +109,7 @@ class TaskRegistry:
     def all(self) -> list[Task]:
         return sorted(self._tasks.values(), key=lambda task: task.started_at)
 
-    def of_kind(self, kind: str) -> list[Task]:
+    def of_kind(self, kind: TaskKind) -> list[Task]:
         return [task for task in self.all() if task.kind == kind]
 
     def visible(self, now: float | None = None) -> list[Task]:

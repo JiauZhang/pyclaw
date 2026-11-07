@@ -1,4 +1,3 @@
-from chatchat.runtime.structured import STRUCTURED_OUTPUT_TOOL
 from chatchat.tools.names import (
     AGENT,
     SEND_MESSAGE,
@@ -53,7 +52,7 @@ EXIT_WORKTREE = "ExitWorktree"
 ENTER_PLAN_MODE = "EnterPlanMode"
 EXIT_PLAN_MODE = "ExitPlanMode"
 ASK_USER_QUESTION = "AskUserQuestion"
-STRUCTURED_OUTPUT = STRUCTURED_OUTPUT_TOOL
+STRUCTURED_OUTPUT = "StructuredOutput"
 CRON_CREATE = "CronCreate"
 CRON_LIST = "CronList"
 CRON_DELETE = "CronDelete"

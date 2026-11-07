@@ -7,7 +7,7 @@ import pytest
 from chatchat.runtime.agent_definition import AgentDefinition
 from pyclaw.team import defs as mod
 from pyclaw.team.defs import (
-    BUILT_IN,
+    AgentScope,
     AgentEntry,
     agent_count,
     discover,
@@ -272,9 +272,9 @@ def test_the_identifier_step_rejects_a_name_that_cannot_be_a_file():
 
 
 def test_the_detail_view_shows_a_display_path_per_scope(tmp_path):
-    built_in = AgentEntry("a", BUILT_IN, None, AgentDefinition("a"))
-    project = AgentEntry("a", "project", tmp_path / "a.md", AgentDefinition("a"))
-    user = AgentEntry("a", "user", tmp_path / "a.md", AgentDefinition("a"))
+    built_in = AgentEntry("a", AgentScope.BUILT_IN, None, AgentDefinition("a"))
+    project = AgentEntry("a", AgentScope.PROJECT, tmp_path / "a.md", AgentDefinition("a"))
+    user = AgentEntry("a", AgentScope.USER, tmp_path / "a.md", AgentDefinition("a"))
     assert relative_path(built_in) == "Bundled agents"
     assert relative_path(project) == ".pyclaw/agents/a.md"
     assert relative_path(user) == "~/.pyclaw/agents/a.md"
@@ -396,10 +396,10 @@ def test_agents_given_on_the_command_line_shadow_a_file_of_the_same_name(tmp_pat
     entries = mod.discover(str(tmp_path), ALL_TOOLS, cli=given)
     by_scope = {e.scope: e for e in entries if e.agent_type == "reviewer"}
 
-    assert set(by_scope) == {mod.PROJECT, mod.CLI}
-    assert by_scope[mod.PROJECT].shadowed_by == mod.CLI
-    assert by_scope[mod.CLI].shadowed_by is None
-    assert mod.list_order(entries)[0].scope == mod.CLI
+    assert set(by_scope) == {mod.AgentScope.PROJECT, mod.AgentScope.CLI}
+    assert by_scope[mod.AgentScope.PROJECT].shadowed_by == mod.AgentScope.CLI
+    assert by_scope[mod.AgentScope.CLI].shadowed_by is None
+    assert mod.list_order(entries)[0].scope == mod.AgentScope.CLI
     assert [d.description for d in mod.load_agent_defs(str(tmp_path), ALL_TOOLS, cli=given) if d.agent_type == "reviewer"] == [
         "from the flag"
     ]
@@ -546,8 +546,8 @@ def test_a_user_file_shadows_a_package_agent(tmp_path, user_agents):
     entries = mod.discover(str(tmp_path), ALL_TOOLS, package_dirs=[(agents, "chatool")])
     reviewers = [e for e in entries if e.defn.agent_type == "reviewer"]
     winner = next(e for e in reviewers if e.shadowed_by is None)
-    assert winner.scope == mod.USER
-    assert [e.shadowed_by for e in reviewers if e is not winner] == [mod.USER]
+    assert winner.scope == mod.AgentScope.USER
+    assert [e.shadowed_by for e in reviewers if e is not winner] == [mod.AgentScope.USER]
 
 
 def test_load_agent_defs_passes_package_dirs_through(tmp_path):

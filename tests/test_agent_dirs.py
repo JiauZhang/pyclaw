@@ -66,7 +66,7 @@ def test_unified_loader_loads_md_recursively(tmp_path, monkeypatch):
     assert "fixture-writer" in by_type
     assert "extra-agent" in by_type
     for name in ("fixture-writer", "extra-agent"):
-        assert by_type[name].scope == agent_defs.PACKAGE
+        assert by_type[name].scope == agent_defs.AgentScope.PACKAGE
     assert "你是论文日报专家" in by_type["fixture-writer"].defn.system_prompt
 
 

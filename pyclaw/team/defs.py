@@ -7,9 +7,10 @@ import os
 import re
 from pathlib import Path
 
+from chatchat.enums import ValueStrEnum
+from chatchat.runtime.agent_definition import AgentDefinition
 from chatchat.runtime.enums import MemoryScope
 from chatchat.runtime.markdown import parse_frontmatter
-from chatchat.runtime.agent_definition import AgentDefinition
 
 from pyclaw.config import config_file
 from pyclaw.home import pyclaw_home
@@ -17,11 +18,14 @@ from pyclaw.tools.names import AGENT, BASH, EDIT, EXIT_PLAN_MODE, GLOB, GREP, RE
 
 logger = logging.getLogger(__name__)
 
-BUILT_IN = "built-in"
-PACKAGE = "package"
-USER = "user"
-PROJECT = "project"
-CLI = "command line"
+
+class AgentScope(ValueStrEnum):
+    BUILT_IN = "built-in"
+    PACKAGE = "package"
+    USER = "user"
+    PROJECT = "project"
+    CLI = "command line"
+
 
 _NAME = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]$")
 _NAME_RANGE = (3, 50)
@@ -34,24 +38,25 @@ def _user_agents_dir() -> Path:
     return pyclaw_home() / "agents"
 
 
-def agents_dir(scope: str, cwd: str) -> Path:
-    if scope == PROJECT:
+def agents_dir(scope: AgentScope | str, cwd: str) -> Path:
+    scope = AgentScope(scope)
+    if scope is AgentScope.PROJECT:
         return Path(cwd) / ".pyclaw" / "agents"
-    if scope == USER:
+    if scope is AgentScope.USER:
         return _user_agents_dir()
-    raise ValueError(f"agents cannot be stored in the {scope} scope")
+    raise ValueError(f"agents cannot be stored in the {scope.value} scope")
 
 
 SCOPE_LABELS = {
-    BUILT_IN: "Bundled agents",
-    PACKAGE: "Installed packages",
-    USER: "Your agents",
-    PROJECT: "This project",
-    CLI: "Given with --agents",
+    AgentScope.BUILT_IN: "Bundled agents",
+    AgentScope.PACKAGE: "Installed packages",
+    AgentScope.USER: "Your agents",
+    AgentScope.PROJECT: "This project",
+    AgentScope.CLI: "Given with --agents",
 }
-SCOPE_ORDER = (CLI, USER, PROJECT, PACKAGE, BUILT_IN)
-READ_ONLY_SCOPES = frozenset({BUILT_IN, CLI, PACKAGE})
-_DISPLAY_DIRS = {USER: "~/.pyclaw/agents", PROJECT: ".pyclaw/agents"}
+SCOPE_ORDER = (AgentScope.CLI, AgentScope.USER, AgentScope.PROJECT, AgentScope.PACKAGE, AgentScope.BUILT_IN)
+READ_ONLY_SCOPES = frozenset({AgentScope.BUILT_IN, AgentScope.CLI, AgentScope.PACKAGE})
+_DISPLAY_DIRS = {AgentScope.USER: "~/.pyclaw/agents", AgentScope.PROJECT: ".pyclaw/agents"}
 
 _READ_ONLY = frozenset({GLOB, GREP, READ, TASK_OUTPUT, TASK_STOP})
 _EDIT = frozenset({EDIT, WRITE})
@@ -94,7 +99,7 @@ def model_display(defn: AgentDefinition, default: str) -> str:
 @dataclasses.dataclass
 class AgentEntry:
     agent_type: str
-    scope: str
+    scope: AgentScope
     path: Path | None
     defn: AgentDefinition
     shadowed_by: str | None = None
@@ -214,10 +219,12 @@ def load_agent_markdown(dirs, all_tools: list) -> list[AgentEntry]:
 
 
 def discover(cwd: str, all_tools: list, cli=(), package_dirs=()) -> list[AgentEntry]:
-    entries = [AgentEntry(d.agent_type, BUILT_IN, None, d) for d in builtin_agent_defs(all_tools)]
-    entries += load_agent_markdown([(Path(directory), PACKAGE) for directory, _name in package_dirs], all_tools)
-    entries += load_agent_markdown([(agents_dir(scope, cwd), scope) for scope in (USER, PROJECT)], all_tools)
-    entries += [AgentEntry(d.agent_type, CLI, None, d) for d in cli]
+    entries = [AgentEntry(d.agent_type, AgentScope.BUILT_IN, None, d) for d in builtin_agent_defs(all_tools)]
+    entries += load_agent_markdown([(Path(directory), AgentScope.PACKAGE) for directory, _name in package_dirs], all_tools)
+    entries += load_agent_markdown(
+        [(agents_dir(scope, cwd), scope) for scope in (AgentScope.USER, AgentScope.PROJECT)], all_tools
+    )
+    entries += [AgentEntry(d.agent_type, AgentScope.CLI, None, d) for d in cli]
     winner = {e.agent_type: e.scope for e in entries}
     for entry in entries:
         if winner[entry.agent_type] != entry.scope:
@@ -283,7 +290,7 @@ def render_agent_md(defn: AgentDefinition, all_tools: list) -> str:
     return "\n".join(lines)
 
 
-def write_agent(defn: AgentDefinition, scope: str, cwd: str, all_tools: list, overwrite: bool = False) -> Path:
+def write_agent(defn: AgentDefinition, scope: AgentScope, cwd: str, all_tools: list, overwrite: bool = False) -> Path:
     path = agents_dir(scope, cwd) / f"{defn.agent_type}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -296,7 +303,7 @@ def write_agent(defn: AgentDefinition, scope: str, cwd: str, all_tools: list, ov
 
 
 def remove_agent(entry: AgentEntry) -> None:
-    if entry.scope == BUILT_IN or entry.path is None:
+    if entry.scope is AgentScope.BUILT_IN or entry.path is None:
         raise ValueError("built-in agents cannot be removed")
     entry.path.unlink(missing_ok=True)
 
@@ -315,7 +322,7 @@ def validate_type(name: str) -> str | None:
 
 def relative_path(entry: AgentEntry) -> str:
     if entry.path is None:
-        return SCOPE_LABELS[BUILT_IN]
+        return SCOPE_LABELS[AgentScope.BUILT_IN]
     return f"{_DISPLAY_DIRS[entry.scope]}/{entry.path.name}"
 
 

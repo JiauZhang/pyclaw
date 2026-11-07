@@ -8,6 +8,7 @@ from pyclaw.tools import background
 from pyclaw.team.worktrees import changes
 
 from pyclaw import task_registry as tasks
+from pyclaw.task_registry import TaskKind
 
 
 class ReadoutMixin:
@@ -86,13 +87,13 @@ class ReadoutMixin:
             if agent is lead:
                 continue
             if agent.agent_id in self._team.roster.background:
-                kind, detail = "sub-agent", "in the background"
+                kind, detail = TaskKind.SUB_AGENT, "in the background"
             else:
                 if getattr(agent, "_internal", False):
                     continue
                 if not getattr(agent, "is_running", True):
                     continue
-                kind = "teammate"
+                kind = TaskKind.TEAMMATE
                 detail = "working" if getattr(agent, "busy", False) else "idle"
             name = str(agent.name)
             seen[name] = kind
@@ -102,7 +103,7 @@ class ReadoutMixin:
             elif not tasks.is_terminal(record.status):
                 record.kind = kind
                 record.detail = detail
-        for record in registry.of_kind("teammate") + registry.of_kind("sub-agent"):
+        for record in registry.of_kind(TaskKind.TEAMMATE) + registry.of_kind(TaskKind.SUB_AGENT):
             if record.id not in seen and not tasks.is_terminal(record.status):
                 record.finish(TaskRunStatus.COMPLETED)
         return seen
@@ -113,10 +114,10 @@ class ReadoutMixin:
         registry.sweep()
         seen = self._sync_agent_tasks()
         rows = []
-        order = {"teammate": 0, "sub-agent": 1, "shell": 2}
+        order = {TaskKind.TEAMMATE: 0, TaskKind.SUB_AGENT: 1, TaskKind.SHELL: 2}
         listed = sorted(registry.visible(), key=lambda record: (order.get(record.kind, 9), record.started_at))
         for record in listed:
-            if record.kind == "shell":
+            if record.kind == TaskKind.SHELL:
                 rows.append(background.row(record))
                 continue
             rows.append(
@@ -132,7 +133,7 @@ class ReadoutMixin:
 
     async def stop_task(self, row: dict) -> str:
 
-        if row["kind"] == "shell":
+        if row["kind"] == TaskKind.SHELL:
             background.stop(row["id"])
             return f"Stopped the shell {row['id']}."
         record = tasks.registry().get(row["id"])

@@ -160,7 +160,7 @@ class _FakeTeam:
         self.hooks.permission_mode = mode
 
     def set_user_input(self, callback):
-        self.ask_user = callback
+        self.user_input = callback
 
     def use_file_history(self, directory):
         self.file_history_dir = directory
@@ -5731,7 +5731,7 @@ def test_the_session_can_answer_a_model_question():
         async with PyClawApp(builder=_builder).run_test(size=(90, 40)) as pilot:
             app = pilot.app
             await pilot.pause()
-            assert app._session._team.ask_user is not None
+            assert app._session._team.user_input is not None
             context = app._session._team.tool_context
             context.agent = app._session._team.lead
             asked = asyncio.create_task(ask_user(context, questions=[_question()]))

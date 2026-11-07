@@ -84,7 +84,7 @@ async def exit_plan_mode(context) -> str:
     plan = read_plan(team)
     if not plan:
         return f"Error: nothing has been written to {path} yet."
-    asker = getattr(team, "ask_user", None)
+    asker = getattr(team, "user_input", None)
     if asker is None:
         return "Error: no one can approve a plan in this session."
     answers = asker(getattr(context, "agent", None), [plan_question()])

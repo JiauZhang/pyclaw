@@ -15,6 +15,7 @@ from chatchat.tasks.enums import TaskRunStatus
 from chatchat.tool import ToolResult
 
 from pyclaw import task_registry as tasks
+from pyclaw.task_registry import TaskKind
 
 TASK_OUTPUT_TAIL_CHARS = 30_000
 TASK_BLOCK_POLL_S = 0.1
@@ -68,14 +69,14 @@ def output_of(task_id: str) -> str:
 
 def task(task_id: str):
     record = tasks.registry().get(task_id)
-    return record if record is not None and record.kind == "shell" else None
+    return record if record is not None and record.kind == TaskKind.SHELL else None
 
 
 def _record(task_id: str, command: str, process, output: Path):
     return tasks.registry().register(
         tasks.Task(
             id=task_id,
-            kind="shell",
+            kind=TaskKind.SHELL,
             label=command,
             status=TaskRunStatus.RUNNING,
             output=str(output),
@@ -85,14 +86,14 @@ def _record(task_id: str, command: str, process, output: Path):
 
 
 def adopt(command: str, process, output: Path) -> str:
-    task_id = tasks.new_id("shell")
+    task_id = tasks.new_id(TaskKind.SHELL)
     _record(task_id, command, process, output)
     threading.Thread(target=_watch, args=(task_id,), daemon=True).start()
     return task_id
 
 
 def spawn(cwd: str, command: str) -> str:
-    task_id = tasks.new_id("shell")
+    task_id = tasks.new_id(TaskKind.SHELL)
     path = _output_path(task_id)
     handle = open(path, "ab")
     try:

@@ -329,14 +329,12 @@ def build_team(
             mailbox_dir=mailbox_root,
             tasks_dir=str(pyclaw_home() / "tasks"),
             team_store=str(pyclaw_home() / "teams"),
-            multi_agent=True,
             **common,
         )
     else:
         team = Runtime(
             f"pyclaw-{next(_name_counter)}",
             tasks_dir=str(pyclaw_home() / "tasks"),
-            multi_agent=False,
             **common,
         )
     product = team.attach(

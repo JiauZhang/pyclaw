@@ -203,7 +203,7 @@ async def prompt_once(
         conversation_id=session_id,
     )
     if json_schema is not None:
-        problem = team.tools.set_output_schema(json_schema)
+        problem = team.tools.set_output_schema(json_schema, structured_tools.STRUCTURED_OUTPUT)
         if problem:
             raise ValueError(f"--json-schema: {problem}")
         structured = structured_tools.tool_for(json_schema)

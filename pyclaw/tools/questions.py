@@ -106,13 +106,13 @@ When they have to compare concrete results, put the artifact on the option as pr
 async def ask_user(context, questions) -> str:
     team = getattr(context, "team", None)
     agent = getattr(context, "agent", None)
-    if team is None or getattr(team, "ask_user", None) is None:
+    if team is None or getattr(team, "user_input", None) is None:
         return "Error: no one can answer in this session."
     problem = _question_problems(questions)
     if problem:
         return f"Error: {problem}"
     await team.hooks.execute_elicitation_hooks(agent, str(questions[0].get("question") or ""))
-    answers = team.ask_user(agent, questions)
+    answers = team.user_input(agent, questions)
     if asyncio.iscoroutine(answers):
         answers = await answers
     lines = []

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from chatchat.runtime.enums import RuleScope
 from chatchat.runtime.rules import RuleSet
 from pyclaw.home import pyclaw_home
 
@@ -14,7 +15,7 @@ def rule_set(cwd: str):
     return RuleSet.discover(cwd=Path(cwd), home=pyclaw_home(), subdir=".pyclaw")
 
 
-SCOPES = {"user": "User", "project": "Project"}
+SCOPES = {RuleScope.USER: "User", RuleScope.PROJECT: "Project"}
 
 
 def load_instruction_files(cwd: str) -> list[dict]:

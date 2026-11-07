@@ -38,7 +38,10 @@ AGENT_PLACEHOLDERS = {
     "model": "empty keeps the session model",
 }
 AGENT_TEXT_STEPS = ("name", "prompt", "description", "model")
-AGENT_LOCATIONS = (("project", ".pyclaw/agents/"), ("user", "~/.pyclaw/agents/"))
+AGENT_LOCATIONS = (
+    (agent_defs.AgentScope.PROJECT, ".pyclaw/agents/"),
+    (agent_defs.AgentScope.USER, "~/.pyclaw/agents/"),
+)
 AGENT_NAV = (
     f"{keys.display('prev')}{keys.display('next')} move \u00b7 "
     f"{keys.hint('open', 'picks')} \u00b7 "

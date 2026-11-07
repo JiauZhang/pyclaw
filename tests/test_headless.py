@@ -100,7 +100,7 @@ class _ShapeTeam:
                 self.structured_output = None
                 self.injected = []
 
-            def set_output_schema(self, schema):
+            def set_output_schema(self, schema, tool_name):
                 self.team.installed.append(schema)
                 if schema.get("type") == "not-a-type":
                     return "'not-a-type' is not recognized"

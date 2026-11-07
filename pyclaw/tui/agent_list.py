@@ -20,7 +20,7 @@ class AgentListMixin:
         return None if self._pos == 0 else self._selectable[self._pos - 1]
 
     def _render_list(self) -> list:
-        given = [e for e in self._entries if e.scope == agent_defs.CLI]
+        given = [e for e in self._entries if e.scope == agent_defs.AgentScope.CLI]
         if not self._selectable and not given:
             lines = self._header("Nothing defined yet")
             lines += self._options(["New agent"], self._pos, indent=0)
@@ -37,21 +37,21 @@ class AgentListMixin:
             lines += self._options(["New agent"], self._pos, indent=0)
             lines.append("")
             position = 0
-            for scope in (agent_defs.CLI, agent_defs.USER, agent_defs.PROJECT):
+            for scope in (agent_defs.AgentScope.CLI, agent_defs.AgentScope.USER, agent_defs.AgentScope.PROJECT):
                 group = [e for e in self._entries if e.scope == scope]
                 if not group:
                     continue
-                if scope == agent_defs.CLI:
+                if scope == agent_defs.AgentScope.CLI:
                     lines.append(f"[bold][dim]{escape(agent_defs.SCOPE_LABELS[scope])}[/][/bold]")
                     lines += [self._row(e, -1) for e in group]
                     continue
-                where = None if scope == agent_defs.CLI else agent_defs.agents_dir(scope, self._cwd)
+                where = None if scope == agent_defs.AgentScope.CLI else agent_defs.agents_dir(scope, self._cwd)
                 where = "" if where is None else f" ({escape(str(where))})"
                 lines.append(f"[bold][dim]{escape(agent_defs.SCOPE_LABELS[scope])}{where}[/][/bold]")
                 for entry in group:
                     position += 1
                     lines.append(self._row(entry, position))
-        built_ins = [e for e in self._entries if e.scope == agent_defs.BUILT_IN]
+        built_ins = [e for e in self._entries if e.scope == agent_defs.AgentScope.BUILT_IN]
         if built_ins:
             lines += ["", "[bold][dim]Bundled with PyClaw[/][/bold]"]
             lines += [self._row(e, -1) for e in built_ins]
@@ -114,7 +114,7 @@ class AgentListMixin:
         options = [("Open", "view")]
         if self._pending_notes_copy():
             options.append(("Use the project copy of its notes", "notes"))
-        if self._target.scope != agent_defs.BUILT_IN:
+        if self._target.scope != agent_defs.AgentScope.BUILT_IN:
             options += [("Change", "edit"), ("Delete", "delete")]
         return options + [("Back", "back")]
 
@@ -127,7 +127,7 @@ class AgentListMixin:
         return [
             (e.agent_type, e.scope)
             for e in self._entries
-            if e.scope != agent_defs.BUILT_IN and e.agent_type != self._draft["name"]
+            if e.scope != agent_defs.AgentScope.BUILT_IN and e.agent_type != self._draft["name"]
         ]
 
     def action_move_up(self):
