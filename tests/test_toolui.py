@@ -126,6 +126,9 @@ def test_a_tool_declares_its_name_once():
         names.CRON_DELETE,
         names.ENTER_WORKTREE,
         names.EXIT_WORKTREE,
+        names.ENTER_PLAN_MODE,
+        names.EXIT_PLAN_MODE,
+        names.ASK_USER_QUESTION,
     }
     assert built_in == {tool.name for tool in BUILTIN_TOOLS}
     assert {names.READ, names.GLOB, names.GREP, names.WRITE, names.EDIT, names.BASH} <= set(TOOL_UIS)

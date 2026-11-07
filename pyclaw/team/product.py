@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 
-from chatchat.team.product import TeamProduct
+from chatchat.runtime.product import TeamProduct
 
 from pyclaw.permissions import parse_mode
 
@@ -45,9 +45,13 @@ class PyclawProduct(TeamProduct):
         for listener in self._after_cwd:
             listener(cwd)
 
+    @property
+    def plan_file(self):
+        return getattr(self.gate, "plan_file", None)
+
     def plan_mode_changed(self, mode: str) -> None:
         self.gate.mode = parse_mode(mode)
-        self.team.hooks.permission_mode = self.gate.mode.value
+        self.team.set_policy_mode(self.gate.mode.value)
 
     def skills_granted(self, tools) -> None:
         self.gate.grant_rules(tools)

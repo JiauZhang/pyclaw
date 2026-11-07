@@ -30,8 +30,12 @@ from pyclaw.skills.builtin import register_builtin_skills
 from pyclaw.tools import BUILTIN_TOOLS, ShellTasks
 from pyclaw.permissions import PermissionController, PermissionMode
 from pyclaw.permissions.updates import suggested_updates
-from chatchat.team.agent_memory import AgentMemory
+from chatchat.runtime.agent_memory import AgentMemory
+from chatchat.runtime.runtime import Runtime
+from chatchat.runtime.sandbox import Sandbox
+from chatchat.runtime.services import RuntimeServices
 from chatchat.runtime.skills import SkillRegistry
+from pyclaw.team.snapshots import SnapshotStore
 
 _name_counter = itertools.count()
 
@@ -112,9 +116,12 @@ def _agent_memory(cwd: str):
             "user": pyclaw_home() / "agent-memory",
             "project": workspace / "agent-memory",
             "local": workspace / "agent-memory-local",
-        },
-        snapshots=workspace / "agent-memory-snapshots",
+        }
     )
+
+
+def _snapshot_store(cwd: str):
+    return SnapshotStore(Path(cwd) / ".pyclaw" / "agent-memory-snapshots")
 
 
 def _permissions(
@@ -193,7 +200,7 @@ async def _permission_gate(team, gate, hook_input):
     mode = None
     if agent_type and gate.mode not in (PermissionMode.allow_all, PermissionMode.accept_edits):
         defn = team.agent_defs.find(agent_type)
-        mode = (defn.permission_mode if defn is not None else None) or "acceptEdits"
+        mode = (defn.metadata.get("permission_mode") if defn is not None else None) or "acceptEdits"
     asker = str(hook_input.get("agent_id") or "")
     who = (team.get_by_name(asker) if asker else None) or team.lead
     tool_name = hook_input.get("tool_name", "")
@@ -263,7 +270,7 @@ def build_team(
     use_team: bool = False,
     conversation_id: Optional[str] = None,
     allow_all_unlocked: bool = False,
-) -> Team:
+) -> Runtime:
     take_over_output()
     conversation_id = conversation_id or uuid.uuid4().hex
     cwd = cwd or os.getcwd()
@@ -285,8 +292,23 @@ def build_team(
         inst = inst + PLAN_NOTE
     state_root, mailbox_root, cron_root = _state_roots(cwd)
     cron_tools.set_store(CronStore(cron_root))
-    team = Team(
-        f"pyclaw-{next(_name_counter)}",
+    team = None
+    services = RuntimeServices(
+        tool_policy=lambda hook_input: _permission_gate(team, gate, hook_input),
+        background_tasks=ShellTasks(),
+        sandbox=Sandbox(
+            worktree_tools.isolate,
+            worktree_tools.release,
+            options=(
+                {
+                    "value": "worktree",
+                    "description": "Run on an isolated copy of the repository in a temporary git worktree; "
+                    "its edits never touch the checked-out directory.",
+                },
+            ),
+        ),
+    )
+    common = dict(
         model=model,
         tools=resolved,
         tool_context=ToolContext(cwd=Path(cwd).resolve(), extra_dirs=tuple(gate.extra_dirs)),
@@ -294,16 +316,29 @@ def build_team(
         thinking=thinking or thinking_from_config(),
         model_timeout=model_timeout,
         http_options=http_options or {},
-        mailbox_dir=mailbox_root,
-        tasks_dir=str(pyclaw_home() / "tasks"),
         skills=registry,
-        team_store=str(pyclaw_home() / "teams"),
         agent_memory=_agent_memory(state_root),
         rules=agent_memory.rule_set(state_root),
         file_history_dir=(str(pyclaw_home() / "file-history" / conversation_id) if checkpoints_enabled() else None),
-        multi_agent=use_team,
         context_window=configured_context_window(),
+        services=services,
     )
+    if use_team:
+        team = Team(
+            f"pyclaw-{next(_name_counter)}",
+            mailbox_dir=mailbox_root,
+            tasks_dir=str(pyclaw_home() / "tasks"),
+            team_store=str(pyclaw_home() / "teams"),
+            multi_agent=True,
+            **common,
+        )
+    else:
+        team = Runtime(
+            f"pyclaw-{next(_name_counter)}",
+            tasks_dir=str(pyclaw_home() / "tasks"),
+            multi_agent=False,
+            **common,
+        )
     product = team.attach(
         PyclawProduct(
             team,
@@ -313,11 +348,8 @@ def build_team(
             instruction=inst,
         )
     )
-    team.tool_context.team = team
-    team.host_tasks = ShellTasks()
-    team.isolation.start = worktree_tools.isolate
-    team.isolation.end = worktree_tools.release
     gate.agent_memory = team.agent_memory
+    team.snapshot_store = _snapshot_store(state_root)
     team.lead_session_id = conversation_id
 
     product.reload_roots(cwd)
@@ -334,13 +366,17 @@ def build_team(
     product.snapshot_updates = [
         defn.agent_type
         for defn in definitions
-        if defn.memory and team.agent_memory.sync_snapshot(defn.agent_type, defn.memory) != "none"
+        if defn.metadata.get("memory")
+        and team.snapshot_store.sync(
+            defn.agent_type,
+            team.agent_memory.directory(defn.agent_type, defn.metadata["memory"]),
+        )
+        != "none"
     ]
 
     background.set_notifier(lambda *args: _notify_task_finished(team, *args))
 
-    team.hooks.permission_mode = gate.mode.value
-    team.permission_gate = lambda hook_input: _permission_gate(team, gate, hook_input)
+    team.set_policy_mode(gate.mode.value)
     gate.permission_hooks = lambda tool_name, tool_input, tool_use_id, agent: _permission_request(
         team, gate, tool_name, tool_input, tool_use_id, agent
     )

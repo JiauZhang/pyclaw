@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from chatchat.client import MockClient
 from chatchat.team.team import Team
-from chatchat.team.product import TeamProduct
+from chatchat.runtime.product import TeamProduct
 from chatchat.tool import ToolContext
 from pyclaw.team.worktrees import create, worktree_path
 from pyclaw.team.worktrees import sweep_worktrees

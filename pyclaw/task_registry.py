@@ -14,11 +14,7 @@ import string
 import time
 from pathlib import Path
 
-PENDING = "pending"
-RUNNING = "running"
-COMPLETED = "completed"
-FAILED = "failed"
-KILLED = "killed"
+from chatchat.tasks.enums import TaskRunStatus
 
 POLL_SECONDS = 1.0
 STOPPED_DISPLAY_SECONDS = 3
@@ -35,11 +31,15 @@ def new_id(kind: str) -> str:
     return prefix + "".join(secrets.choice(ALPHABET) for _ in range(8))
 
 
-def is_terminal(status: str) -> bool:
-    return status in (COMPLETED, FAILED, KILLED)
+def is_terminal(status: TaskRunStatus) -> bool:
+    return status in (TaskRunStatus.COMPLETED, TaskRunStatus.FAILED, TaskRunStatus.KILLED)
 
 
-STATUS_TEXT = {COMPLETED: "completed successfully", FAILED: "failed", KILLED: "was stopped"}
+STATUS_TEXT = {
+    TaskRunStatus.COMPLETED: "completed successfully",
+    TaskRunStatus.FAILED: "failed",
+    TaskRunStatus.KILLED: "was stopped",
+}
 
 
 @dataclasses.dataclass
@@ -47,7 +47,7 @@ class Task:
     id: str
     kind: str
     label: str
-    status: str = PENDING
+    status: TaskRunStatus = TaskRunStatus.PENDING
     started_at: float = dataclasses.field(default_factory=time.monotonic)
     ended_at: float | None = None
     output: str = ""
@@ -58,7 +58,7 @@ class Task:
     def seconds(self, now: float) -> int:
         return int(max(0.0, (self.ended_at if self.ended_at is not None else now) - self.started_at))
 
-    def finish(self, status: str, now: float | None = None) -> "Task":
+    def finish(self, status: TaskRunStatus, now: float | None = None) -> "Task":
         self.status = status
         self.ended_at = time.monotonic() if now is None else now
         return self
@@ -81,7 +81,7 @@ class Task:
     def lingers_until(self) -> float:
         if self.ended_at is None:
             return float("inf")
-        if self.status == COMPLETED:
+        if self.status == TaskRunStatus.COMPLETED:
             return self.ended_at + PANEL_GRACE_SECONDS
         return self.ended_at + STOPPED_DISPLAY_SECONDS
 

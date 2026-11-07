@@ -25,6 +25,7 @@ from chatchat.cli.config import cli_config, is_write_request, parse_config
 from chatchat.hooks.events import register_runtime_handler, clear_runtime_sinks
 from pyclaw.team.worktrees import in_repository
 from pyclaw.tools import worktree as worktree_tools
+from pyclaw.tools import structured as structured_tools
 
 _QUIET_LOGGERS = ("asyncio", "markdown_it", "textual", "httpx", "httpcore", "aiohttp", "urllib3", "websockets", "PIL")
 
@@ -205,6 +206,8 @@ async def prompt_once(
         problem = team.tools.set_output_schema(json_schema)
         if problem:
             raise ValueError(f"--json-schema: {problem}")
+        structured = structured_tools.tool_for(json_schema)
+        team.tools.injected.append(structured)
     session = Session(team, session_id=session_id, resume_from=resume_from)
     if worktree is not None:
         started = await worktree_tools.enter(team, worktree)

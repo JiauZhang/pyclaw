@@ -46,9 +46,10 @@ from chatchat.runtime.metrics import Metrics
 from pyclaw.permissions import PermissionController
 from pyclaw.tools import BUILTIN_TOOLS
 from chatchat.hooks.manager import HookManager
-from chatchat.tools.builtin.questions import ask_user
+from pyclaw.tools.questions import ask_user
 from pyclaw import banner, config, statusline, welcome
 from pyclaw import task_registry
+from chatchat.tasks.enums import TaskRunStatus
 from pyclaw.session import store as session_store
 from pyclaw.tools import background
 from pyclaw.tui import status_rows, turn_flow
@@ -62,7 +63,7 @@ from pyclaw.tui.formatting import _token_rate
 from pyclaw.tui.roster import hide_row, leader_row, status_text, teammate_row
 from pyclaw.tui.screens import HistorySearchScreen
 from pyclaw.tui.components import _PromptInput, _TextBlock, _ToolBlock
-from chatchat.tasks.tasks import TaskList
+from chatchat.tasks.task_list import TaskList
 from chatchat.runtime.skills import SkillRegistry
 from chatchat.runtime.thinking import Thinking
 from fakes import Usage
@@ -155,6 +156,12 @@ class _FakeTeam:
     def set_thinking(self, thinking):
         self.thinking = thinking
 
+    def set_policy_mode(self, mode):
+        self.hooks.permission_mode = mode
+
+    def set_user_input(self, callback):
+        self.ask_user = callback
+
     def use_file_history(self, directory):
         self.file_history_dir = directory
 
@@ -229,6 +236,7 @@ class _FakeTeam:
         self._messages = []
         self.lead.messages = self._messages
         self.tool_context = ToolContext(cwd=Path.cwd())
+        self.tool_context.team = self
 
     def get_by_name(self, name):
         return self.lead if name == "lead" else None
@@ -5316,7 +5324,7 @@ def _fake_shells():
             id="b1",
             kind="shell",
             label="npm run dev",
-            status=task_registry.RUNNING,
+            status=TaskRunStatus.RUNNING,
             started_at=time.monotonic() - 12,
             payload={"process": _Process(), "killed": False},
         )
@@ -5724,9 +5732,9 @@ def test_the_session_can_answer_a_model_question():
             app = pilot.app
             await pilot.pause()
             assert app._session._team.ask_user is not None
-            asked = asyncio.create_task(
-                ask_user(None, team=app._session._team, agent=app._session._team.lead, input={"questions": [_question()]})
-            )
+            context = app._session._team.tool_context
+            context.agent = app._session._team.lead
+            asked = asyncio.create_task(ask_user(context, questions=[_question()]))
             for _ in range(4):
                 await pilot.pause()
             await pilot.press("enter")

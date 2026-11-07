@@ -4,6 +4,8 @@ import logging
 import random
 import time
 
+from chatchat.tasks.enums import TaskStatus
+
 from pyclaw.tui.formatting import escape
 from textual.containers import VerticalScroll
 from textual.widgets import Static
@@ -106,7 +108,9 @@ class RosterMixin:
         return running
 
     def _active_forms(self) -> dict:
-        return {task.owner: task.active_form for task in self._plan() if task.status == "in_progress" and task.active_form}
+        return {
+            task.owner: task.active_form for task in self._plan() if task.status == TaskStatus.IN_PROGRESS and task.active_form
+        }
 
     def _tree_markup(self, rows: bool, idle_line: bool) -> str:
         teammates = self._teammates()

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from chatchat.tasks.enums import TaskRunStatus
+
 from pyclaw.config import configured_context_window
 from pyclaw.tools import background
 
@@ -96,13 +98,13 @@ class ReadoutMixin:
             seen[name] = kind
             record = registry.get(name)
             if record is None:
-                registry.register(tasks.Task(id=name, kind=kind, label=f"@{name}", status=tasks.RUNNING, detail=detail))
+                registry.register(tasks.Task(id=name, kind=kind, label=f"@{name}", status=TaskRunStatus.RUNNING, detail=detail))
             elif not tasks.is_terminal(record.status):
                 record.kind = kind
                 record.detail = detail
         for record in registry.of_kind("teammate") + registry.of_kind("sub-agent"):
             if record.id not in seen and not tasks.is_terminal(record.status):
-                record.finish(tasks.COMPLETED)
+                record.finish(TaskRunStatus.COMPLETED)
         return seen
 
     def task_rows(self) -> list:
@@ -136,7 +138,7 @@ class ReadoutMixin:
         record = tasks.registry().get(row["id"])
         if record is not None and not tasks.is_terminal(record.status):
             record.detail = "stopped"
-            record.finish(tasks.KILLED)
+            record.finish(TaskRunStatus.KILLED)
         agent = next(
             (candidate for candidate in self._team.roster.agents.values() if str(getattr(candidate, "name", "")) == row["id"]),
             None,

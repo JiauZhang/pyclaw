@@ -1,4 +1,4 @@
-from chatchat.tasks.tasks import TaskList
+from chatchat.tasks.task_list import TaskList
 
 from pyclaw.team.builder import agent_instruction, team_instruction
 
@@ -181,7 +181,6 @@ def test_plan_mode_lets_the_model_write_only_the_plan_file(tmp_path):
     team = _built(tmp_path)
     gate = team.product.gate
     plan = tmp_path / "plan.md"
-    team.plan_path = plan
     gate.plan_file = plan
     gate.mode = gate.mode.plan
 
@@ -194,7 +193,7 @@ def test_plan_mode_lets_the_model_write_only_the_plan_file(tmp_path):
 def test_entering_plan_mode_from_a_tool_moves_the_gate(tmp_path):
 
     team = _built(tmp_path)
-    team.ask_user = lambda agent, questions: []
+    team.set_user_input(lambda agent, questions: [])
     gate = team.product.gate
     assert gate.mode.value == "default"
 

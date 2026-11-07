@@ -7,8 +7,9 @@ import os
 import re
 from pathlib import Path
 
+from chatchat.runtime.enums import MemoryScope
 from chatchat.runtime.markdown import parse_frontmatter
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.agent_definition import AgentDefinition
 
 from pyclaw.config import config_file
 from pyclaw.home import pyclaw_home
@@ -122,12 +123,9 @@ def _positive_int(raw) -> int | None:
     return value if value > 0 else None
 
 
-MEMORY_SCOPES = ("user", "project", "local")
-
-
 def _memory_scope(raw) -> str | None:
     value = str(raw or "").strip()
-    return value if value in MEMORY_SCOPES else None
+    return value if value in MemoryScope.values() else None
 
 
 def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | None, str]:
@@ -155,20 +153,24 @@ def _definition_from_md(text: str, all_tools: list) -> tuple[AgentDefinition | N
     if isolation and isolation != "worktree":
         isolation = ""
     tools = [t for t in tools if t.name not in set(disallowed)]
+    metadata = {}
+    if permission_mode := (str(meta.get("permissionMode") or "") or None):
+        metadata["permission_mode"] = permission_mode
+    if memory := _memory_scope(meta.get("memory")):
+        metadata["memory"] = memory
+    if isolation:
+        metadata["isolation"] = isolation
     return (
         AgentDefinition(
             name,
             system_prompt=body,
             tools=tools,
             model=model,
-            permission_mode=str(meta.get("permissionMode") or "") or None,
             description=description,
-            memory=_memory_scope(meta.get("memory")),
-            disallowed_tools=disallowed,
             skills=skills,
             max_turns=_positive_int(meta.get("maxTurns")),
             effort=effort,
-            isolation=isolation,
+            metadata=metadata,
         ),
         "",
     )
@@ -237,22 +239,27 @@ def parse_agents_json(text, all_tools: list) -> list[AgentDefinition]:
             raise ValueError(f"--agents: {name} must be an object")
         wanted = spec.get("tools")
         tools = list(all_tools) if not wanted else [by_name[n] for n in wanted if n in by_name]
+        disallowed = tuple(_parse_tools_field(spec.get("disallowedTools", "")) or ())
+        tools = [t for t in tools if t.name not in set(disallowed)]
+        metadata = {}
+        if permission_mode := (spec.get("permissionMode") or None):
+            metadata["permission_mode"] = str(permission_mode)
+        if memory := _memory_scope(spec.get("memory")):
+            metadata["memory"] = memory
+        isolation = str(spec.get("isolation") or "").strip()
+        if isolation == "worktree":
+            metadata["isolation"] = isolation
         defs.append(
             AgentDefinition(
                 str(name),
                 system_prompt=str(spec.get("prompt") or ""),
                 tools=tools,
                 model=str(spec.get("model") or "") or None,
-                permission_mode=spec.get("permissionMode") or None,
                 description=str(spec.get("description") or ""),
-                memory=_memory_scope(spec.get("memory")),
-                disallowed_tools=tuple(_parse_tools_field(spec.get("disallowedTools", "")) or ()),
                 skills=tuple(_parse_tools_field(spec.get("skills", "")) or ()),
                 max_turns=_positive_int(spec.get("maxTurns")),
                 effort=str(spec.get("effort") or "").strip(),
-                isolation=str(spec.get("isolation") or "").strip()
-                if str(spec.get("isolation") or "").strip() == "worktree"
-                else "",
+                metadata=metadata,
             )
         )
     return defs
@@ -268,10 +275,10 @@ def render_agent_md(defn: AgentDefinition, all_tools: list) -> str:
         lines.append("tools: " + ", ".join(t.name for t in defn.tools))
     if defn.model:
         lines.append(f"model: {defn.model}")
-    if defn.permission_mode:
-        lines.append(f"permissionMode: {defn.permission_mode}")
-    if defn.memory:
-        lines.append(f"memory: {defn.memory}")
+    if permission_mode := defn.metadata.get("permission_mode"):
+        lines.append(f"permissionMode: {permission_mode}")
+    if memory := defn.metadata.get("memory"):
+        lines.append(f"memory: {memory}")
     lines += ["---", "", defn.system_prompt.strip(), ""]
     return "\n".join(lines)
 

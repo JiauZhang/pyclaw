@@ -87,10 +87,10 @@ class AgentListMixin:
         ]
         lines.append("[bold]Tools[/bold]: " + (escape(", ".join(tools)) if tools else escape("All tools")))
         lines.append(f"[bold]Model[/bold]: {escape(defn.model or self._session.model)}")
-        if defn.permission_mode:
-            lines.append(f"[bold]Permission mode[/bold]: {escape(defn.permission_mode)}")
-        if defn.memory:
-            lines.append(f"[bold]Notes[/bold]: {escape(defn.memory)} scope")
+        if permission_mode := defn.metadata.get("permission_mode"):
+            lines.append(f"[bold]Permission mode[/bold]: {escape(permission_mode)}")
+        if memory := defn.metadata.get("memory"):
+            lines.append(f"[bold]Notes[/bold]: {escape(memory)} scope")
         lines += ["", "[bold]System prompt[/bold]", escape(defn.system_prompt or "")]
         return lines + self._footer(keys.either("open", "dismiss", "goes back"))
 

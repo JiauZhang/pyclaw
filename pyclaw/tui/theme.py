@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import sys
 
+from chatchat.tasks.enums import TaskStatus
+
 from pyclaw import task_registry
 from pyclaw.tui import keys
 
@@ -41,7 +43,7 @@ PREVIEW_CHARS = 80
 RECENT_ACTIVITIES = 5
 
 
-PLAN_ICONS = {"completed": "\u2713", "in_progress": "\u25aa", "pending": "\u25ab"}
+PLAN_ICONS = {TaskStatus.COMPLETED: "\u2713", TaskStatus.IN_PROGRESS: "\u25aa", TaskStatus.PENDING: "\u25ab"}
 DONE_COLOR = "#4EBA65"
 PLAN_MAX_LINES = 10
 PLAN_MIN_ROWS = 10

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.agent_definition import AgentDefinition
 from pyclaw.team import defs as mod
 from pyclaw.team.defs import (
     BUILT_IN,
@@ -100,8 +100,8 @@ def test_load_agent_defs_parses_and_resolves_tools():
         assert len(defs["planner"].tools) == len(all_tools)
         assert "strict code reviewer" in defs["reviewer"].system_prompt
         assert defs["reviewer"].description == "Reviews code changes for correctness and style"
-        assert defs["planner"].permission_mode == "plan"
-        assert defs["reviewer"].permission_mode is None
+        assert defs["planner"].metadata.get("permission_mode") == "plan"
+        assert defs["reviewer"].metadata.get("permission_mode") is None
 
 
 def test_load_agent_defs_skips_invalid_and_project_overrides_user(tmp_path, user_agents):
@@ -286,7 +286,19 @@ def test_tools_are_grouped_by_their_kind():
         ("Reading and search", ["Read", "Glob", "Grep"]),
         ("Editing files", ["Write", "Edit"]),
         ("Running commands", ["Bash"]),
-        ("Other tools", ["CronCreate", "CronList", "CronDelete", "EnterWorktree", "ExitWorktree"]),
+        (
+            "Other tools",
+            [
+                "CronCreate",
+                "CronList",
+                "CronDelete",
+                "EnterWorktree",
+                "ExitWorktree",
+                "EnterPlanMode",
+                "ExitPlanMode",
+                "AskUserQuestion",
+            ],
+        ),
     ]
     assert tool_buckets([]) == []
 
@@ -346,7 +358,7 @@ def test_agents_given_as_json_become_definitions():
     assert defs[0].system_prompt == "be harsh"
     assert [t.name for t in defs[0].tools] == ["Read", "Grep"]
     assert defs[0].model == "cheap-m"
-    assert defs[0].permission_mode == "plan"
+    assert defs[0].metadata.get("permission_mode") == "plan"
 
 
 def test_an_agent_given_without_tools_sees_all_of_them():
@@ -397,27 +409,33 @@ def test_an_agent_can_be_given_a_memory_scope():
     defs = mod.parse_agents_json(
         '{"reviewer": {"description": "reads diffs", "prompt": "be harsh", "memory": "project"}}', ALL_TOOLS
     )
-    assert defs[0].memory == "project"
+    assert defs[0].metadata.get("memory") == "project"
 
 
 def test_a_memory_scope_that_is_not_one_of_the_three_is_dropped():
     defs = mod.parse_agents_json('{"reviewer": {"description": "d", "prompt": "p", "memory": "galaxy"}}', ALL_TOOLS)
-    assert defs[0].memory is None
+    assert defs[0].metadata.get("memory") is None
 
 
 def test_the_frontmatter_of_an_agent_file_carries_its_scope():
     defn, problem = mod._definition_from_md(
         "---\nname: reviewer\ndescription: reads diffs\nmemory: user\n---\n\n" + "be harsh " * 10, ALL_TOOLS
     )
-    assert defn.memory == "user"
+    assert defn.metadata.get("memory") == "user"
     assert problem == ""
 
 
 def test_a_written_agent_keeps_its_scope_on_the_way_out():
-    defn = AgentDefinition("reviewer", system_prompt="p" * 30, tools=list(ALL_TOOLS), description="d" * 20, memory="local")
+    defn = AgentDefinition(
+        "reviewer",
+        system_prompt="p" * 30,
+        tools=list(ALL_TOOLS),
+        description="d" * 20,
+        metadata={"memory": "local"},
+    )
     text = mod.render_agent_md(defn, ALL_TOOLS)
     assert "memory: local" in text
-    assert mod._definition_from_md(text, ALL_TOOLS)[0].memory == "local"
+    assert mod._definition_from_md(text, ALL_TOOLS)[0].metadata.get("memory") == "local"
 
 
 def test_a_broken_yaml_frontmatter_skips_the_file_with_a_problem():
@@ -549,14 +567,14 @@ def test_the_extended_frontmatter_fields_reach_the_definition():
     assert defn.skills == ("review-rules", "safety")
     assert defn.max_turns == 12
     assert defn.effort == "high"
-    assert defn.isolation == "worktree"
+    assert defn.metadata.get("isolation") == "worktree"
 
 
 def test_an_unknown_isolation_value_is_dropped():
     defn, _ = mod._definition_from_md(
         "---\nname: reviewer\ndescription: reads diffs\nisolation: container\n---\n\n" + "be harsh " * 10, ALL_TOOLS
     )
-    assert defn.isolation == ""
+    assert defn.metadata.get("isolation") is None
 
 
 def test_a_zero_or_garbage_max_turns_is_not_a_limit():

@@ -4,7 +4,7 @@ from pyclaw.tui import keys
 from pyclaw.tui.formatting import escape
 from textual.widgets import Input
 
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.agent_definition import AgentDefinition
 
 from pyclaw.team import defs as agent_defs
 from pyclaw.tui.theme import POINTER
@@ -161,7 +161,7 @@ class AgentFormMixin:
 
     def _pending_notes_copy(self) -> bool:
         defn = getattr(self._target, "defn", None)
-        return defn is not None and bool(defn.memory) and defn.agent_type in self._session.snapshot_updates
+        return defn is not None and bool(defn.metadata.get("memory")) and defn.agent_type in self._session.snapshot_updates
 
     def _draft_definition(self):
         chosen = self._draft["tools"]
@@ -181,7 +181,7 @@ class AgentFormMixin:
 
     def _apply_notes_copy(self):
         defn = self._target.defn
-        self._session.apply_snapshot_update(defn.agent_type, defn.memory)
+        self._session.apply_snapshot_update(defn.agent_type, defn.metadata["memory"])
         self._team.product.snapshot_updates = [name for name in self._session.snapshot_updates if name != defn.agent_type]
         self._changes.append(f"{defn.agent_type} now works from the notes saved in this project.")
         self._mode = "list"

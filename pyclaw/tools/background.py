@@ -10,7 +10,8 @@ import threading
 import time
 from pathlib import Path
 
-from chatchat.team.host_tasks import HostTasks
+from chatchat.runtime.background_tasks import BackgroundTasks
+from chatchat.tasks.enums import TaskRunStatus
 from chatchat.tool import ToolResult
 
 from pyclaw import task_registry as tasks
@@ -33,11 +34,11 @@ def _watch(task_id: str):
         return
     code = record.payload["process"].wait()
     killed = bool(record.payload.get("killed"))
-    if record.status not in (tasks.COMPLETED, tasks.FAILED, tasks.KILLED):
+    if record.status not in (TaskRunStatus.COMPLETED, TaskRunStatus.FAILED, TaskRunStatus.KILLED):
         if killed:
-            record.finish(tasks.KILLED)
+            record.finish(TaskRunStatus.KILLED)
         else:
-            record.finish(tasks.COMPLETED if code == 0 else tasks.FAILED)
+            record.finish(TaskRunStatus.COMPLETED if code == 0 else TaskRunStatus.FAILED)
     cb = _notifier
     if cb is not None:
         try:
@@ -76,7 +77,7 @@ def _record(task_id: str, command: str, process, output: Path):
             id=task_id,
             kind="shell",
             label=command,
-            status=tasks.RUNNING,
+            status=TaskRunStatus.RUNNING,
             output=str(output),
             payload={"process": process, "killed": False},
         )
@@ -123,7 +124,7 @@ def row(record) -> dict:
         "command": record.label,
         "seconds": record.seconds(now),
         "exit": code,
-        "killed": record.status == tasks.KILLED,
+        "killed": record.status == TaskRunStatus.KILLED,
         "detail": (f"running {record.seconds(now)}s" if code is None else f"exited {code}"),
         "stoppable": code is None,
     }
@@ -139,7 +140,7 @@ def snapshot() -> list[dict]:
                 "command": record.label,
                 "seconds": record.seconds(now),
                 "exit": record.payload["process"].poll(),
-                "killed": record.status == tasks.KILLED,
+                "killed": record.status == TaskRunStatus.KILLED,
             }
         )
     return sorted(rows, key=lambda row: row["id"])
@@ -164,8 +165,12 @@ def stop(task_id: str) -> dict | None:
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
-    if record.status not in (tasks.COMPLETED, tasks.FAILED, tasks.KILLED):
-        record.finish(tasks.KILLED if record.payload["killed"] else (tasks.COMPLETED if process.poll() == 0 else tasks.FAILED))
+    if record.status not in (TaskRunStatus.COMPLETED, TaskRunStatus.FAILED, TaskRunStatus.KILLED):
+        record.finish(
+            TaskRunStatus.KILLED
+            if record.payload["killed"]
+            else (TaskRunStatus.COMPLETED if process.poll() == 0 else TaskRunStatus.FAILED)
+        )
     return next((row for row in snapshot() if row["id"] == task_id), None)
 
 
@@ -185,7 +190,7 @@ def cleanup_background_tasks():
 atexit.register(cleanup_background_tasks)
 
 
-class ShellTasks(HostTasks):
+class ShellTasks(BackgroundTasks):
     """The shell commands pyclaw started in the background, offered to the
     runtime's task tools so one TaskOutput and one TaskStop cover them and the
     sub-agents alike - which is what the tool's description has always promised."""

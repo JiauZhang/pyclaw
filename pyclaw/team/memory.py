@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from chatchat.team.rules import RuleSet
+from chatchat.runtime.rules import RuleSet
 from pyclaw.home import pyclaw_home
 
 

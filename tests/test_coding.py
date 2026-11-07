@@ -8,7 +8,7 @@ from pathlib import Path
 
 from conippets import json
 
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.agent_definition import AgentDefinition
 from chatchat.runtime.filehistory import FileHistory
 from chatchat.runtime.skills import listing_budget
 from chatchat.tool import ToolContext, ToolResult
@@ -39,7 +39,7 @@ from pyclaw.permissions.gate import (
     PermissionChoice,
 )
 from pyclaw.team.builder import build_team
-from pyclaw import task_registry
+from chatchat.tasks.enums import TaskRunStatus
 from pyclaw.tools import BUILTIN_TOOLS, ShellTasks, background
 from pyclaw.tools import bash as shell
 from pyclaw.tools import read as read_mod
@@ -329,7 +329,9 @@ def test_permission_gate_resolves_subagent_mode():
     async def main():
         with tempfile.TemporaryDirectory() as d:
             team = build_team("agnes/agnes-2.5-flash", cwd=d)
-            team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
+            team.register_agent_definition(
+                AgentDefinition("reader", system_prompt="read only", metadata={"permission_mode": "plan"})
+            )
             file = {"file_path": str(Path(d) / "a.txt")}
             planned = await _gate_call(team, "Write", file, "reader")
             subagent = await _gate_call(team, "Write", file, "subagent")
@@ -350,7 +352,9 @@ def test_permission_gate_parent_mode_takes_precedence():
 
             def accept_edits_team():
                 team = build_team("agnes/agnes-2.5-flash", cwd=d, permission_mode="acceptEdits")
-                team.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
+                team.register_agent_definition(
+                    AgentDefinition("reader", system_prompt="read only", metadata={"permission_mode": "plan"})
+                )
                 return team
 
             file = {"file_path": str(Path(d) / "a.txt")}
@@ -359,7 +363,9 @@ def test_permission_gate_parent_mode_takes_precedence():
             bash_in_accept_edits = await _gate_call(team, "Bash", {"command": "echo hi"}, "reader")
 
             unlocked = build_team("agnes/agnes-2.5-flash", cwd=d, permission_mode="allowAll")
-            unlocked.register_agent_definition(AgentDefinition("reader", system_prompt="read only", permission_mode="plan"))
+            unlocked.register_agent_definition(
+                AgentDefinition("reader", system_prompt="read only", metadata={"permission_mode": "plan"})
+            )
             edit_in_allow_all = await _gate_call(unlocked, "Edit", file, "reader")
             datetime_in_allow_all = await _gate_call(unlocked, "datetime", {}, "reader")
             return (edit_in_accept_edits, bash_in_accept_edits, edit_in_allow_all, datetime_in_allow_all)
@@ -1207,7 +1213,7 @@ def test_bash_run_in_background_returns_immediately():
         time.sleep(0.1)
     assert task.payload["process"].poll() == 0
     assert "bg-done-42" in Path(task.output).read_text(encoding="utf-8")
-    assert task.status == task_registry.COMPLETED
+    assert task.status == TaskRunStatus.COMPLETED
 
 
 def test_task_output_blocks_until_completion():
@@ -1254,7 +1260,7 @@ def test_task_stop_kills_process_group():
             break
         time.sleep(0.1)
     assert task.payload["process"].poll() is not None
-    assert task.status == task_registry.KILLED
+    assert task.status == TaskRunStatus.KILLED
 
 
 def test_a_stopped_task_stays_readable():
@@ -1729,7 +1735,7 @@ def test_a_denied_rule_only_change_is_reported_once():
 def test_the_team_has_a_store_the_lead_can_name(tmp_path):
     async def main():
         with tempfile.TemporaryDirectory() as d:
-            return build_team("agnes/agnes-2.5-flash", cwd=d)
+            return build_team("agnes/agnes-2.5-flash", cwd=d, use_team=True)
 
     team = asyncio.run(main())
     assert team.courier.team_store is not None

@@ -1,6 +1,6 @@
 import asyncio
 
-from chatchat.team.agents import AgentDefinition
+from chatchat.runtime.agent_definition import AgentDefinition
 
 from pyclaw.team import defs as agent_defs_mod
 from pyclaw.tui import PyClawApp
@@ -15,8 +15,9 @@ from pyclaw.team import defs as mod
 from textual.widgets import Static
 from textual.widgets import Input
 from pyclaw.team import defs as agent_defs
-from chatchat.team.agent_memory import AgentMemory
-from chatchat.team.agents import AgentRegistry
+from chatchat.runtime.agent_memory import AgentMemory
+from pyclaw.team.snapshots import SnapshotStore
+from chatchat.runtime.agent_definition import AgentRegistry
 from types import SimpleNamespace
 
 
@@ -496,9 +497,9 @@ def _noted(monkeypatch, tmp_path, pending=False):
             "user": tmp_path / "home" / "agent-memory",
             "project": workspace / "agent-memory",
             "local": workspace / "agent-memory-local",
-        },
-        snapshots=workspace / "agent-memory-snapshots",
+        }
     )
+    team.snapshot_store = SnapshotStore(workspace / "agent-memory-snapshots")
     team.product.snapshot_updates = ["reviewer"] if pending else []
     if pending:
         snapshot = team.agent_memory.directory("reviewer", "project")

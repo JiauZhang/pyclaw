@@ -31,7 +31,6 @@ from pyclaw.permissions.rules import (
 from conippets import json
 
 from pyclaw.tools.paths import resolve
-from chatchat.runtime.structured import STRUCTURED_OUTPUT_TOOL
 from pyclaw.tools.names import (
     AGENT,
     ASK_USER_QUESTION,
@@ -43,6 +42,7 @@ from pyclaw.tools.names import (
     EXIT_WORKTREE,
     SEND_MESSAGE,
     SKILL,
+    STRUCTURED_OUTPUT,
     TASK_CREATE,
     TASK_GET,
     TASK_LIST,
@@ -62,7 +62,7 @@ AUTO_TOOLS = frozenset(
         SKILL,
         TEAM_CREATE,
         TEAM_DELETE,
-        STRUCTURED_OUTPUT_TOOL,
+        STRUCTURED_OUTPUT,
         ASK_USER_QUESTION,
         ENTER_PLAN_MODE,
         EXIT_PLAN_MODE,

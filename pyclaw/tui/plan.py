@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from chatchat.tasks.enums import TaskStatus
+
 from pyclaw.tui.formatting import escape
 
 from pyclaw.tui.formatting import _summarize
@@ -27,7 +29,7 @@ def open_ids(tasks) -> set[str]:
 
 
 def next_pending(tasks):
-    waiting = [t for t in tasks if t.status == "pending"]
+    waiting = [t for t in tasks if t.status == TaskStatus.PENDING]
     if not waiting:
         return None
     unresolved = open_ids(tasks)
@@ -45,7 +47,8 @@ def next_task_line(tasks) -> str:
 def _waiting_order(tasks):
     unresolved = open_ids(tasks)
     return sorted(
-        [t for t in tasks if t.status == "pending"], key=lambda t: (any(b in unresolved for b in t.blocked_by), _number(t.id))
+        [t for t in tasks if t.status == TaskStatus.PENDING],
+        key=lambda t: (any(b in unresolved for b in t.blocked_by), _number(t.id)),
     )
 
 
@@ -53,7 +56,7 @@ def _prioritised(tasks, recent: set[str]) -> list:
     closed = [t for t in tasks if not t.open()]
     return [
         *sorted([t for t in closed if t.id in recent], key=_number),
-        *sorted([t for t in tasks if t.status == "in_progress"], key=_number),
+        *sorted([t for t in tasks if t.status == TaskStatus.IN_PROGRESS], key=_number),
         *_waiting_order(tasks),
         *sorted([t for t in closed if t.id not in recent], key=_number),
     ]
@@ -63,15 +66,15 @@ def _task_row(
     task, *, columns: int, unresolved: set[str], brand: str, owner_color: str, activity: str, owner_alive: bool
 ) -> str:
     icon = PLAN_ICONS[task.status]
-    color = {"completed": DONE_COLOR, "in_progress": brand, "pending": "white"}[task.status]
+    color = {TaskStatus.COMPLETED: DONE_COLOR, TaskStatus.IN_PROGRESS: brand, TaskStatus.PENDING: "white"}[task.status]
     blockers = sorted((b for b in task.blocked_by if b in unresolved), key=_number)
     blocked = bool(blockers)
-    finished = task.status == "completed"
+    finished = task.status == TaskStatus.COMPLETED
     label = escape(_summarize(activity or task.subject, max(15, columns - 15)))
     styles = (
         (["strike"] if finished else [])
         + (["dim"] if finished or blocked else [])
-        + (["bold"] if task.status == "in_progress" else [])
+        + (["bold"] if task.status == TaskStatus.IN_PROGRESS else [])
     )
     if styles:
         label = f"[{' '.join(styles)}]{label}[/]"
@@ -106,7 +109,7 @@ def plan_lines(tasks, *, columns: int, rows: int, brand: str, colors=None, activ
             owner_color=colors.get(task.owner, ""),
             activity=(
                 activity.get(task.owner, "")
-                if task.status == "in_progress" and not any(b in unresolved for b in task.blocked_by)
+                if task.status == TaskStatus.IN_PROGRESS and not any(b in unresolved for b in task.blocked_by)
                 else ""
             ),
             owner_alive=task.owner in alive,
@@ -116,7 +119,11 @@ def plan_lines(tasks, *, columns: int, rows: int, brand: str, colors=None, activ
     if limit and hidden:
         parts = [
             f"{sum(1 for t in hidden if t.status == status)} {noun}"
-            for status, noun in (("in_progress", "in progress"), ("pending", "pending"), ("completed", "completed"))
+            for status, noun in (
+                (TaskStatus.IN_PROGRESS, "in progress"),
+                (TaskStatus.PENDING, "pending"),
+                (TaskStatus.COMPLETED, "completed"),
+            )
             if any(t.status == status for t in hidden)
         ]
         if parts:

@@ -63,6 +63,7 @@ class Session(HistoryMixin, ReadoutMixin):
         self._unreg = None
         self._bind_gen = 0
         self._gate = entity.product.gate if entity.product is not None else None
+        self._plan_path = None
         self._watch_worktree(entity)
         self.conv_session_id = session_id or uuid.uuid4().hex
         entity.hooks.prepare_transcript = lambda: _ready_transcript(entity)
@@ -96,9 +97,9 @@ class Session(HistoryMixin, ReadoutMixin):
         team = self._team
         team.lead_session_id = value
         team.sidechain_dir = _session_path(value) / "subagents"
-        team.plan_path = plan_file(value)
+        self._plan_path = plan_file(value)
         if self._gate is not None:
-            self._gate.plan_file = team.plan_path
+            self._gate.plan_file = self._plan_path
         follow_conversation(value, level=logging.DEBUG if config.debug_on() else logging.INFO)
 
     def _adopt_history(self):
@@ -109,7 +110,7 @@ class Session(HistoryMixin, ReadoutMixin):
 
     @property
     def plan_path(self) -> Path:
-        return self._team.plan_path
+        return self._plan_path
 
     @property
     def elapsed_seconds(self) -> int:
@@ -189,7 +190,7 @@ class Session(HistoryMixin, ReadoutMixin):
             raise ValueError("Permission gate not available for this session.")
         parsed = self._gate.check_switch(mode)
         self._gate.mode = parsed
-        self._team.hooks.permission_mode = parsed.value
+        self._team.set_policy_mode(parsed.value)
         return parsed.value
 
     def attach_approval(self, coro):
@@ -197,10 +198,14 @@ class Session(HistoryMixin, ReadoutMixin):
             self._gate.request = coro
 
     def attach_question(self, coro):
-        self._team.ask_user = coro
+        self._team.set_user_input(coro)
 
     def apply_snapshot_update(self, agent_type: str, scope: str) -> str:
-        return self._team.agent_memory.apply_snapshot(agent_type, scope)
+        store = getattr(self._team, "snapshot_store", None)
+        if store is None:
+            return "none"
+        local = self._team.agent_memory.directory(agent_type, scope)
+        return store.apply(agent_type, local)
 
     def suggested_rules(self, tool_name: str, tool_input) -> list[str]:
         if self._gate is None:

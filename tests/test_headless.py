@@ -98,6 +98,7 @@ class _ShapeTeam:
             def __init__(self, team):
                 self.team = team
                 self.structured_output = None
+                self.injected = []
 
             def set_output_schema(self, schema):
                 self.team.installed.append(schema)

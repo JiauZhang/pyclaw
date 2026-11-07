@@ -26,6 +26,7 @@ from fakes import Usage
 from markup import plain as _plain
 from pyclaw import task_registry
 from pyclaw.tools import background
+from chatchat.tasks.enums import TaskRunStatus
 
 TOP = (0x00, 0x84, 0xE4)
 BOTTOM = (0xF0, 0xCC, 0x00)
@@ -256,7 +257,7 @@ def test_task_rows_list_the_live_teammates_and_shells(monkeypatch):
             id="b2", kind="shell", label="pytest", started_at=now - 4, payload={"process": _Exited(), "killed": False}
         )
     )
-    done.finish(task_registry.COMPLETED, now=now)
+    done.finish(TaskRunStatus.COMPLETED, now=now)
 
     async def main():
         team = _team()
